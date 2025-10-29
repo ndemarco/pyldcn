@@ -65,7 +65,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pyldcn-test=tests.test_network:main',
+            'device=pyldcn.cli.device:main',
         ],
     },
     include_package_data=True,

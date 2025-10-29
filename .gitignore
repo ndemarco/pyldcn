@@ -132,4 +132,11 @@ dmypy.json
 Thumbs.db
 
 # Vendor documentation (proprietary)
-docs/logisol/
+docs/logosol/
+
+# Generated configuration files (examples are in examples/)
+/device_list.json
+/axis_config.json
+/axis_config_*.json
+/configured_devices.json
+/configured_devices_*.json

@@ -1,0 +1,45 @@
+{
+  "file_version": "1.0",
+  "discovered_at": "2025-10-29T14:47:20.858273",
+  "port": "/dev/ttyUSB0",
+  "baud_rate": 125000,
+  "num_devices": 6,
+  "devices": [
+    {
+      "address": 1,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21
+    },
+    {
+      "address": 2,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21
+    },
+    {
+      "address": 3,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21
+    },
+    {
+      "address": 4,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21
+    },
+    {
+      "address": 5,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21
+    },
+    {
+      "address": 6,
+      "device_id": 2,
+      "device_type": "SK-2310g2",
+      "version": 52
+    }
+  ]
+}

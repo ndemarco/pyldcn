@@ -1,0 +1,63 @@
+{
+  "file_version": "1.0",
+  "axes": [
+    {
+      "name": "X",
+      "address": 2,
+      "axis_type": "linear",
+      "pitch": 5.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        1,
+        1
+      ],
+      "invert_direction": false,
+      "gains": {
+        "kp": 10,
+        "kd": 1000,
+        "ki": 20,
+        "il": 40,
+        "ol": 255,
+        "cl": 129,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 0,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": 5.0,
+        "start_velocity": 20.0,
+        "end_velocity": 5.0,
+        "acceleration": 100.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": true,
+          "position": -2.0
+        },
+        "soft_limit_positive": {
+          "enabled": true,
+          "position": 310.0
+        }
+      },
+      "motion": {
+        "max_velocity": 500.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 10000.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    }
+  ]
+}

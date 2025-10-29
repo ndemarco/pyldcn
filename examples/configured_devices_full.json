@@ -1,0 +1,323 @@
+{
+  "file_version": "1.0",
+  "merged_at": "2025-10-29T12:07:56.620102",
+  "source_device_list": "2025-10-29T11:59:32.982405",
+  "port": "/dev/ttyUSB0",
+  "baud_rate": 125000,
+  "num_devices": 6,
+  "num_configured_axes": 5,
+  "devices": [
+    {
+      "address": 1,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21,
+      "axis_name": "Y",
+      "axis_type": "linear",
+      "pitch": 5.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        1,
+        1
+      ],
+      "invert_direction": false,
+      "gains": {
+        "kp": 10,
+        "kd": 1000,
+        "ki": 20,
+        "il": 40,
+        "ol": 255,
+        "cl": 129,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 0,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": 5.0,
+        "start_velocity": 20.0,
+        "end_velocity": 5.0,
+        "acceleration": 100.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": true,
+          "position": -5.0
+        },
+        "soft_limit_positive": {
+          "enabled": true,
+          "position": 185.0
+        }
+      },
+      "motion": {
+        "max_velocity": 100.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 10000.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    },
+    {
+      "address": 2,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21,
+      "axis_name": "X",
+      "axis_type": "linear",
+      "pitch": 5.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        1,
+        1
+      ],
+      "invert_direction": false,
+      "gains": {
+        "kp": 10,
+        "kd": 1000,
+        "ki": 20,
+        "il": 40,
+        "ol": 255,
+        "cl": 129,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 0,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": 5.0,
+        "start_velocity": 20.0,
+        "end_velocity": 5.0,
+        "acceleration": 100.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": true,
+          "position": -2.0
+        },
+        "soft_limit_positive": {
+          "enabled": true,
+          "position": 310.0
+        }
+      },
+      "motion": {
+        "max_velocity": 500.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 10000.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    },
+    {
+      "address": 3,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21,
+      "axis_name": "Z",
+      "axis_type": "linear",
+      "pitch": 2.5,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        1,
+        1
+      ],
+      "invert_direction": false,
+      "gains": {
+        "kp": 10,
+        "kd": 1000,
+        "ki": 20,
+        "il": 40,
+        "ol": 255,
+        "cl": 129,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 1,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": -5.0,
+        "start_velocity": 20.0,
+        "end_velocity": 5.0,
+        "acceleration": 100.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": true,
+          "position": -120.0
+        },
+        "soft_limit_positive": {
+          "enabled": true,
+          "position": 2.0
+        }
+      },
+      "motion": {
+        "max_velocity": 100.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 10000.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    },
+    {
+      "address": 4,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21,
+      "axis_name": "A",
+      "axis_type": "rotary",
+      "pitch": 5.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        101,
+        1
+      ],
+      "invert_direction": true,
+      "gains": {
+        "kp": 110,
+        "kd": 5000,
+        "ki": 10,
+        "il": 10,
+        "ol": 255,
+        "cl": 129,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 4,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": 0.1,
+        "start_velocity": 1.0,
+        "end_velocity": 0.5,
+        "acceleration": 20.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": true,
+          "position": -1000.0
+        },
+        "soft_limit_positive": {
+          "enabled": true,
+          "position": 1000.0
+        }
+      },
+      "motion": {
+        "max_velocity": 100.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 100.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    },
+    {
+      "address": 5,
+      "device_id": 0,
+      "device_type": "LS-231SE",
+      "version": 21,
+      "axis_name": "B",
+      "axis_type": "rotary",
+      "pitch": 10.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [
+        101,
+        1
+      ],
+      "invert_direction": false,
+      "gains": {
+        "kp": 110,
+        "kd": 5000,
+        "ki": 10,
+        "il": 10,
+        "ol": 255,
+        "cl": 0,
+        "el": 2000,
+        "sr": 1,
+        "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 0,
+        "invert_direction": false,
+        "use_index_pulse": false,
+        "home_distance": 0.285,
+        "start_velocity": 3.0,
+        "end_velocity": 0.1,
+        "acceleration": 10.0
+      },
+      "limits": {
+        "hard_limit_negative": {
+          "enabled": true,
+          "active_low": false
+        },
+        "hard_limit_positive": {
+          "enabled": true,
+          "active_low": false
+        },
+        "soft_limit_negative": {
+          "enabled": false,
+          "position": -1000.0
+        },
+        "soft_limit_positive": {
+          "enabled": false,
+          "position": 1000.0
+        }
+      },
+      "motion": {
+        "max_velocity": 5.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 100.0,
+        "acceleration_jerk": 10000.0,
+        "deceleration_jerk": 10000.0
+      }
+    },
+    {
+      "address": 6,
+      "device_id": 2,
+      "device_type": "SK-2310g2",
+      "version": 52,
+      "configured": false
+    }
+  ]
+}
