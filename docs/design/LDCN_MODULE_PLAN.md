@@ -255,15 +255,97 @@ SK2310g2 (supervisor subclass)
 
 ---
 
+## Phase 5.5: Configuration Management System
+
+### Task 5.5.1: Design configuration file format
+**Status:** ⏳ PENDING
+**Actions:**
+- Define JSON/YAML schema for device configuration
+- Include configuration version ID for format compatibility
+- Support axis name mapping (e.g., X→address 2, Y→address 1)
+- Include servo tuning parameters (PID gains, limits)
+- Include homing parameters (speed, direction, switches)
+- Include motion parameters (velocity, acceleration)
+
+**Configuration Structure:**
+```json
+{
+  "config_version": "1.0.0",
+  "network": {
+    "port": "/dev/ttyUSB0",
+    "baud_rate": 125000
+  },
+  "devices": [
+    {
+      "address": 1,
+      "device_type": "LS231SE",
+      "device_id": "0x00",
+      "version": "0x15",
+      "axis_name": "Y",
+      "tuning": {
+        "kp": 10, "kd": 1000, "ki": 20,
+        "il": 40, "ol": 255, "cl": 129, "el": 2000
+      },
+      "homing": {
+        "home_switch": 0,
+        "start_vel": 20.0,
+        "end_vel": 5.0,
+        "acceleration": 100.0,
+        "direction": 1
+      },
+      "limits": { ... }
+    }
+  ]
+}
+```
+
+### Task 5.5.2: Implement device list save/load
+**Status:** ⏳ PENDING
+**Actions:**
+- Add `save_config(filename)` to LDCNNetwork
+- Add `load_config(filename)` to LDCNNetwork
+- Parse discovered devices to config format
+- Validate config version on load
+- Handle version migrations if needed
+
+### Task 5.5.3: Import MCTL configuration
+**Status:** ⏳ PENDING
+**Actions:**
+- Parse Mctl_Logosol1.ini file
+- Extract axis names and addresses
+- Extract PID gains for each axis
+- Extract homing parameters
+- Extract limit switch configuration
+- Convert to pyldcn config format
+
+**MCTL Axis Mapping (from Mctl_Logosol1.ini):**
+- Y axis: Address 1 (KP=10, KD=1000, KI=20)
+- X axis: Address 2 (KP=10, KD=1000, KI=20)
+- Z axis: Address 3 (KP=10, KD=1000, KI=20)
+- A axis: Address 4 (KP=110, KD=5000, KI=10) - Rotary
+- B axis: Address 5 (KP=110, KD=5000, KI=10) - Rotary
+- Supervisor: Address 6 (SK2310g2)
+
+### Task 5.5.4: Apply configuration to devices
+**Status:** ⏳ PENDING
+**Actions:**
+- Read config file
+- Match devices by address
+- Apply tuning parameters to each servo
+- Store axis names for reference
+- Validate parameters before applying
+
+---
+
 ## Phase 6: Complete Workflow Implementation (Power → Home → Motion)
 
 ### Task 6.1: Implement SK2310g2 power control
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED
 **Actions:**
-- Implement power relay control methods
-- Add wait_for_power_button() functionality
-- Add power state monitoring
-- Test power-on sequence
+- ✅ Implemented request_power_on() notification
+- ✅ Enhanced wait_for_power_button() with verbose mode
+- ✅ Added power state monitoring
+- ✅ Tested power-on sequence on hardware successfully
 
 ### Task 6.2: Implement servo homing functionality
 **Status:** ⏳ PENDING
@@ -433,7 +515,8 @@ net.close()
 **Phase 3:** ✅ COMPLETED (Implementation done, ready for testing!)
 **Phase 4:** ✅ COMPLETED (Hardware validation - all tests passing!)
 **Phase 5:** ⏳ PENDING (Packaging and PyPI publication)
-**Phase 6:** 🎯 IN PROGRESS (Complete workflow: power-on → homing → motion)
+**Phase 5.5:** 🎯 IN PROGRESS (Configuration management system)
+**Phase 6:** ⏳ PENDING (Complete workflow: power-on → homing → motion)
 
 **Last Updated:** 2025-10-29
 
