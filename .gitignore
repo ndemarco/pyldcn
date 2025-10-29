@@ -128,3 +128,6 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Vendor documentation (proprietary)
+docs/logisol/
