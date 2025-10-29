@@ -1,6 +1,13 @@
 # LDCN Python Module Refactoring Plan
 
-**Goal:** Create a reusable Python module for LDCN network communication with object-oriented device abstraction.
+**Primary Goal:** Enable complete axis control from power-on to coordinated motion:
+1. Power on system via SK2310g2 I/O controller
+2. Initialize servo drives with tuning parameters (PID gains)
+3. Enable servo amplifiers
+4. Home axes with configurable homing parameters
+5. Execute coordinated motion commands
+
+**Secondary Goal:** Create a reusable, modular Python library for LDCN network communication with object-oriented device abstraction suitable for other LDCN applications.
 
 **Start Date:** 2025-10-29
 
@@ -231,20 +238,97 @@ SK2310g2 (supervisor subclass)
 **Size:** ~400 lines
 
 ### Task 4.2: Test device discovery
-**Status:** ⏳ READY FOR HARDWARE
-**Verify:** Correct devices found at correct addresses
+**Status:** ✅ COMPLETED
+**Result:** Found 6 devices (5× LS231SE at 0x00, 1× SK2310g2 at 0x02)
 
 ### Task 4.3: Test servo operations
-**Status:** ⏳ READY FOR HARDWARE
-**Verify:** Position read/write, enable/disable, status monitoring
+**Status:** ✅ COMPLETED
+**Result:** Initialize, status reading, position monitoring all working
 
 ### Task 4.4: Test supervisor operations
-**Status:** ⏳ READY FOR HARDWARE
-**Verify:** Diagnostic reading matches LED display
+**Status:** ✅ COMPLETED
+**Result:** Configuration, diagnostic reading, power state reading working
 
 ### Task 4.5: Compare with original scripts
-**Status:** ⏳ READY FOR HARDWARE
-**Verify:** New module produces same results as original utilities
+**Status:** ✅ COMPLETED
+**Result:** Module behavior matches original utilities
+
+---
+
+## Phase 6: Complete Workflow Implementation (Power → Home → Motion)
+
+### Task 6.1: Implement SK2310g2 power control
+**Status:** ⏳ PENDING
+**Actions:**
+- Implement power relay control methods
+- Add wait_for_power_button() functionality
+- Add power state monitoring
+- Test power-on sequence
+
+### Task 6.2: Implement servo homing functionality
+**Status:** ⏳ PENDING
+**Actions:**
+- Add home() method to LS231SE class
+- Implement configurable homing parameters (speed, direction, offset)
+- Add home switch detection
+- Test homing sequence on hardware
+**Design considerations:**
+- Home direction (positive/negative)
+- Home speed (approach and final)
+- Home offset (position after homing)
+- Home switch logic (normally open/closed)
+
+### Task 6.3: Implement coordinated motion commands
+**Status:** ⏳ PENDING
+**Actions:**
+- Enhance move_to() with acceleration/deceleration parameters
+- Add trajectory planning for smooth motion
+- Implement multi-axis coordination (if needed)
+- Test motion commands on hardware
+**Design considerations:**
+- Acceleration/deceleration profiles
+- Velocity limits
+- Position scaling (encoder counts to real units)
+- Trajectory buffer management
+
+### Task 6.4: Create complete workflow example script
+**Status:** ⏳ PENDING
+**Actions:**
+- Create example: power_on_and_home.py
+- Demonstrate complete sequence from cold start to homed axes
+- Add error handling and recovery
+- Document configuration parameters
+**Example workflow:**
+```python
+# 1. Initialize network
+network = LDCNNetwork('/dev/ttyUSB0')
+network.initialize()
+
+# 2. Power on via supervisor
+supervisor = network.devices[5]  # SK2310g2
+supervisor.enable_power()
+supervisor.wait_for_power_button()
+
+# 3. Initialize servos with tuning
+servo_x = network.devices[0]
+servo_x.initialize()
+servo_x.set_gains(kp=1000, kd=8000, ki=0)
+servo_x.enable()
+
+# 4. Home axis
+servo_x.home(speed=100, direction=-1, offset=1000)
+
+# 5. Make a move
+servo_x.move_to(10000, velocity=500, accel=1000)
+```
+
+### Task 6.5: Validate complete workflow on hardware
+**Status:** ⏳ PENDING
+**Verify:**
+- Power control works reliably
+- Homing completes successfully
+- Motion is smooth and accurate
+- Error handling is robust
 
 ---
 
@@ -347,16 +431,33 @@ net.close()
 **Phase 1:** ✅ COMPLETED (All survey tasks done!)
 **Phase 2:** ✅ COMPLETED (All design tasks done!)
 **Phase 3:** ✅ COMPLETED (Implementation done, ready for testing!)
-**Phase 4:** ⏳ READY FOR HARDWARE (Test script ready, awaiting hardware validation)
-**Phase 5:** ⏳ PENDING (Packaging and PyPI publication after testing is stable)
+**Phase 4:** ✅ COMPLETED (Hardware validation - all tests passing!)
+**Phase 5:** ⏳ PENDING (Packaging and PyPI publication)
+**Phase 6:** 🎯 IN PROGRESS (Complete workflow: power-on → homing → motion)
 
 **Last Updated:** 2025-10-29
 
-**Module Status:** 🔴 UNVERIFIED - All ~1500 lines of code implemented but not tested on hardware
+**Module Status:** 🟢 VERIFIED - Core network and device operations tested on hardware
+**Workflow Status:** 🟡 PARTIAL - Need power control, homing, and coordinated motion
 
 ---
 
 ## Change Log
+
+### 2025-10-29 17:00 - 🎉 PHASE 4 COMPLETE! Hardware Validation Success
+- ✅ **ALL TESTS PASSED ON REAL HARDWARE**
+- ✅ Fixed UnknownDevice instantiation bug (added concrete fallback class)
+- ✅ Fixed __repr__ format specifier error
+- ✅ Verified device IDs from hardware:
+  - LS231SE servos: ID=0x00, Version=0x15 (5 devices found)
+  - SK2310g2 I/O controller: ID=0x02, Version=0x34 (1 device found)
+- ✅ Improved reset() to handle devices at any baud rate
+- ✅ Network initialization working (reset, address, discover, baud upgrade)
+- ✅ Servo operations working (initialize, status, position reading)
+- ✅ I/O controller operations working (configure, diagnostic, power state)
+- ✅ Continuous position monitoring working (10 Hz sampling)
+- 📝 Updated project plan with Phase 6: Complete workflow implementation
+- 📝 Redefined primary goal: Enable power-on → homing → coordinated motion
 
 ### 2025-10-29 14:00 - 🎉 PHASE 3 COMPLETE!
 - ✅ Created ldcn_network.py module (~1500 lines, 45 KB)
