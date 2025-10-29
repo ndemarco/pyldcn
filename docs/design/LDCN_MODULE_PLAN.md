@@ -248,6 +248,41 @@ SK2310g2 (supervisor subclass)
 
 ---
 
+## Phase 5: Packaging & Publication
+
+### Task 5.1: Create package structure
+**Status:** ⏳ PENDING
+**Actions:**
+- Create proper package directory structure
+- Add `__init__.py` files
+- Move modules to package directory
+
+### Task 5.2: Create PyPI metadata
+**Status:** ⏳ PENDING
+**Actions:**
+- Create `setup.py` or `pyproject.toml`
+- Add package metadata (version, author, description, license)
+- Specify dependencies (pyserial)
+- Add keywords and classifiers
+
+### Task 5.3: Write package documentation
+**Status:** ⏳ PENDING
+**Actions:**
+- Create README.md for PyPI landing page
+- Add usage examples
+- Document installation instructions
+- Add API reference or link to docs
+
+### Task 5.4: Publish to PyPI
+**Status:** ⏳ PENDING (after testing and stabilization)
+**Actions:**
+- Build package distribution (wheel + sdist)
+- Test on TestPyPI first
+- Publish to PyPI
+- Verify installation: `pip install pyldcn`
+
+---
+
 ## Target Usage Example
 
 ```python
@@ -313,6 +348,7 @@ net.close()
 **Phase 2:** ✅ COMPLETED (All design tasks done!)
 **Phase 3:** ✅ COMPLETED (Implementation done, ready for testing!)
 **Phase 4:** ⏳ READY FOR HARDWARE (Test script ready, awaiting hardware validation)
+**Phase 5:** ⏳ PENDING (Packaging and PyPI publication after testing is stable)
 
 **Last Updated:** 2025-10-29
 

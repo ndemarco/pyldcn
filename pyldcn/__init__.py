@@ -24,6 +24,7 @@ from .network import (
     # Main classes
     LDCNNetwork,
     LDCNDevice,
+    UnknownDevice,
     LS231SE,
     SK2310g2,
 
@@ -74,6 +75,7 @@ __all__ = [
     # Main classes
     'LDCNNetwork',
     'LDCNDevice',
+    'UnknownDevice',
     'LS231SE',
     'SK2310g2',
 

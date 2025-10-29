@@ -624,8 +624,8 @@ class LDCNNetwork:
             elif device_id == DEVICE_ID_SK2310G2:
                 device = SK2310g2(self, addr)
             else:
-                # Unknown device type - create generic device
-                device = LDCNDevice(self, addr)
+                # Unknown device type - create fallback device
+                device = UnknownDevice(self, addr)
 
             device.model_id = device_id
             device.version = device_info['version']
@@ -806,7 +806,38 @@ class LDCNDevice(ABC):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return f"{self.device_type}(address={self.address}, model_id=0x{self.model_id:02X if self.model_id else 0:02X})"
+        model = self.model_id if self.model_id is not None else 0
+        return f"{self.device_type}(address={self.address}, model_id=0x{model:02X})"
+
+
+# =============================================================================
+# UnknownDevice - Fallback for unrecognized devices
+# =============================================================================
+
+class UnknownDevice(LDCNDevice):
+    """
+    Fallback device class for unrecognized LDCN devices.
+
+    This class provides basic functionality for devices whose type
+    is not yet implemented or recognized.
+    """
+
+    def __init__(self, network: LDCNNetwork, address: int):
+        """Initialize unknown device."""
+        super().__init__(network, address)
+        self.device_type = "Unknown"
+
+    def read_status(self) -> Dict:
+        """
+        Read basic status from unknown device.
+
+        Returns:
+            Dictionary with raw status byte
+        """
+        response = self.nop()
+        if len(response) >= 1:
+            return {'status': response[0], 'raw': response}
+        return {'status': 0, 'raw': response}
 
 
 # =============================================================================
