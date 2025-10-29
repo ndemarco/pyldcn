@@ -127,9 +127,9 @@ STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
 STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
 
 # Device IDs (hardware-reported, TBD - verify from real hardware)
-DEVICE_ID_UNKNOWN = 0x00
-DEVICE_ID_LS231SE = 0x17          # TBD - verify with hardware
-DEVICE_ID_SK2310G2 = 0x23         # TBD - verify with hardware
+DEVICE_ID_UNKNOWN = 0xFF          # Placeholder for truly unknown devices
+DEVICE_ID_LS231SE = 0x00          # ✅ VERIFIED on hardware: Version 0x15
+DEVICE_ID_SK2310G2 = 0x02         # ✅ VERIFIED on hardware: Version 0x34
 
 # Servo status bit masks
 STATUS_MOVE_DONE = 0x01
@@ -434,23 +434,35 @@ class LDCNNetwork:
 
     def reset(self) -> None:
         """
-        Send hard reset to all devices.
+        Send hard reset to all devices at all possible baud rates.
 
-        Devices return to address 0x00 and 19200 baud.
-        Waits 2 seconds after reset for devices to initialize.
+        Tries sending the reset command at every known baud rate to ensure
+        devices are reset regardless of their current baud rate.
+        After reset, devices return to address 0x00 and 19200 baud.
+        Waits 2 seconds after final reset for devices to initialize.
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        if not self.serial or not self.serial.is_open:
-            raise LDCNError("Serial port not open")
-
-        # Send hard reset packet
+        # Reset packet
         packet = bytes([HEADER, ADDRESS_GROUP, 0x0F, 0x0E])
-        self.serial.write(packet)
-        self.serial.flush()
 
-        # Wait for devices to reset
+        # Try sending reset at all known baud rates
+        # This ensures we reset devices no matter what baud they're currently at
+        for baud in [230400, 125000, 57600, 38400, 19200, 9600]:
+            try:
+                self._open_port(baud)
+                self.serial.write(packet)
+                self.serial.flush()
+                time.sleep(0.05)  # Brief delay between attempts
+            except Exception:
+                continue
+
+        # Wait for devices to complete reset
         time.sleep(DELAY_AFTER_RESET)
+
+        # Devices are now at 19200 baud - reopen port
+        self._open_port(DEFAULT_BAUD)
+        self.baud_rate = DEFAULT_BAUD
 
         # Flush input buffer
         self.serial.reset_input_buffer()
