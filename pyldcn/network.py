@@ -33,9 +33,11 @@ Date: 2025-10-29
 import serial
 import time
 import struct
+import json
 from typing import Optional, List, Dict, Tuple
 from abc import ABC, abstractmethod
 from enum import IntEnum
+from datetime import datetime
 
 
 # =============================================================================
@@ -644,6 +646,121 @@ class LDCNNetwork:
             self.devices.append(device)
 
         return self.devices
+
+    def save_device_list(self, filename: str) -> None:
+        """
+        Save discovered device list to JSON file.
+
+        This saves hardware facts from network discovery only.
+        Does not include axis configuration (tuning, homing, limits).
+
+        File format:
+        {
+            "file_version": "1.0",
+            "discovered_at": "2025-10-29T12:34:56",
+            "port": "/dev/ttyUSB0",
+            "baud_rate": 125000,
+            "num_devices": 6,
+            "devices": [
+                {
+                    "address": 1,
+                    "device_id": 0,
+                    "device_type": "LS-231SE",
+                    "version": 21
+                },
+                ...
+            ]
+        }
+
+        Args:
+            filename: Path to save file (e.g., 'device_list.json')
+
+        Example:
+            network.initialize()
+            network.set_baud_rate(125000)
+            network.save_device_list('device_list.json')
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if not self.devices:
+            raise LDCNError("No devices to save. Run initialize() first.")
+
+        device_list_data = []
+        for device in self.devices:
+            device_data = {
+                "address": device.address,
+                "device_id": device.model_id if device.model_id is not None else 0,
+                "device_type": device.device_type,
+                "version": device.version if device.version is not None else 0
+            }
+            device_list_data.append(device_data)
+
+        config = {
+            "file_version": "1.0",
+            "discovered_at": datetime.now().isoformat(),
+            "port": self.port,
+            "baud_rate": self.baud_rate,
+            "num_devices": len(self.devices),
+            "devices": device_list_data
+        }
+
+        with open(filename, 'w') as f:
+            json.dump(config, f, indent=2)
+
+    def load_device_list(self, filename: str) -> List[Dict]:
+        """
+        Load device list from JSON file.
+
+        Validates file format and returns device information.
+        Does not create device objects or open serial port.
+
+        Args:
+            filename: Path to device list file
+
+        Returns:
+            List of device info dictionaries
+
+        Raises:
+            LDCNError: If file format invalid or unsupported version
+
+        Example:
+            network = LDCNNetwork('/dev/ttyUSB0')
+            device_list = network.load_device_list('device_list.json')
+            print(f"Loaded {len(device_list)} devices")
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        try:
+            with open(filename, 'r') as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            raise LDCNError(f"Device list file not found: {filename}")
+        except json.JSONDecodeError as e:
+            raise LDCNError(f"Invalid JSON in device list file: {e}")
+
+        # Validate file version
+        file_version = config.get('file_version')
+        if file_version != "1.0":
+            raise LDCNError(f"Unsupported device list file version: {file_version}")
+
+        # Validate required fields
+        required_fields = ['file_version', 'discovered_at', 'port', 'baud_rate', 'num_devices', 'devices']
+        for field in required_fields:
+            if field not in config:
+                raise LDCNError(f"Missing required field in device list: {field}")
+
+        devices = config['devices']
+        if len(devices) != config['num_devices']:
+            raise LDCNError(f"Device count mismatch: expected {config['num_devices']}, got {len(devices)}")
+
+        # Validate device entries
+        for i, device in enumerate(devices):
+            required_device_fields = ['address', 'device_id', 'device_type', 'version']
+            for field in required_device_fields:
+                if field not in device:
+                    raise LDCNError(f"Device {i} missing required field: {field}")
+
+        return devices
 
     def initialize(self, create_objects: bool = True) -> Tuple[int, List[Dict]]:
         """
