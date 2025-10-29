@@ -34,8 +34,6 @@ from .schema import (
 
 # Import main classes
 from .axis_config import AxisConfig, create_example_axis_config
-from .merger import ConfigMerger
-from .mctl_importer import MCTLImporter
 
 # Define public API
 __all__ = [
@@ -51,8 +49,6 @@ __all__ = [
 
     # Classes
     'AxisConfig',
-    'ConfigMerger',
-    'MCTLImporter',
 
     # Utilities
     'create_example_axis_config',
