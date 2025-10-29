@@ -1385,7 +1385,29 @@ class SK2310g2(LDCNDevice):
     # Power and Safety Monitoring
     # -------------------------------------------------------------------------
 
-    def wait_for_power_button(self, timeout: Optional[float] = None, poll_rate: float = 0.1) -> bool:
+    def request_power_on(self, message: str = "Please press the POWER button to continue...") -> None:
+        """
+        Display operator notification requesting power button press.
+
+        This is a helper method to provide clear feedback to the operator
+        before calling wait_for_power_button().
+
+        Args:
+            message: Custom message to display (default: standard request)
+
+        Note: With J21 open (default), power can ONLY be enabled via physical button.
+              To enable software control, short J21 pins 1-2 on the SK2310g2.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        print(f"\n{'='*60}")
+        print(f"POWER REQUIRED")
+        print(f"{'='*60}")
+        print(f"{message}")
+        print(f"Waiting for power state change...")
+        print(f"{'='*60}\n")
+
+    def wait_for_power_button(self, timeout: Optional[float] = None, poll_rate: float = 0.1, verbose: bool = False) -> bool:
         """
         Wait for power button press detection.
 
@@ -1394,6 +1416,7 @@ class SK2310g2(LDCNDevice):
         Args:
             timeout: Maximum wait time (None = infinite)
             poll_rate: Status polling rate (seconds)
+            verbose: If True, print status updates while waiting
 
         Returns:
             True if power button pressed, False if timeout
@@ -1401,16 +1424,29 @@ class SK2310g2(LDCNDevice):
         🔴 UNVERIFIED - Not yet tested on hardware
         """
         start_time = time.time()
+        last_status_time = 0.0
 
         while True:
             power_state = self.read_power_state()
 
             if power_state:
+                if verbose:
+                    print("\n✓ Power ON detected!")
                 return True
+
+            # Print periodic status if verbose
+            if verbose:
+                current_time = time.time()
+                if current_time - last_status_time >= 2.0:  # Every 2 seconds
+                    elapsed = current_time - start_time
+                    print(f"  Waiting... ({elapsed:.1f}s elapsed)")
+                    last_status_time = current_time
 
             if timeout is not None:
                 elapsed = time.time() - start_time
                 if elapsed >= timeout:
+                    if verbose:
+                        print(f"\n✗ Timeout after {elapsed:.1f}s")
                     return False
 
             time.sleep(poll_rate)
