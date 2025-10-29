@@ -257,20 +257,35 @@ SK2310g2 (supervisor subclass)
 
 ## Phase 5.5: Configuration Management System
 
-### Task 5.5.1: Design configuration file format
+### Architecture Overview
+
+**Three-file configuration system:**
+
+1. **`device_list.json`** - Network discovery results (addresses, device types, IDs)
+2. **`axis_config.json`** - Axis configuration (names, tuning, homing, limits)
+3. **`configured_devices.json`** - Merged result (device_list + axis_config)
+
+**Workflow:**
+```
+Network Discovery → device_list.json
+                         ↓
+MCTL Import → axis_config.json → Merge Utility → configured_devices.json
+                         ↑                              ↓
+             Manual Edit ←                    Apply to Hardware
+```
+
+### Task 5.5.1: Device list file (discovery only)
 **Status:** ⏳ PENDING
 **Actions:**
-- Define JSON/YAML schema for device configuration
-- Include configuration version ID for format compatibility
-- Support axis name mapping (e.g., X→address 2, Y→address 1)
-- Include servo tuning parameters (PID gains, limits)
-- Include homing parameters (speed, direction, switches)
-- Include motion parameters (velocity, acceleration)
+- Save network discovery results
+- No configuration data, only hardware facts
+- Version tracked for compatibility
 
-**Configuration Structure:**
+**device_list.json structure:**
 ```json
 {
-  "config_version": "1.0.0",
+  "file_version": "1.0.0",
+  "discovery_date": "2025-10-29T15:30:00Z",
   "network": {
     "port": "/dev/ttyUSB0",
     "baud_rate": 125000
@@ -280,43 +295,95 @@ SK2310g2 (supervisor subclass)
       "address": 1,
       "device_type": "LS231SE",
       "device_id": "0x00",
-      "version": "0x15",
-      "axis_name": "Y",
+      "version": "0x15"
+    },
+    {
+      "address": 6,
+      "device_type": "SK2310g2",
+      "device_id": "0x02",
+      "version": "0x34"
+    }
+  ]
+}
+```
+
+### Task 5.5.2: Axis configuration file (user-defined)
+**Status:** ⏳ PENDING
+**Actions:**
+- Define axis-centric configuration format
+- Include all tuning and homing parameters
+- Validation schema for safety
+- Human-readable and editable
+
+**axis_config.json structure:**
+```json
+{
+  "file_version": "1.0.0",
+  "config_name": "Logosol Mill Config",
+  "axes": {
+    "X": {
+      "address": 2,
       "tuning": {
         "kp": 10, "kd": 1000, "ki": 20,
-        "il": 40, "ol": 255, "cl": 129, "el": 2000
+        "il": 40, "ol": 255, "cl": 129, "el": 2000,
+        "sr": 1, "dbc": 0
       },
       "homing": {
         "home_switch": 0,
         "start_vel": 20.0,
         "end_vel": 5.0,
         "acceleration": 100.0,
-        "direction": 1
+        "invert_direction": false
       },
-      "limits": { ... }
-    }
-  ]
+      "limits": {
+        "soft_limit_pos": 310.0,
+        "soft_limit_neg": -2.0,
+        "enable_hard_limit_pos": true,
+        "enable_hard_limit_neg": true
+      },
+      "motion": {
+        "pitch": 5.0,
+        "encoder_resolution": 10000,
+        "max_velocity": 500.0,
+        "max_acceleration": 100.0
+      }
+    },
+    "Y": { "address": 1, ... },
+    "Z": { "address": 3, ... },
+    "A": { "address": 4, ... },
+    "B": { "address": 5, ... }
+  }
 }
 ```
 
-### Task 5.5.2: Implement device list save/load
+### Task 5.5.3: Configuration merge utility
 **Status:** ⏳ PENDING
 **Actions:**
-- Add `save_config(filename)` to LDCNNetwork
-- Add `load_config(filename)` to LDCNNetwork
-- Parse discovered devices to config format
-- Validate config version on load
-- Handle version migrations if needed
+- Create `pyldcn-merge-config` command-line utility
+- Validate axis_config.json schema
+- Match axes to devices by address
+- Warn if addresses don't match discovered devices
+- Generate configured_devices.json
+- Safety checks on PID gains before merge
 
-### Task 5.5.3: Import MCTL configuration
+**Usage:**
+```bash
+pyldcn-merge-config device_list.json axis_config.json -o configured_devices.json
+```
+
+### Task 5.5.4: MCTL configuration importer
 **Status:** ⏳ PENDING
 **Actions:**
-- Parse Mctl_Logosol1.ini file
-- Extract axis names and addresses
-- Extract PID gains for each axis
-- Extract homing parameters
-- Extract limit switch configuration
-- Convert to pyldcn config format
+- Create `pyldcn-import-mctl` command-line utility
+- Parse Mctl_Logosol1.ini
+- Extract all axis parameters
+- Generate axis_config.json
+- Validate extracted parameters
+
+**Usage:**
+```bash
+pyldcn-import-mctl Mctl_Logosol1.ini -o axis_config.json
+```
 
 **MCTL Axis Mapping (from Mctl_Logosol1.ini):**
 - Y axis: Address 1 (KP=10, KD=1000, KI=20)
@@ -324,16 +391,15 @@ SK2310g2 (supervisor subclass)
 - Z axis: Address 3 (KP=10, KD=1000, KI=20)
 - A axis: Address 4 (KP=110, KD=5000, KI=10) - Rotary
 - B axis: Address 5 (KP=110, KD=5000, KI=10) - Rotary
-- Supervisor: Address 6 (SK2310g2)
 
-### Task 5.5.4: Apply configuration to devices
+### Task 5.5.5: Apply merged configuration
 **Status:** ⏳ PENDING
 **Actions:**
-- Read config file
+- Load configured_devices.json
 - Match devices by address
-- Apply tuning parameters to each servo
+- Apply tuning parameters safely
 - Store axis names for reference
-- Validate parameters before applying
+- Validate all parameters before applying to hardware
 
 ---
 
