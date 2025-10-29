@@ -27,11 +27,11 @@ setup(
     description='Python library for Logosol LDCN communication',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/nshores/pyldcn',
+    url='https://github.com/ndemarco/pyldcn',
     project_urls={
-        'Bug Tracker': 'https://github.com/nshores/pyldcn/issues',
-        'Documentation': 'https://github.com/nshores/pyldcn/tree/main/docs',
-        'Source Code': 'https://github.com/nshores/pyldcn',
+        'Bug Tracker': 'https://github.com/ndemarco/pyldcn/issues',
+        'Documentation': 'https://github.com/ndemarco/pyldcn/tree/main/docs',
+        'Source Code': 'https://github.com/ndemarco/pyldcn',
     },
     packages=find_packages(exclude=['tests', 'tests.*', 'docs', 'examples']),
     classifiers=[
