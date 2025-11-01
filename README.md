@@ -123,17 +123,6 @@ with LDCNNetwork('/dev/ttyUSB0') as network:
         print("Power button pressed!")
 ```
 
----
-
-## Documentation
-
-- **[Protocol Documentation](docs/protocol.md)** - LDCN protocol specification
-- **[Servo Commands](docs/servo_commands.md)** - Servo-specific commands
-- **[Class Design](docs/design/CLASS_DESIGN.md)** - Detailed class interfaces
-- **[Project Plan](docs/design/LDCN_MODULE_PLAN.md)** - Development roadmap
-
----
-
 ## Testing
 
 ### Run Tests
@@ -185,7 +174,6 @@ LDCNNetwork (network manager)
 2. **Generic at Base** - LDCN protocol commands in base classes
 3. **Specific in Subclasses** - Device-specific operations in subclasses
 4. **Single send_command()** - One implementation, all else delegates
-5. **19200 Baud Initialization** - Always init at 19200, upgrade separately
 
 ---
 
@@ -333,7 +321,7 @@ When adding new functions or fixing bugs:
 
 GPL v2 or later
 
-Copyright (C) 2025 LinuxCNC Community
+Copyright (C) 2025 NickyDoes
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
