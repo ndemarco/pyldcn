@@ -22,7 +22,7 @@ with open('pyldcn/__init__.py', 'r') as f:
 setup(
     name='pyldcn',
     version=version.get('__version__', '0.1.0'),
-    author='LinuxCNC Community',
+    author='NickyDoes',
     author_email='',
     description='Python library for Logosol LDCN communication',
     long_description=long_description,
