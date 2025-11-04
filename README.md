@@ -148,6 +148,48 @@ The test suite includes:
 
 ---
 
+## Command Line Tools
+
+`pyldcn` includes command-line tools for device management and diagnostics.
+
+### Device Management CLI
+
+The `device` command provides network discovery, device information, and diagnostics:
+
+```bash
+# List all devices on the network
+device list --port /dev/ttyUSB0
+
+# Get detailed information about a specific device
+device info --port /dev/ttyUSB0 --address 1
+
+# Run network diagnostics
+device diagnose --port /dev/ttyUSB0
+
+# Save discovered devices to file
+device discover --port /dev/ttyUSB0 --output device_list.json
+```
+
+### CLI Options
+
+```bash
+# Show help
+device --help
+
+# Specify serial port
+device list --port /dev/ttyUSB1
+
+# Set baud rate (default: auto-detect)
+device list --port /dev/ttyUSB0 --baud 125000
+
+# Verbose output
+device list --port /dev/ttyUSB0 --verbose
+```
+
+The CLI tools are installed automatically with the package and available in your PATH after installation.
+
+---
+
 ## Architecture
 
 ### Class Hierarchy
@@ -199,6 +241,10 @@ num_found = network.address_devices()
 device_info = network.discover_devices()
 responding = network.verify_devices(device_info)
 network.create_device_objects(device_info)
+
+# Device list management
+network.save_device_list('device_list.json')    # Save discovered devices
+device_list = network.load_device_list('device_list.json')  # Load device list
 
 network.close()
 ```
@@ -254,6 +300,104 @@ if io_controller.wait_for_power_button(timeout=30.0):
 
 ---
 
+## Configuration Management
+
+`pyldcn` provides a comprehensive configuration system for managing axis parameters including tuning, homing, and limits.
+
+### Device List Management
+
+Save and load discovered devices:
+
+```python
+from pyldcn import LDCNNetwork
+
+# Initialize and discover devices
+with LDCNNetwork('/dev/ttyUSB0') as network:
+    network.initialize()
+    network.set_baud_rate(125000)
+
+    # Save discovered devices
+    network.save_device_list('device_list.json')
+
+# Later, load device information
+network = LDCNNetwork('/dev/ttyUSB0')
+device_list = network.load_device_list('device_list.json')
+print(f"Loaded {len(device_list)} devices")
+```
+
+### Axis Configuration
+
+Use the `AxisConfig` class to validate and manage axis configurations:
+
+```python
+from pyldcn.config import AxisConfig
+
+# Load and validate axis configuration
+config = AxisConfig.from_file('axis_config.json')
+
+# Access axis by name
+x_axis = config.get_axis_by_name('X')
+print(f"X axis at address {x_axis['address']}")
+print(f"PID gains: kp={x_axis['gains']['kp']}, kd={x_axis['gains']['kd']}")
+
+# Access axis by LDCN address
+axis = config.get_axis_by_address(1)
+print(f"Address 1 is {axis['name']} axis")
+```
+
+### Configuration File Format
+
+Axis configurations use JSON format with full validation:
+
+```json
+{
+  "file_version": "1.0",
+  "axes": [
+    {
+      "name": "X",
+      "address": 2,
+      "axis_type": "linear",
+      "pitch": 5.0,
+      "encoder_resolution": 10000,
+      "gear_ratio": [1, 1],
+      "invert_direction": false,
+      "gains": {
+        "kp": 10, "kd": 1000, "ki": 20,
+        "il": 40, "ol": 255, "cl": 129,
+        "el": 2000, "sr": 1, "dbc": 0
+      },
+      "homing": {
+        "enabled": true,
+        "home_switch": 0,
+        "invert_direction": false,
+        "use_index_pulse": true,
+        "home_distance": 500.0,
+        "start_velocity": 20.0,
+        "end_velocity": 5.0,
+        "acceleration": 100.0
+      },
+      "limits": {
+        "hard_limit_negative": {"enabled": true, "active_low": true},
+        "hard_limit_positive": {"enabled": true, "active_low": true},
+        "soft_limit_negative": {"enabled": true, "position": -2.0},
+        "soft_limit_positive": {"enabled": true, "position": 310.0}
+      },
+      "motion": {
+        "max_velocity": 500.0,
+        "max_acceleration": 100.0,
+        "max_deceleration": 100.0,
+        "acceleration_jerk": 1000.0,
+        "deceleration_jerk": 1000.0
+      }
+    }
+  ]
+}
+```
+
+See `examples/axis_config_example.json` for complete examples.
+
+---
+
 ## Status
 
 ⚠️ **HARDWARE VERIFICATION STATUS: UNVERIFIED**
@@ -277,14 +421,27 @@ All functions in this library are marked as **UNVERIFIED** until tested against 
 pyldcn/
 ├── pyldcn/             # Main package
 │   ├── __init__.py     # Package exports
-│   └── network.py      # All classes and protocol
+│   ├── network.py      # Core LDCN classes and protocol
+│   ├── util.py         # Utility functions (device list management)
+│   ├── cli/            # Command-line interface tools
+│   │   ├── __init__.py
+│   │   └── device.py   # Device management CLI
+│   └── config/         # Configuration management
+│       ├── __init__.py
+│       ├── axis_config.py    # Axis configuration validator
+│       ├── schema.py         # Configuration schemas
+│       └── exceptions.py     # Config-specific exceptions
 ├── tests/              # Test suite
 │   └── test_network.py # Comprehensive tests
 ├── docs/               # Documentation
 │   ├── protocol.md     # LDCN protocol spec
 │   ├── servo_commands.md
 │   └── design/         # Design documentation
-├── examples/           # Usage examples
+├── examples/           # Usage examples and workflows
+│   ├── power_on_workflow.py      # Complete power-on example
+│   ├── save_load_device_list.py  # Device list management
+│   ├── axis_config_example.json  # Example configurations
+│   └── *.json          # Configuration files
 ├── setup.py            # Package setup
 └── README.md           # This file
 ```

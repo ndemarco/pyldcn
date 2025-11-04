@@ -275,11 +275,11 @@ MCTL Import → axis_config.json → Merge Utility → configured_devices.json
 ```
 
 ### Task 5.5.1: Device list file (discovery only)
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED
 **Actions:**
-- Save network discovery results
-- No configuration data, only hardware facts
-- Version tracked for compatibility
+- ✅ Save network discovery results (LDCNNetwork.save_device_list())
+- ✅ No configuration data, only hardware facts
+- ✅ Version tracked for compatibility
 
 **device_list.json structure:**
 ```json
@@ -308,12 +308,12 @@ MCTL Import → axis_config.json → Merge Utility → configured_devices.json
 ```
 
 ### Task 5.5.2: Axis configuration file (user-defined)
-**Status:** ⏳ PENDING
+**Status:** ✅ COMPLETED
 **Actions:**
-- Define axis-centric configuration format
-- Include all tuning and homing parameters
-- Validation schema for safety
-- Human-readable and editable
+- ✅ Define axis-centric configuration format (pyldcn.config.AxisConfig)
+- ✅ Include all tuning and homing parameters
+- ✅ Validation schema for safety (pyldcn.config.schema)
+- ✅ Human-readable and editable (JSON format)
 
 **axis_config.json structure:**
 ```json
@@ -581,7 +581,7 @@ net.close()
 **Phase 3:** ✅ COMPLETED (Implementation done, ready for testing!)
 **Phase 4:** ✅ COMPLETED (Hardware validation - all tests passing!)
 **Phase 5:** ⏳ PENDING (Packaging and PyPI publication)
-**Phase 5.5:** 🎯 IN PROGRESS (Configuration management system)
+**Phase 5.5:** 🟡 PARTIALLY COMPLETED (Core config system done: device list, axis config, validation. Utilities pending: merge, MCTL import, apply)
 **Phase 6:** ⏳ PENDING (Complete workflow: power-on → homing → motion)
 
 **Last Updated:** 2025-10-29

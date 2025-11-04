@@ -318,8 +318,8 @@ CMD_CLEAR_BITS = 0x0B
 
 # Device IDs (from READ_STATUS with status bit 5)
 # These are hardware-reported device type identifiers
-DEVICE_ID_LS231SE = 0x17      # LS-231SE Servo Drive (TBD - verify from hardware)
-DEVICE_ID_SK2310G2 = 0x23     # SK-2310g2 I/O Controller (TBD - verify from hardware)
+DEVICE_ID_LS231SE = 0x00      # ✅ VERIFIED: LS-231SE Servo Drive (Version 0x15)
+DEVICE_ID_SK2310G2 = 0x02     # ✅ VERIFIED: SK-2310g2 I/O Controller (Version 0x34)
 # ... add other device IDs as discovered
 
 # Device ID to class mapping
