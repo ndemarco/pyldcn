@@ -1008,7 +1008,449 @@ with LDCNNetwork('/dev/ttyUSB0') as network:
 
 ---
 
-## 5. Exception Classes
+## 5. LS773 Class (Network I/O Node)
+
+**Purpose**: Generic I/O controller operations for the LS-773 Network I/O Node.
+
+**Device Type**: Network I/O Controller
+**Model**: LS-773
+**Application Role**: General Purpose I/O Control
+
+**Hardware Capabilities**:
+- 10 general purpose digital inputs (with configurable pull-up/pull-down)
+- 6 open collector outputs (1A max each)
+- 1 solid-state relay output (0.5A max, OUTPUT 0/POWER)
+- 3 analog inputs (8-bit, 0-5V/0-10V/0-20V/0-30V selectable)
+- 32-bit counter/timer with prescaler (5.0 MHz clock)
+- 20 KHz PWM mode for OUTPUT 1 and OUTPUT 2
+- Device ID: 2, Version: 50
+
+**Note**: The LS-773 is a **generic I/O controller** suitable for a wide range of applications. Unlike the SK-2310g2, it does not have application-specific safety features built-in. The class provides generic I/O access methods, and application-specific logic should be implemented by the user.
+
+### Additional Properties
+
+```python
+# Status
+status_byte: Optional[int]         # Last status byte
+out_sh: Optional[bool]             # Output short circuit flag
+
+# Digital I/O states
+digital_inputs: Optional[int]      # 10-bit digital input state (0-9)
+digital_outputs: Optional[int]     # 7-bit digital output state (0-6)
+
+# Analog inputs
+analog_inputs: Optional[dict]      # Analog input values {channel: value}
+analog_range: dict[int, str]       # Voltage range per channel {0:'0-5V', 1:'0-10V', 2:'0-20V'}
+
+# PWM outputs
+pwm_values: Optional[dict]         # PWM duty cycles {1: value, 2: value}
+
+# Counter/Timer
+counter_enabled: Optional[bool]    # Counter/timer enabled state
+counter_mode: Optional[str]        # 'timer' or 'counter'
+counter_prescaler: Optional[int]   # Prescaler value (1, 2, 4, or 8)
+counter_value: Optional[int]       # Current counter/timer value (32-bit)
+
+# Synchronized capture
+synch_inputs: Optional[int]        # Captured input states (Synch Input)
+synch_counter: Optional[int]       # Captured counter value (Synch Input)
+```
+
+### Methods
+
+```python
+# 🔴 UNVERIFIED - Configuration
+def configure(self, status_bits: int = 0x1F) -> None:
+    """
+    Configure I/O node for status reporting.
+
+    Args:
+        status_bits: Status reporting configuration (default: inputs + all analog + counter)
+                     Bit 0: Input bits (2 bytes)
+                     Bit 1: ANALOG IN 0 (1 byte)
+                     Bit 2: ANALOG IN 1 (1 byte)
+                     Bit 3: ANALOG IN 2 (1 byte)
+                     Bit 4: Counter/timer value (4 bytes)
+                     Bit 5: Device ID, version (2 bytes)
+                     Bit 6: Synch input bits (2 bytes)
+                     Bit 7: Synch counter value (4 bytes)
+    """
+
+# 🔴 UNVERIFIED - Status reading
+def read_status(self) -> dict:
+    """
+    Read complete I/O controller status.
+
+    Returns:
+        {
+            'status': status_byte,
+            'out_sh': bool,                    # Output short circuit flag
+
+            # Digital I/O
+            'digital_inputs': int (10-bit),    # DIGITAL IN 0-9
+            'digital_outputs': int (7-bit),    # OUTPUT 0-6
+
+            # Analog inputs
+            'analog_inputs': {channel: value}, # 0-255 per channel
+
+            # Counter/Timer
+            'counter_value': int (32-bit),
+
+            # Synchronized capture (if Synch Input was called)
+            'synch_inputs': int (10-bit),
+            'synch_counter': int (32-bit),
+        }
+    """
+
+def check_output_short(self) -> bool:
+    """
+    Check if any output is shorted to POWER(+).
+
+    Returns:
+        True if short detected, False if normal operation
+    """
+
+# 🔴 UNVERIFIED - Digital I/O
+def read_digital_inputs(self) -> int:
+    """
+    Read all digital input states.
+
+    Returns:
+        10-bit digital input value (DIGITAL IN 0-9)
+    """
+
+def read_digital_input(self, channel: int) -> bool:
+    """
+    Read individual digital input.
+
+    Args:
+        channel: Input channel (0-9)
+
+    Returns:
+        True if input high, False if low
+    """
+
+def set_digital_outputs(self, outputs: int) -> None:
+    """
+    Set all digital output states immediately.
+
+    Args:
+        outputs: 7-bit digital output value (OUTPUT 0-6)
+    """
+
+def set_digital_output(self, channel: int, state: bool) -> None:
+    """
+    Set individual digital output.
+
+    Args:
+        channel: Output channel (0-6)
+        state: True = ON, False = OFF
+    """
+
+def get_digital_outputs(self) -> int:
+    """
+    Get current output states (cached value).
+
+    Returns:
+        7-bit digital output value
+    """
+
+# 🔴 UNVERIFIED - Analog I/O
+def read_analog_inputs(self) -> dict[int, int]:
+    """
+    Read all analog input values (3 channels).
+
+    Returns:
+        Dictionary of {channel: value} pairs (0-255 per channel)
+    """
+
+def read_analog_input(self, channel: int) -> int:
+    """
+    Read single analog input value.
+
+    Args:
+        channel: Analog input channel (0-2)
+
+    Returns:
+        Analog value (0-255)
+    """
+
+def analog_to_voltage(self, value: int, channel: int) -> float:
+    """
+    Convert analog reading to voltage based on configured range.
+
+    Args:
+        value: Raw ADC value (0-255)
+        channel: Analog input channel (0-2)
+
+    Returns:
+        Voltage value based on configured range
+    """
+
+def voltage_to_analog(self, voltage: float, channel: int) -> int:
+    """
+    Convert voltage to analog value based on configured range.
+
+    Args:
+        voltage: Voltage value
+        channel: Analog input channel (0-2)
+
+    Returns:
+        Raw ADC value (0-255)
+    """
+
+def set_analog_range(self, channel: int, range_str: str) -> None:
+    """
+    Set the expected voltage range for an analog input (for conversion).
+    Note: Physical range is set via DIP switches on the hardware.
+
+    Args:
+        channel: Analog input channel (0-2)
+        range_str: Range string ('0-5V', '0-10V', '0-20V', '0-30V')
+    """
+
+# 🔴 UNVERIFIED - PWM Control
+def set_pwm(self, pwm1: int, pwm2: int) -> None:
+    """
+    Set PWM duty cycle for OUTPUT 1 and OUTPUT 2.
+
+    Args:
+        pwm1: PWM 1 value (255=OFF, 128=50%, 0=FULLY ON)
+        pwm2: PWM 2 value (255=OFF, 128=50%, 0=FULLY ON)
+    """
+
+def set_pwm_percent(self, pwm1_percent: float, pwm2_percent: float) -> None:
+    """
+    Set PWM duty cycle as percentage.
+
+    Args:
+        pwm1_percent: PWM 1 percentage (0.0-100.0)
+        pwm2_percent: PWM 2 percentage (0.0-100.0)
+    """
+
+def enable_pwm(self) -> None:
+    """
+    Enable PWM mode for OUTPUT 1 and OUTPUT 2.
+
+    Sets output bits 1 and 2 to 1 to activate PWM mode.
+    """
+
+def disable_pwm(self) -> None:
+    """
+    Disable PWM mode for OUTPUT 1 and OUTPUT 2.
+
+    Sets output bits 1 and 2 to 0 to deactivate PWM mode.
+    """
+
+# 🔴 UNVERIFIED - Counter/Timer
+def configure_counter(self, mode: str = 'counter', prescaler: int = 1, enabled: bool = True) -> None:
+    """
+    Configure the counter/timer.
+
+    Args:
+        mode: 'timer' (5.0 MHz internal clock) or 'counter' (external input)
+        prescaler: Prescaler value (1, 2, 4, or 8)
+        enabled: True to enable, False to disable
+    """
+
+def read_counter(self) -> int:
+    """
+    Read current counter/timer value.
+
+    Returns:
+        32-bit counter/timer value
+    """
+
+def reset_counter(self) -> None:
+    """
+    Reset counter/timer to zero.
+
+    Note: LS-773 counter cannot be directly reset. To reset, disable and re-enable.
+    """
+
+# 🔴 UNVERIFIED - Synchronized I/O
+def synch_input(self) -> None:
+    """
+    Capture current input states and counter value atomically.
+
+    Captured values are stored internally and can be read via read_status()
+    with status bits 6 and 7 enabled.
+    """
+
+def read_synch_inputs(self) -> dict:
+    """
+    Read previously captured synchronized inputs.
+
+    Returns:
+        {
+            'inputs': int (10-bit),
+            'counter': int (32-bit)
+        }
+    """
+
+def set_synch_outputs(self, outputs: int, pwm1: int, pwm2: int) -> None:
+    """
+    Stage output values for synchronized application.
+
+    Args:
+        outputs: 7-bit digital output value
+        pwm1: PWM 1 value (255-0)
+        pwm2: PWM 2 value (255-0)
+    """
+
+def apply_synch_outputs(self) -> None:
+    """
+    Apply previously staged output values atomically.
+    """
+
+# 🔴 UNVERIFIED - Initialization
+def initialize(self) -> bool:
+    """
+    Complete I/O node initialization.
+
+    Steps:
+    1. Configure status reporting (inputs, analog, counter)
+    2. Initialize outputs to known state (all OFF)
+    3. Disable counter/timer
+    4. Set PWM to OFF
+    5. Read and verify status
+
+    Returns:
+        True if initialization successful
+    """
+```
+
+### Constants
+
+```python
+# Device identification
+DEVICE_ID = 2        # LS-773 device ID
+VERSION = 50         # Typical firmware version
+
+# Output channels
+OUTPUT_0_POWER = 0   # Solid-state relay, 0.5A
+OUTPUT_1_PWM = 1     # Open collector, 1A, PWM capable
+OUTPUT_2_PWM = 2     # Open collector, 1A, PWM capable
+OUTPUT_3 = 3         # Open collector, 1A
+OUTPUT_4 = 4         # Open collector, 1A
+OUTPUT_5 = 5         # Open collector, 1A
+OUTPUT_6 = 6         # Open collector, 1A
+
+# Input channels
+DIGITAL_IN_0 = 0
+DIGITAL_IN_1 = 1
+DIGITAL_IN_2 = 2
+DIGITAL_IN_3 = 3
+DIGITAL_IN_4 = 4
+DIGITAL_IN_5 = 5
+DIGITAL_IN_6 = 6
+DIGITAL_IN_7 = 7
+DIGITAL_IN_8 = 8
+DIGITAL_IN_9_COUNT = 9  # Also counter input
+
+# Analog channels
+ANALOG_IN_0 = 0
+ANALOG_IN_1 = 1
+ANALOG_IN_2 = 2
+
+# Analog voltage ranges
+ANALOG_RANGE_0_5V = '0-5V'
+ANALOG_RANGE_0_10V = '0-10V'
+ANALOG_RANGE_0_20V = '0-20V'
+ANALOG_RANGE_0_30V = '0-30V'
+
+# Status reporting bits (for Define Status / Read Status)
+STATUS_BIT_INPUTS = 0x01       # Digital input bytes (2 bytes)
+STATUS_BIT_ANALOG_0 = 0x02     # Analog input 0 (1 byte)
+STATUS_BIT_ANALOG_1 = 0x04     # Analog input 1 (1 byte)
+STATUS_BIT_ANALOG_2 = 0x08     # Analog input 2 (1 byte)
+STATUS_BIT_COUNTER = 0x10      # Counter/timer value (4 bytes)
+STATUS_BIT_DEVICE_ID = 0x20    # Device ID and version (2 bytes)
+STATUS_BIT_SYNCH_INPUTS = 0x40 # Synch input bits (2 bytes)
+STATUS_BIT_SYNCH_COUNTER = 0x80 # Synch counter value (4 bytes)
+
+# Counter/Timer modes
+COUNTER_MODE_TIMER = 'timer'     # 5.0 MHz internal clock
+COUNTER_MODE_COUNTER = 'counter' # External input on DIGITAL IN 9
+
+# Counter/Timer prescaler values
+PRESCALER_1 = 1
+PRESCALER_2 = 2
+PRESCALER_4 = 4
+PRESCALER_8 = 8
+
+# Timer specifications
+TIMER_CLOCK_HZ = 5_000_000      # 5.0 MHz
+TIMER_RESOLUTION_NS = 200       # 200 ns per count
+TIMER_MAX_COUNT = 0xFFFFFFFF    # 32-bit counter
+
+# PWM specifications
+PWM_FREQUENCY_HZ = 20_000       # 20 KHz
+PWM_OFF = 255                    # 0% duty cycle
+PWM_50_PERCENT = 128             # 50% duty cycle
+PWM_ON = 0                       # 100% duty cycle
+
+# Status byte flags
+STATUS_CKSUM_ERROR = 0x02        # Bit 1: Checksum error
+
+# Input status byte 1 flags
+INPUT_STATUS_OUT_SH = 0x02       # Bit 1: Output short circuit
+```
+
+### Usage Example
+
+```python
+with LDCNNetwork('/dev/ttyUSB0') as network:
+    network.initialize()
+
+    io_node = network.devices[0]  # LS773 at address 1
+
+    # Initialize I/O node
+    io_node.initialize()
+
+    # Configure analog input ranges (for conversion)
+    io_node.set_analog_range(0, '0-10V')
+    io_node.set_analog_range(1, '0-5V')
+    io_node.set_analog_range(2, '0-20V')
+
+    # Read digital inputs
+    inputs = io_node.read_digital_inputs()
+    print(f"Digital inputs: 0b{inputs:010b}")
+
+    # Set digital outputs
+    io_node.set_digital_outputs(0b00001010)  # OUTPUT 1 and OUTPUT 3 ON
+
+    # Read analog inputs with voltage conversion
+    analog_values = io_node.read_analog_inputs()
+    for channel, raw_value in analog_values.items():
+        voltage = io_node.analog_to_voltage(raw_value, channel)
+        print(f"Analog input {channel}: {raw_value} (raw) = {voltage:.2f}V")
+
+    # Configure and use PWM
+    io_node.enable_pwm()
+    io_node.set_pwm_percent(75.0, 50.0)  # OUTPUT 1 at 75%, OUTPUT 2 at 50%
+
+    # Configure counter mode
+    io_node.configure_counter(mode='counter', prescaler=1, enabled=True)
+
+    # Read counter value
+    count = io_node.read_counter()
+    print(f"Counter value: {count}")
+
+    # Synchronized capture
+    io_node.synch_input()  # Capture inputs and counter atomically
+    synch_data = io_node.read_synch_inputs()
+    print(f"Synch inputs: {synch_data['inputs']}, counter: {synch_data['counter']}")
+
+    # Synchronized output (for multi-node coordination)
+    io_node.set_synch_outputs(outputs=0b00000101, pwm1=128, pwm2=200)
+    # ... set synch outputs on other nodes ...
+    io_node.apply_synch_outputs()  # All nodes change simultaneously
+```
+
+---
+
+## 6. Exception Classes
 
 ```python
 class LDCNError(Exception):

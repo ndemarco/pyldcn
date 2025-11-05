@@ -27,29 +27,50 @@ AA 01 00 01  # Reset position on device 1
 
 Loads a motion trajectory into the servo drive's path planner.
 
-**Data**:
+**Data** (variable length, 1-15 bytes):
 - Byte 0: Trajectory control flags
-- Bytes 1-4: Position (int32, little-endian, encoder counts)
-- Bytes 5-8: Velocity (int32, counts per servo tick)
-- Bytes 9-12: Acceleration (int32, counts per tick²)
+- Optional bytes based on control flags set:
+  - If bit 0 set: Bytes 1-4: Position (int32, little-endian, encoder counts)
+  - If bit 1 set: Next 4 bytes: Velocity (int32, counts per servo tick)
+  - If bit 2 set: Next 4 bytes: Acceleration (int32, counts per tick²)
+  - If bit 3 set: Next 1-2 bytes: PWM value (uint8 or uint16)
 
 **Trajectory Control Flags**:
 | Bit | Function |
 |-----|----------|
-| 4   | Start immediately (servo_mode = 1) |
-| 7   | Start now (start_now = 1) |
+| 0   | Load position data (adds 4 bytes) |
+| 1   | Load velocity data (adds 4 bytes) |
+| 2   | Load acceleration data (adds 4 bytes) |
+| 3   | Load PWM value (adds 1-2 bytes) |
+| 4   | Servo mode: 0 = PWM mode, 1 = position servo |
+| 5   | Profile mode: 0 = trapezoidal, 1 = velocity |
+| 6   | Direction flag: 0 = FWD, 1 = REV (velocity/PWM mode) |
+| 7   | Start motion now |
 
 **Common Control Values**:
-- `0x90` (0x80 | 0x10): Start now + servo mode
+- `0x9F` (bits 0,1,2,3,4,7): Load all params + servo mode + start now
+- `0x97` (bits 0,1,2,4,7): Load pos/vel/acc + servo mode + start now
+- `0x90` (bits 4,7): Servo mode + start now (no new data)
 
-**Example**:
+**Examples**:
 ```python
-# Move to position 2000 counts
-traj_ctrl = 0x90  # start_now=1, servo_mode=1
+# Example 1: Load all trajectory parameters and start immediately
+traj_ctrl = 0x97  # bits 0,1,2,4,7: Load pos+vel+acc, servo mode, start now
 position = 2000
 velocity = 100000
 accel = 50000
 data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
+send_command(addr, 0x04, list(data))
+
+# Example 2: Load position only and start immediately
+traj_ctrl = 0x91  # bits 0,4,7: Load position, servo mode, start now
+position = 5000
+data = struct.pack('<Bi', traj_ctrl, position)
+send_command(addr, 0x04, list(data))
+
+# Example 3: Start motion with previously loaded parameters
+traj_ctrl = 0x90  # bits 4,7: Servo mode, start now (no new data)
+send_command(addr, 0x04, [traj_ctrl])
 ```
 
 **Notes**:
@@ -63,7 +84,14 @@ data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
 
 Starts previously loaded motion trajectory.
 
-**Data**: TBD (not fully documented in current code)
+**Data**: None
+
+**Example**:
+```
+AA 01 05 06  # Start motion on device 1
+```
+
+**Use Case**: Execute a trajectory loaded with the Load Trajectory command (without bit 7 set). Useful for synchronized multi-axis motion - load all axes, then start them simultaneously with a group command.
 
 ---
 
@@ -113,29 +141,38 @@ send_command(addr, 0x06, list(gain_data))
 Stops servo motor and controls amplifier enable state.
 
 **Data**:
-- Byte 0: Stop mode flags
+- Byte 0: Stop control flags
 
-**Stop Mode Flags**:
+**Stop Control Flags**:
 | Bit | Function |
 |-----|----------|
-| 0   | Stop abruptly |
-| 1   | Stop smoothly |
-| 2   | Motor off (disable position servo) |
-| 4   | Amplifier enable |
+| 0   | Pic_ae (Power Driver enable) |
+| 1   | Turn motor off (disable position servo, set PWM to 0) |
+| 2   | Stop abruptly (set command & goal velocity to 0, enable servo) |
+| 3   | Stop smoothly (set goal velocity to 0, decelerate) |
+| 4   | Stop here (move to specified position abruptly, requires 4 more data bytes) |
+| 5-7 | Not used (clear to 0) |
 
 **Common Combinations**:
-- `0x05` (STOP_ABRUPT | AMP_ENABLE): Enable amplifier, ready to move
-- `0x04` (AMP_ENABLE only): Amplifier enabled, holding position
-- `0x01` (STOP_ABRUPT): Stop motion immediately
-- `0x00`: Disable everything
+- `0x05` (bits 0,2): Enable amplifier + stop abruptly → Enable drive for motion
+- `0x09` (bits 0,3): Enable amplifier + stop smoothly → Graceful stop
+- `0x01` (bit 0 only): Enable amplifier only → Hold current position
+- `0x02` (bit 1 only): Turn motor off → Disable position servo
+- `0x00`: Disable amplifier → Disable everything
 
 **Examples**:
 ```
-AA 01 17 05 1D  # Enable amplifier, stop abruptly (enable drive)
-AA 01 17 04 1C  # Motor off (disable drive)
+AA 01 17 05 1D  # Enable amplifier, stop abruptly (standard init)
+AA 01 17 09 21  # Enable amplifier, stop smoothly (graceful stop)
+AA 01 17 01 19  # Enable amplifier only (hold position)
+AA 01 17 02 1A  # Turn motor off (disable servo)
 ```
 
-**Use Case**: Drive initialization requires sending 0x05 to enable amplifier.
+**IMPORTANT**: Bit 0 (Pic_ae) must be set to enable the power driver. Drive initialization requires sending 0x05 (bits 0,2) to enable amplifier and close servo loop.
+
+**Notes**:
+- Only one of bits 1, 2, 3, or 4 should be set at the same time
+- Bit 4 requires 4 additional data bytes specifying the stopping position
 
 ---
 
@@ -219,12 +256,13 @@ def initialize_servo(addr):
     send_command(addr, 0x06, list(gain_data))
 
     # Step 3: Load initial trajectory (position 0)
-    traj_ctrl = 0x90  # start_now + servo_mode
-    traj_data = struct.pack('<Biii', traj_ctrl, 0, 0, 0)
+    # Use 0x9F to load all params: pos, vel, acc, PWM, servo mode, start now
+    traj_ctrl = 0x9F  # bits 0,1,2,3,4,7
+    traj_data = struct.pack('<Biiii', traj_ctrl, 0, 0, 1, 0)  # pos=0, vel=0, acc=1, pwm=0
     send_command(addr, 0x04, list(traj_data))
 
-    # Step 4: Enable amplifier
-    send_command(addr, 0x07, [0x05])  # STOP_ABRUPT | AMP_ENABLE
+    # Step 4: Enable amplifier and close servo loop
+    send_command(addr, 0x07, [0x05])  # Pic_ae (bit 0) + Stop abruptly (bit 2)
 
     # Step 5: Reset position counter
     send_command(addr, 0x00, [])
