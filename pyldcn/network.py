@@ -261,7 +261,7 @@ class LDCNNetwork:
     # Core Protocol
     # -------------------------------------------------------------------------
 
-    def send_command(self, address: int, command: int, data: List[int] = None) -> bytes:
+    def send_command(self, address: int, command: int, data: Optional[List[int]] = None) -> bytes:
         """
         Send LDCN command packet and return response.
 
