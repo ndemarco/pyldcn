@@ -123,6 +123,63 @@ with LDCNNetwork('/dev/ttyUSB0') as network:
         print("Power button pressed!")
 ```
 
+### High-Level Axis Control
+
+```python
+from pyldcn import LDCNNetwork
+from pyldcn.command import AxisController
+import logging
+
+# Enable logging to see progress messages
+logging.basicConfig(level=logging.INFO)
+
+with LDCNNetwork('/dev/ttyUSB0') as network:
+    network.initialize()
+    network.set_baud_rate(125000)
+
+    # Create axis controller from JSON configuration
+    controller = AxisController(network, 'config/axes.json')
+
+    # Home an axis (automatically handles power-on sequence)
+    controller.home_axis('X')
+
+    # Move to absolute position
+    controller.move_absolute('X', position=100.0, velocity=50.0)
+
+    # Move relative distance
+    controller.move_relative('Y', distance=25.0)
+
+    # Wait for motion to complete
+    controller.wait_for_motion_complete('X', timeout=10.0)
+
+    # Get current position
+    pos = controller.get_position('X')
+    print(f"X position: {pos:.3f} mm")
+```
+
+### Logging Configuration
+
+Control output verbosity using Python's logging module:
+
+```python
+import logging
+
+# Show all info messages (default behavior)
+logging.basicConfig(level=logging.INFO)
+
+# Quiet mode - only warnings and errors
+logging.basicConfig(level=logging.WARNING)
+
+# Debug mode - very verbose
+logging.basicConfig(level=logging.DEBUG)
+
+# Custom format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+```
+
 ## Testing
 
 ### Run Tests

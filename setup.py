@@ -24,7 +24,7 @@ setup(
     version=version.get('__version__', '0.1.0'),
     author='NickyDoes',
     author_email='',
-    description='Python library for Logosol LDCN communication',
+    description='Python library for Logosol LDCN servo drives and I/O controllers',
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/ndemarco/pyldcn',
