@@ -5,15 +5,24 @@ axis.py - High-level axis control for LS-231SE servo drives
 Provides named axis control using configuration from JSON files.
 Commands use physical units (mm, deg, mm/s) and configuration defaults.
 
+This module is designed to be imported and used as a Python library:
+    from pyldcn.command import AxisController
+    controller = AxisController(network, config_file)
+    controller.home_axis('X')
+
 Author: LinuxCNC Community
 License: GPL v2 or later
-Date: 2025-11-06
+Date: 2025-11-07
 """
 
 import json
 import time
+import logging
 from typing import Dict, Optional, Any
 from pathlib import Path
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class AxisConfig:
@@ -221,10 +230,10 @@ class AxisController:
             gains = axis.gains.copy()
             gains.update(gain_overrides)
 
-            print(f"Setting gains for axis '{name}' (address {axis.address}):")
-            print(f"  KP={gains['kp']}, KD={gains['kd']}, KI={gains['ki']}")
-            print(f"  IL={gains['il']}, OL={gains['ol']}, CL={gains['cl']}")
-            print(f"  EL={gains['el']}, SR={gains['sr']}, DBC={gains['dbc']}")
+            logger.info(f"Setting gains for axis '{name}' (address {axis.address}):")
+            logger.info(f"  KP={gains['kp']}, KD={gains['kd']}, KI={gains['ki']}")
+            logger.info(f"  IL={gains['il']}, OL={gains['ol']}, CL={gains['cl']}")
+            logger.info(f"  EL={gains['el']}, SR={gains['sr']}, DBC={gains['dbc']}")
 
             device.set_gains(
                 kp=gains['kp'], kd=gains['kd'], ki=gains['ki'],
@@ -233,7 +242,7 @@ class AxisController:
             )
 
         if home and axis.homing['enabled']:
-            print(f"Homing axis '{name}'...")
+            logger.info(f"Homing axis '{name}'...")
             self.home_axis(name)
 
     def home_axis(self, name: str,
@@ -269,9 +278,9 @@ class AxisController:
             raise ValueError(f"Homing not enabled for axis '{name}'")
 
         # Step 1: Enable main power via SK-2310g2
-        print(f"\n{'='*60}")
-        print("ENABLING MAIN POWER")
-        print("=" *60)
+        logger.info(f"\n{'='*60}")
+        logger.info("ENABLING MAIN POWER")
+        logger.info("=" *60)
 
         io_controller = None
         for dev in self.network.devices:
@@ -283,12 +292,12 @@ class AxisController:
             raise RuntimeError("SK-2310g2 I/O controller not found on network")
 
         # Configure SK-2310g2 for full status reporting (required before setting outputs)
-        print("Configuring SK-2310g2 I/O controller...")
+        logger.info("Configuring SK-2310g2 I/O controller...")
         io_controller.configure()
 
         # Enable power relay (Output 15 = System Lock / Power ON/OFF)
         # This will make the power button flash
-        print("Enabling power relay (Output 15)...")
+        logger.info("Enabling power relay (Output 15)...")
         io_controller.set_outputs(0x8000)
 
         # Step 2: Prompt user and wait for power button press
@@ -296,8 +305,8 @@ class AxisController:
 
         # Wait for power to be enabled (check SK-2310g2 diagnostic code change)
         # Following linuxcnc-logosol approach: read baseline, wait for change to >= 0x08
-        print("  Waiting for power on (monitoring SK-2310g2 diagnostic)...")
-        print("  Logging diagnostic transitions to: power_on_diagnostic.log")
+        logger.info("  Waiting for power on (monitoring SK-2310g2 diagnostic)...")
+        logger.info("  Logging diagnostic transitions to: power_on_diagnostic.log")
 
         # Open log file
         log_file = open('power_on_diagnostic.log', 'w')
@@ -306,7 +315,7 @@ class AxisController:
 
         # Read baseline diagnostic (power OFF state)
         baseline_diag = io_controller.read_diagnostic()
-        print(f"  Baseline diagnostic: 0x{baseline_diag:02X}")
+        logger.info(f"  Baseline diagnostic: 0x{baseline_diag:02X}")
         log_file.write(f"0.000,0x{baseline_diag:02X},{baseline_diag:08b},Baseline\n")
         log_file.flush()
 
@@ -340,21 +349,21 @@ class AxisController:
                     log_file.flush()
 
                     if diag != last_diag:
-                        print(f"  [{elapsed:.2f}s] Diagnostic changed: 0x{diag:02X} ({diag_desc})")
+                        logger.info(f"  [{elapsed:.2f}s] Diagnostic changed: 0x{diag:02X} ({diag_desc})")
 
                 # Power button detection (following linuxcnc-logosol logic):
                 # Detect when diagnostic CHANGES from baseline AND is >= 0x08
                 # Baseline is typically 0x00 or 0x04 (power OFF)
                 # Button press changes to 0x08+ (operational states)
                 if diag != baseline_diag and diag >= 0x08:
-                    print(f"\n✓ Power button pressed (diagnostic: 0x{diag:02X})")
+                    logger.info(f"\n✓ Power button pressed (diagnostic: 0x{diag:02X})")
                     break
 
                 last_diag = diag
 
                 # Print periodic updates
                 if current_time - last_message_time >= 2.0:
-                    print(f"  Waiting... ({elapsed:.1f}s, diagnostic: 0x{diag:02X}, polls: {poll_count})")
+                    logger.info(f"  Waiting... ({elapsed:.1f}s, diagnostic: 0x{diag:02X}, polls: {poll_count})")
                     last_message_time = current_time
 
                 if elapsed > timeout:
@@ -366,12 +375,12 @@ class AxisController:
 
         finally:
             log_file.close()
-            print(f"  Diagnostic log saved to: power_on_diagnostic.log")
+            logger.info(f"  Diagnostic log saved to: power_on_diagnostic.log")
 
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}\n")
 
         # Step 3: Enable amplifier before homing (required for motion)
-        print(f"\nEnabling amplifier for axis '{name}'...")
+        logger.info(f"\nEnabling amplifier for axis '{name}'...")
         device.enable()
 
         # Use config defaults or overrides
@@ -390,11 +399,11 @@ class AxisController:
         # invert_direction=True  → home to Limit 1 (reverse)
         home_switch = 1 if invert else 2
 
-        print(f"Homing axis '{name}' to Limit {home_switch}:")
-        print(f"  Start velocity: {start_vel:.1f} ({start_vel_counts} counts/s)")
-        print(f"  End velocity: {end_vel:.1f} ({end_vel_counts} counts/s)")
-        print(f"  Acceleration: {accel:.1f} ({accel_counts} counts/s²)")
-        print(f"  Use index pulse: {axis.homing['use_index_pulse']}")
+        logger.info(f"Homing axis '{name}' to Limit {home_switch}:")
+        logger.info(f"  Start velocity: {start_vel:.1f} ({start_vel_counts} counts/s)")
+        logger.info(f"  End velocity: {end_vel:.1f} ({end_vel_counts} counts/s)")
+        logger.info(f"  Acceleration: {accel:.1f} ({accel_counts} counts/s²)")
+        logger.info(f"  Use index pulse: {axis.homing['use_index_pulse']}")
 
         # Perform homing sequence
         device.home_to_limit(
@@ -449,10 +458,10 @@ class AxisController:
         velocity_counts = axis.velocity_to_counts(vel)
         accel_counts = axis.accel_to_counts(acc)
 
-        print(f"Moving axis '{name}' to position {position:.3f}:")
-        print(f"  Position: {position_counts} counts")
-        print(f"  Velocity: {vel:.1f} ({velocity_counts} counts/s)")
-        print(f"  Acceleration: {acc:.1f} ({accel_counts} counts/s²)")
+        logger.info(f"Moving axis '{name}' to position {position:.3f}:")
+        logger.info(f"  Position: {position_counts} counts")
+        logger.info(f"  Velocity: {vel:.1f} ({velocity_counts} counts/s)")
+        logger.info(f"  Acceleration: {acc:.1f} ({accel_counts} counts/s²)")
 
         # Execute move
         device.move_to_counts(position_counts, velocity_counts, accel_counts)
@@ -488,9 +497,9 @@ class AxisController:
         # Calculate target position
         target_position = current_position + distance
 
-        print(f"Moving axis '{name}' relative {distance:.3f}:")
-        print(f"  Current position: {current_position:.3f}")
-        print(f"  Target position: {target_position:.3f}")
+        logger.info(f"Moving axis '{name}' relative {distance:.3f}:")
+        logger.info(f"  Current position: {current_position:.3f}")
+        logger.info(f"  Target position: {target_position:.3f}")
 
         # Use absolute move with calculated target
         self.move_absolute(name, target_position, velocity, accel)
@@ -508,7 +517,7 @@ class AxisController:
         axis = self.get_axis(name)
         device = self.get_device(name)
 
-        print(f"Stopping axis '{name}' (address {axis.address})")
+        logger.info(f"Stopping axis '{name}' (address {axis.address})")
         device.stop_motor()
 
     def wait_for_motion_complete(self, name: str,
@@ -528,9 +537,9 @@ class AxisController:
         Example:
             controller.move_absolute('X', 100.0)
             if controller.wait_for_motion_complete('X', timeout=10.0):
-                print("Motion complete")
+                logger.info("Motion complete")
             else:
-                print("Motion timeout")
+                logger.info("Motion timeout")
         """
         axis = self.get_axis(name)
         device = self.get_device(name)
@@ -562,7 +571,7 @@ class AxisController:
 
         Example:
             pos = controller.get_position('X')
-            print(f"X position: {pos:.3f} mm")
+            logger.info(f"X position: {pos:.3f} mm")
         """
         axis = self.get_axis(name)
         device = self.get_device(name)
