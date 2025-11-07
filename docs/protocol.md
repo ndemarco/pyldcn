@@ -299,7 +299,7 @@ RX: (no response expected for stop command)
 
 ## Protocol Gotchas
 
-1. **Status byte position**: For 2310g2 with full status, status byte is at index 1, not 0
+1. **Response format**: For 2310g2 with full status, response[0]=status byte, response[1]=diagnostic code
 2. **Group commands**: Set Baud Rate must be sent to group, never individual address
 3. **Baud rate change**: Must physically close/reopen serial port at new baud rate
 4. **Hard reset**: No response expected, wait full 2 seconds

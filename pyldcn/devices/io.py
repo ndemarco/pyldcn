@@ -32,6 +32,91 @@ CMD_SET_TIMER_MODE = 0x08      # Configure counter/timer
 CMD_SYNCH_INPUT = 0x0C         # Capture inputs atomically
 
 
+# =============================================================================
+# Digital Input Bit Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+# Format: 16-bit word = Byte1:Byte0 (MSB:LSB)
+# CN6/CN7/CN14 physical inputs → Inputs/Byte0/Bits 0-7
+# Internal status signals → Inputs/Byte1/Bits 0-7
+
+# Byte0 - Application Inputs
+INPUT_PROGRAM_RUN = 0          # Bit 0: CN14 - Program run signal
+INPUT_PROGRAM_STOP = 1         # Bit 1: CN14 - Program stop signal
+INPUT_SPINDLE_OFF = 2          # Bit 2: CN6 - Spindle OFF (computed, see Note 1)
+INPUT_SPINDLE_FAULT = 3        # Bit 3: CN6 - Spindle fault status
+INPUT_SPINDLE_AT_SPEED = 4     # Bit 4: CN6 - Spindle at speed status
+INPUT_AIR_PRESSURE = 5         # Bit 5: CN7 - Air pressure OK
+INPUT_TOOL_LENGTH_SWITCH = 6   # Bit 6: CN7 - Tool length measurement switch
+INPUT_TOOL_CHANGER_CLOSED = 7  # Bit 7: CN7 - Tool changer cover closed
+
+# Byte1 - System Status Inputs
+INPUT_AT_HOME = 8              # Bit 0: System at home/safe zone
+INPUT_TEST_MODE = 9            # Bit 1: Test mode active
+INPUT_SERVO_FAULT = 10         # Bit 2: CN3 Safety Bus - Servo fault signal
+INPUT_STATUS_LED1 = 11         # Bit 3: LED1 status
+INPUT_STATUS_LED2 = 12         # Bit 4: LED2 status
+INPUT_STATUS_LED3 = 13         # Bit 5: LED3 status
+INPUT_STATUS_LED4 = 14         # Bit 6: LED4 status
+INPUT_STATUS_LED5 = 15         # Bit 7: LED5 status
+
+# Note 1: INPUT_SPINDLE_OFF computation (from manual page 19)
+# Spindle OFF = 1 when:
+#   - Spindle ON output (Outputs/Byte0/Bit2) = 0 AND
+#   - Spindle Stopped input (CN6 pin2) = HIGH
+
+
+# =============================================================================
+# Digital Output Bit Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+# Format: 16-bit word = Byte1:Byte0 (MSB:LSB)
+
+# Byte0 - Application Outputs
+OUTPUT_PROGRAM_RUNNING_LAMP = 0    # Bit 0: CN14 - Program running lamp
+OUTPUT_PROGRAM_STOPPED_LAMP = 1    # Bit 1: CN14 - Program stopped lamp
+OUTPUT_SPINDLE_ON = 2              # Bit 2: CN6/CN16 - Spindle ON (see Note 3, Note 4)
+OUTPUT_SPINDLE_DIRECTION = 3       # Bit 3: CN6 - Spindle direction (0=CW, 1=CCW)
+OUTPUT_SPINDLE_DC_BRAKE = 4        # Bit 4: CN6 - Spindle DC-braking or PWM
+OUTPUT_TOOL_CLAMP = 5              # Bit 5: CN7 - Tool clamp solenoid
+OUTPUT_SOLENOID_VALVE_2 = 6        # Bit 6: CN7 - Solenoid valve 2
+OUTPUT_SOLENOID_VALVE_3 = 7        # Bit 7: CN7 - Solenoid valve 3
+
+# Byte1 - System Control Outputs
+OUTPUT_TOOL_CHANGER_UNLOCK = 8     # Bit 0: CN7 - Tool changer cover unlock
+OUTPUT_COVER_LOCK = 9              # Bit 1: CN9/CN10 - Cover lock control
+OUTPUT_HOME_ENABLE = 10            # Bit 2: See automation modes / Home enable
+OUTPUT_TEST_MODE_INHIBIT = 11      # Bit 3: Test mode inhibit control
+OUTPUT_SAFETY_LINK_BRIDGE = 12     # Bit 4: CN3 Safety Bus - Safety Link Bridge (see Note 3)
+OUTPUT_INVERTED_13 = 13            # Bit 5: CN7 - Inverted output (HIGH when bit=0)
+OUTPUT_COVERS_LOCK_UNLOCK = 14     # Bit 6: Reserved / Covers lock/unlock (see Note 5)
+OUTPUT_SYSTEM_LOCK = 15            # Bit 7: System lock / Power ON/OFF (see Note 6)
+
+# Note 3: CRITICAL SAFETY CONSTRAINT (from manual page 19)
+# OUTPUT_SPINDLE_ON (Bit 2) and OUTPUT_SAFETY_LINK_BRIDGE (Bit 12) cannot be used simultaneously.
+# If one of them is turned on (set to 1), the other one should NOT be activated.
+# To activate either output, the other one MUST be turned off (set to 0) first.
+# The firmware will THROW AN ERROR if both are set to 1 simultaneously.
+#
+# Note 4: See "Sample application – Spindle control Option 1" and "Option 2" for details
+# on J16/J20/J10 jumper configurations controlling spindle behavior.
+#
+# Note 5: J10-2 and J19 must be installed (short) to use OUTPUT_COVERS_LOCK_UNLOCK.
+#
+# Note 6: J21 must be installed (short) to enable software power control.
+
+
+# =============================================================================
+# Analog I/O Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+
+# Analog Output (DAC)
+ANALOG_OUT_SPINDLE_SPEED = 0   # CN6.11: 0-10V spindle speed command
+
+# Analog Inputs (ADC)
+ANALOG_IN_SPINDLE_LOAD = 0     # CN6.10: 0-10V spindle load feedback
+ANALOG_IN_ADC2 = 1             # CN17.3: 0-5V general purpose
+ANALOG_IN_ADC3 = 2             # CN17.2: 0-5V general purpose
+
+
 class SK2310g2(LDCNDevice):
     """
     SK-2310g2 I/O Controller
@@ -41,20 +126,72 @@ class SK2310g2(LDCNDevice):
 
     Hardware Capabilities:
     - Dual mechanical relay power control
-    - Spindle control with spindle enable mechanical relay
+    - Spindle control with spindle enable mechanical relay (CN6)
     - Dual line emergency stop monitoring
     - Dual work zone "covers" contacts (guarded area monitoring)
     - Dual safe zone sensor interface
-    - 3 analog inputs
+    - 3 analog inputs (0-5V or 0-10V)
     - 1 analog output (CN6.11 is 0-10V spindle speed control)
     - Digital I/O (16 inputs, 16 outputs)
 
+    Hardware Wiring (This Machine):
+    ===================================
+
+    SPINDLE CONTROL (CN6 → LS2315 CN7 pin-for-pin):
+    - CN6.2:  Spindle Stopped (from LS2315 CN7.2/8)
+    - CN6.3:  Spindle Fault (from LS2315 CN7.3)
+    - CN6.4:  Spindle At Speed (from LS2315 CN7.4)
+    - CN6.5:  Spindle ON enable (to LS2315 CN7.5)
+    - CN6.6:  Spindle Direction/Reverse (to LS2315 CN7.6)
+    - CN6.7:  Spindle DC-braking/PWM (to LS2315 CN7.7)
+    - CN6.10: Spindle LOAD analog feedback 0-10V (from LS2315 CN7.10)
+    - CN6.11: Spindle SPEED command 0-10V (to LS2315 CN7.11)
+
+    LS2315 also connects to Safety Bus via CN4/CN5 but is NOT an LDCN device.
+    See LS-2315-High-Performance-Spindle-Drive.pdf for full pinout details.
+
+    DOOR SAFETY SWITCH (CN9 → Schmersal AZM170-02ZK-2321):
+    - CN9.1-2:  Cover1 A contacts (dual-channel safety monitoring)
+    - CN9.5-6:  Cover1 B contacts (dual-channel safety monitoring)
+    - CN9.3-4:  Cover1 Unlock solenoid (+/-) - releases lock in Schmersal switch
+
+    The Schmersal AZM170-02ZK-2321 is a safety door switch with:
+      • Dual redundant safety contacts (A and B channels)
+      • Integrated electromagnetic lock solenoid
+      • Lock release via CN9.3-4 when unlock conditions are met:
+        - Spindle stopped AND Power is OFF, OR
+        - Spindle stopped AND machine in Safety Zone, OR
+        - Test Mode with Acknowledge (J20 setting dependent)
+
+    Jumper J16 2-3 short ensures Spindle ON is disabled when covers are open.
+    Jumper J20 open requires spindle stopped before cover unlock in Test Mode.
+    See pages 11-12 of SK-2310g2 manual for complete jumper configurations.
+
+    TOOL CHANGER & PNEUMATIC CONTROL (CN7):
+    - CN7.1 (Input 5):  Air Pressure OK sensor
+    - CN7.3 (Input 6):  Tool Length Measurement Switch
+    - CN7.5 (Input 7):  Tool Changer Cover Closed
+    - CN7.7 (Output 5): Tool Clamp Solenoid
+    - CN7.9 (Output 6): Solenoid Valve 2
+    - CN7.11 (Output 7): Solenoid Valve 3
+    - CN7.13 (Output 8): Tool Changer Unlock
+
     Additional Attributes:
-        diagnostic_code: Last diagnostic code (LED display)
+        diagnostic_code: Last diagnostic code (LED display, see page 20)
         power_state: Power button state
         estop_state: Emergency stop state
         digital_inputs: 16-bit digital input state
         digital_outputs: 16-bit digital output state
+
+    Safety Notes:
+    =============
+    ⚠️  OUTPUT_SPINDLE_ON (Bit 2) and OUTPUT_SAFETY_LINK_BRIDGE (Bit 12)
+        CANNOT be active simultaneously (Note 3, page 19). Software will
+        validate this constraint and raise LDCNError if violated.
+
+    ⚠️  Current configuration uses Spindle Control Option 1:
+        J16 2-3 short, J20 open, J10.3 open
+        This provides maximum safety - spindle disabled when covers open.
     """
 
     def __init__(self, network: LDCNNetwork, address: int):
@@ -118,9 +255,9 @@ class SK2310g2(LDCNDevice):
         if len(response) < 3:
             return {}
 
-        # For I/O controller with full status, status byte is at index 1
-        diagnostic = response[0]
-        status_byte = response[1]
+        # For I/O controller with full status, diagnostic is at index 1
+        status_byte = response[0]
+        diagnostic = response[1]
 
         self.diagnostic_code = diagnostic
         self.status_byte = status_byte
@@ -144,40 +281,498 @@ class SK2310g2(LDCNDevice):
         Returns:
             Diagnostic code (0x00-0xFF)
 
+        See page 20 of manual for diagnostic code table.
+        Use decode_diagnostic() to get human-readable description.
+
         🔴 UNVERIFIED - Not yet tested on hardware
         """
         status = self.read_status()
         return status.get('diagnostic', 0)
 
+    def decode_diagnostic(self, diag_code: Optional[int] = None) -> Dict[str, any]:
+        """
+        Decode diagnostic code to human-readable system state.
+
+        Uses the diagnostic table from page 20 of the SK-2310g2 manual.
+
+        Args:
+            diag_code: Diagnostic code to decode (if None, reads current)
+
+        Returns:
+            Dictionary with:
+            - 'code': Diagnostic code (0x00-0xFF)
+            - 'description': Human-readable description
+            - 'power_enable': True if Power Enable relay is ON
+            - 'power_relays': True if Power A & B relays are ON
+            - 'motor_power_on': True if motor power is actually ON
+            - 'byte1_bits': Dict of Byte1 status bits (bits 7,6,5,4,3)
+            - 'led_states': List of LED numbers that should be lit
+            - 'details': Additional state details
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if diag_code is None:
+            diag_code = self.read_diagnostic()
+
+        # Extract Byte1 bits from diagnostic code (bits 7,6,5,4,3)
+        bit7 = (diag_code >> 7) & 0x01  # Power Enable
+        bit6 = (diag_code >> 6) & 0x01
+        bit5 = (diag_code >> 5) & 0x01
+        bit4 = (diag_code >> 4) & 0x01
+        bit3 = (diag_code >> 3) & 0x01
+
+        # Diagnostic code lookup table from page 20
+        DIAGNOSTIC_TABLE = {
+            0x01: {
+                'desc': 'Initializing',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3,4],
+                'details': 'System initialization in progress'
+            },
+            0x02: {
+                'desc': 'Control voltage shorted',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3,5],
+                'details': 'Control voltage short circuit detected'
+            },
+            0x03: {
+                'desc': 'Output shorted',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3],
+                'details': 'Output short circuit detected'
+            },
+            0x04: {
+                'desc': 'Control voltage LOW (<18V)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,4,5],
+                'details': 'Control voltage below 18V'
+            },
+            0x05: {
+                'desc': 'Home/Test switch malfunction (both contacts ON)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,4],
+                'details': 'Both Home or Test Mode switch contacts are ON'
+            },
+            0x06: {
+                'desc': 'Power-up Home error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,5],
+                'details': 'Home sensor error detected at power-up'
+            },
+            0x07: {
+                'desc': 'Power-up Test Mode error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2],
+                'details': 'Test Mode switch error detected at power-up'
+            },
+            0x08: {
+                'desc': 'System LOCKED',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,4,5],
+                'details': 'System locked via software command'
+            },
+            0x09: {
+                'desc': 'Watchdog Stop',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,4],
+                'details': 'Watchdog timer expired'
+            },
+            0x0A: {
+                'desc': 'Safety Link Error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,5],
+                'details': 'Safety Link daisy-chain broken'
+            },
+            0x0B: {
+                'desc': 'Cover Open Stop (Spindle not stopped)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3],
+                'details': 'Cover open but spindle still running'
+            },
+            0x0C: {
+                'desc': 'Cover Open Stop (Not at Home)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,4,5],
+                'details': 'Cover open and machine not at home position'
+            },
+            0x0D: {
+                'desc': 'Cover Open Stop (Test Mode without Acknowledge)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,4],
+                'details': 'Cover open in Test Mode without Acknowledge pressed'
+            },
+            0x0E: {
+                'desc': 'Cover contact Fault',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,5],
+                'details': 'One or more cover contacts malfunctioning'
+            },
+            0x0F: {
+                'desc': 'Limit Switch Stop',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1],
+                'details': 'Limit switch activated'
+            },
+            0x10: {
+                'desc': 'Emergency Stop',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,4,5],
+                'details': 'Emergency stop button pressed'
+            },
+            0x11: {
+                'desc': 'Emergency Stop contact malfunction or Monitor Loop open',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,4],
+                'details': 'E-stop contact failure or relay monitor loop open'
+            },
+            0x12: {
+                'desc': 'Power ON button busy (>6sec) or Monitor Loop open',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,5],
+                'details': 'Power button held >6sec or safety relay fault'
+            },
+            0x13: {
+                'desc': 'Motor Power Supply under-voltage',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [2,3],
+                'details': 'Motor power supply (UM) voltage too low'
+            },
+            0x14: {
+                'desc': 'Covers open (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,4,5],
+                'details': 'Both covers open, system ready for power ON'
+            },
+            0x15: {
+                'desc': 'Cover1 closed, Cover2 open (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,4],
+                'details': 'Cover1 closed, Cover2 open'
+            },
+            0x16: {
+                'desc': 'Cover1 open, Cover2 closed (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,5],
+                'details': 'Cover1 open, Cover2 closed'
+            },
+            0x17: {
+                'desc': 'Covers closed (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2],
+                'details': 'All covers closed, ready for power ON'
+            },
+            0x18: {
+                'desc': 'Covers open, Test Mode',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,4,5],
+                'details': 'Test Mode active with covers open'
+            },
+            0x19: {
+                'desc': 'Cover1 closed, Cover2 open, Test Mode',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,4],
+                'details': 'Test Mode: Cover1 closed, Cover2 open'
+            },
+            0x1A: {
+                'desc': 'Cover1 open, Cover2 closed, Test Mode',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,5],
+                'details': 'Test Mode: Cover1 open, Cover2 closed'
+            },
+            0x1B: {
+                'desc': 'Covers closed, Test Mode',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3],
+                'details': 'Test Mode active with covers closed'
+            },
+            0x1C: {
+                'desc': 'At Home, spindle stopped, covers open',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [4,5],
+                'details': 'Machine at home, spindle stopped, covers open'
+            },
+            0x1D: {
+                'desc': 'At Home, spindle stopped, Cover1 closed, Cover2 open',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [4],
+                'details': 'At home with Cover1 closed, Cover2 open'
+            },
+            0x1E: {
+                'desc': 'At Home, spindle stopped, Cover1 open, Cover2 closed',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [5],
+                'details': 'At home with Cover1 open, Cover2 closed'
+            },
+            0x1F: {
+                'desc': 'Normal operation - covers closed',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [],
+                'details': 'All systems ready, covers closed, powered'
+            },
+            0x00: {
+                'desc': 'Power OFF delay in progress',
+                'power_enable': False,
+                'power_ab': True,
+                'leds': [1,2,3,4,5],
+                'details': 'Power OFF command delay (J2 setting)'
+            },
+        }
+
+        # Lookup diagnostic info
+        diag_info = DIAGNOSTIC_TABLE.get(diag_code, {
+            'desc': f'Unknown diagnostic code 0x{diag_code:02X}',
+            'power_enable': bit7 == 1,
+            'power_ab': (bit7 == 1 and bit6 == 0) or diag_code == 0x00,
+            'leds': [],
+            'details': 'See manual page 20 for this code'
+        })
+
+        # Motor power is ON when BOTH Power Enable AND Power A&B relays are ON
+        motor_power_on = diag_info['power_enable'] and diag_info['power_ab']
+
+        return {
+            'code': diag_code,
+            'code_hex': f'0x{diag_code:02X}',
+            'code_binary': f'{diag_code:08b}',
+            'description': diag_info['desc'],
+            'details': diag_info['details'],
+            'power_enable': diag_info['power_enable'],
+            'power_relays_on': diag_info['power_ab'],
+            'motor_power_on': motor_power_on,
+            'byte1_bits': {
+                'bit7_power_enable': bool(bit7),
+                'bit6': bool(bit6),
+                'bit5': bool(bit5),
+                'bit4': bool(bit4),
+                'bit3': bool(bit3),
+            },
+            'led_states': diag_info['leds'],
+        }
+
+    def get_system_state(self) -> Dict[str, any]:
+        """
+        Get comprehensive system state combining diagnostic and I/O status.
+
+        Returns:
+            Dictionary with complete system state:
+            - 'diagnostic': Decoded diagnostic information
+            - 'motor_power_on': True if motor power relays are energized
+            - 'spindle_status': Spindle state (off/fault/at_speed)
+            - 'safety_status': Safety system state
+            - 'io_status': Digital I/O states
+            - 'cover_status': Door/cover states
+            - 'system_ready': True if system is operational
+
+        This provides a complete snapshot of machine state.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Read diagnostic
+        diagnostic = self.decode_diagnostic()
+
+        # Read digital inputs
+        io_states = self.read_input_states()
+
+        # Read spindle status
+        spindle = self.read_spindle_status()
+
+        # Determine overall system readiness
+        system_ready = (
+            diagnostic['motor_power_on'] and
+            not io_states['servo_fault'] and
+            not spindle['fault']
+        )
+
+        return {
+            'diagnostic': diagnostic,
+            'motor_power_on': diagnostic['motor_power_on'],
+            'spindle_status': {
+                'off': spindle['off'],
+                'fault': spindle['fault'],
+                'at_speed': spindle['at_speed'],
+                'load_voltage': spindle.get('load_voltage'),
+            },
+            'safety_status': {
+                'at_home': io_states['at_home'],
+                'test_mode': io_states['test_mode'],
+                'servo_fault': io_states['servo_fault'],
+            },
+            'io_status': {
+                'air_pressure_ok': io_states['air_pressure_ok'],
+                'tool_length_switch': io_states['tool_length_switch'],
+                'tool_changer_closed': io_states['tool_changer_closed'],
+            },
+            'system_ready': system_ready,
+        }
+
+    # -------------------------------------------------------------------------
+    # Bit Manipulation Helpers
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _get_bit(value: int, bit: int) -> bool:
+        """
+        Extract a single bit from an integer value.
+
+        Args:
+            value: Integer value
+            bit: Bit position (0-15)
+
+        Returns:
+            True if bit is set, False otherwise
+        """
+        return bool((value >> bit) & 0x01)
+
+    @staticmethod
+    def _set_bit(value: int, bit: int, state: bool) -> int:
+        """
+        Set a single bit in an integer value.
+
+        Args:
+            value: Current integer value
+            bit: Bit position (0-15)
+            state: True to set bit, False to clear bit
+
+        Returns:
+            Modified integer value
+        """
+        if state:
+            return value | (1 << bit)
+        else:
+            return value & ~(1 << bit)
+
     # -------------------------------------------------------------------------
     # Digital I/O Control
     # -------------------------------------------------------------------------
 
-    def set_outputs(self, outputs: int) -> None:
+    def _validate_spindle_safety_constraint(self, outputs: int) -> None:
+        """
+        Validate Note 3 safety constraint from page 19 of manual.
+
+        Spindle ON (Bit 2) and Safety Link Bridge (Bit 12) cannot be
+        active simultaneously. This is a hardware safety requirement.
+
+        Args:
+            outputs: Proposed 16-bit output value
+
+        Raises:
+            LDCNError: If both bits are set to 1 simultaneously
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        from pyldcn.network import LDCNError
+
+        spindle_on = self._get_bit(outputs, OUTPUT_SPINDLE_ON)
+        safety_bridge = self._get_bit(outputs, OUTPUT_SAFETY_LINK_BRIDGE)
+
+        if spindle_on and safety_bridge:
+            raise LDCNError(
+                "Safety constraint violated: OUTPUT_SPINDLE_ON (Bit 2) and "
+                "OUTPUT_SAFETY_LINK_BRIDGE (Bit 12) cannot be active simultaneously. "
+                "See Note 3 on page 19 of SK-2310g2 manual. "
+                f"Current outputs: 0x{outputs:04X}"
+            )
+
+    def set_outputs(self, outputs: int, validate_safety: bool = True) -> None:
         """
         Set all 16 digital outputs immediately.
 
         Args:
             outputs: 16-bit output state (bit 0 = Output 0, ..., bit 15 = Output 15)
+            validate_safety: If True, validate Note 3 constraint (default: True)
 
-        Output mapping (SK-2310g2):
-        - Byte 0 (bits 0-7): Outputs 0-7
-        - Byte 1 (bits 8-15): Outputs 8-15
-          - Bit 15 (0x8000): System Lock / Power ON/OFF
+        Output mapping (SK-2310g2) from page 19:
+        - Byte 0 (bits 0-7): Application outputs
+          - Bit 0: Program running lamp
+          - Bit 1: Program stopped lamp
+          - Bit 2: Spindle ON (⚠️ Note 3 constraint)
+          - Bit 3: Spindle direction (0=CW, 1=CCW)
+          - Bit 4: Spindle DC-braking/PWM
+          - Bit 5: Tool clamp
+          - Bit 6: Solenoid valve 2
+          - Bit 7: Solenoid valve 3
+
+        - Byte 1 (bits 8-15): System control outputs
+          - Bit 8: Tool changer unlock
+          - Bit 9: Cover lock
+          - Bit 10: Home enable
+          - Bit 11: Test mode inhibit
+          - Bit 12: Safety Link Bridge (⚠️ Note 3 constraint)
+          - Bit 13: Inverted output 13
+          - Bit 14: Reserved / Covers lock/unlock
+          - Bit 15: System lock / Power ON/OFF
 
         Example:
-            # Enable power relay (Output 15)
-            device.set_outputs(0x8000)
+            # Enable spindle forward
+            device.set_outputs(0x0004)  # Bit 2 = Spindle ON
 
-            # Turn on outputs 0, 2, and 15
-            device.set_outputs(0x8005)  # 0x8000 | 0x0004 | 0x0001
+            # Enable spindle reverse
+            device.set_outputs(0x000C)  # Bit 2 = ON, Bit 3 = reverse
+
+        Raises:
+            LDCNError: If safety constraint is violated
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
+        if validate_safety:
+            self._validate_spindle_safety_constraint(outputs)
+
         byte0 = outputs & 0xFF
         byte1 = (outputs >> 8) & 0xFF
         self.send_command(CMD_SET_OUTPUTS, [byte0, byte1])
         self.digital_outputs = outputs
+
+    def set_output_bit(self, bit: int, state: bool) -> None:
+        """
+        Set a single output bit while preserving other outputs.
+
+        Args:
+            bit: Output bit number (0-15)
+            state: True to set bit, False to clear bit
+
+        Raises:
+            LDCNError: If safety constraint would be violated
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if self.digital_outputs is None:
+            # Read current state if not cached
+            status = self.read_status()
+            self.digital_outputs = status.get('digital_outputs', 0)
+
+        new_outputs = self._set_bit(self.digital_outputs, bit, state)
+        self.set_outputs(new_outputs)
 
     def read_power_state(self) -> bool:
         """
@@ -301,94 +896,433 @@ class SK2310g2(LDCNDevice):
         raise NotImplementedError("Safe zone monitoring not yet implemented - I/O mapping TBD")
 
     # -------------------------------------------------------------------------
-    # Digital I/O (Stubs - Implementation TBD)
+    # Digital Input Reading
     # -------------------------------------------------------------------------
 
     def read_digital_inputs(self) -> int:
         """
-        Read all digital input states.
+        Read all 16 digital input states.
 
         Returns:
             16-bit digital input value
 
-        🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
-        """
-        raise NotImplementedError("Digital I/O not yet implemented")
+        Input mapping (SK-2310g2) from page 19:
+        - Byte 0 (bits 0-7): Application inputs
+          - Bit 0: Program run
+          - Bit 1: Program stop
+          - Bit 2: Spindle OFF (computed)
+          - Bit 3: Spindle fault
+          - Bit 4: Spindle at speed
+          - Bit 5: Air pressure OK
+          - Bit 6: Tool length measurement switch
+          - Bit 7: Tool changer closed
 
-    def set_digital_outputs(self, outputs: int) -> None:
+        - Byte 1 (bits 8-15): System status
+          - Bit 8: At home/safe zone
+          - Bit 9: Test mode active
+          - Bit 10: Servo fault
+          - Bits 11-15: Status LEDs
+
+        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        Set all digital output states.
+        status = self.read_status()
+        return status.get('digital_inputs', 0)
+
+    def get_input_bit(self, bit: int) -> bool:
+        """
+        Read a single digital input bit.
 
         Args:
-            outputs: 16-bit digital output value
+            bit: Input bit number (0-15)
+
+        Returns:
+            True if input is HIGH, False if LOW
 
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
         """
-        raise NotImplementedError("Digital I/O not yet implemented")
+        inputs = self.read_digital_inputs()
+        return self._get_bit(inputs, bit)
+
+    def read_input_states(self) -> Dict[str, bool]:
+        """
+        Read all digital inputs and return as named dictionary.
+
+        Returns:
+            Dictionary mapping input names to boolean states
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        inputs = self.read_digital_inputs()
+
+        return {
+            # Application inputs (Byte0)
+            'program_run': self._get_bit(inputs, INPUT_PROGRAM_RUN),
+            'program_stop': self._get_bit(inputs, INPUT_PROGRAM_STOP),
+            'spindle_off': self._get_bit(inputs, INPUT_SPINDLE_OFF),
+            'spindle_fault': self._get_bit(inputs, INPUT_SPINDLE_FAULT),
+            'spindle_at_speed': self._get_bit(inputs, INPUT_SPINDLE_AT_SPEED),
+            'air_pressure_ok': self._get_bit(inputs, INPUT_AIR_PRESSURE),
+            'tool_length_switch': self._get_bit(inputs, INPUT_TOOL_LENGTH_SWITCH),
+            'tool_changer_closed': self._get_bit(inputs, INPUT_TOOL_CHANGER_CLOSED),
+
+            # System status (Byte1)
+            'at_home': self._get_bit(inputs, INPUT_AT_HOME),
+            'test_mode': self._get_bit(inputs, INPUT_TEST_MODE),
+            'servo_fault': self._get_bit(inputs, INPUT_SERVO_FAULT),
+        }
 
     # -------------------------------------------------------------------------
-    # Analog I/O (Stubs - Implementation TBD)
+    # Analog I/O
     # -------------------------------------------------------------------------
 
-    def read_analog_inputs(self) -> Dict[int, int]:
+    def read_analog_inputs(self) -> Dict[int, float]:
         """
         Read all analog input values (3 channels).
 
         Returns:
-            Dictionary of {channel: value} pairs
+            Dictionary of {channel: voltage} pairs
+
+        Channels:
+        - 0: CN6.10 - Spindle load feedback (0-10V)
+        - 1: CN17.3 - ADC2 general purpose (0-5V)
+        - 2: CN17.2 - ADC3 general purpose (0-5V)
 
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
+        ⚠️  Status response format needs to be determined from hardware testing
         """
-        raise NotImplementedError("Analog I/O not yet implemented")
+        status = self.read_status()
+        # TBD: Extract analog values from status response
+        # This depends on the actual response format which needs hardware verification
+        return {
+            0: 0.0,  # Spindle load
+            1: 0.0,  # ADC2
+            2: 0.0,  # ADC3
+        }
 
-    def set_analog_output(self, voltage: float) -> None:
+    def set_analog_output(self, channel: int, voltage: float) -> None:
         """
-        Set analog output voltage (CN6.11 spindle speed control).
+        Set analog output voltage.
 
         Args:
+            channel: Output channel (0 = CN6.11 spindle speed)
             voltage: Output voltage (0.0 - 10.0V)
 
+        Raises:
+            ValueError: If voltage out of range or invalid channel
+
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
+        ⚠️  Command format needs to be determined from hardware testing
         """
-        raise NotImplementedError("Analog output not yet implemented")
+        if channel != 0:
+            raise ValueError(f"Invalid analog output channel: {channel}. Only channel 0 (spindle speed) is supported.")
+
+        if not 0.0 <= voltage <= 10.0:
+            raise ValueError(f"Voltage {voltage}V out of range. Must be 0.0-10.0V")
+
+        # TBD: Implement actual analog output command
+        # This may use CMD_SET_PWM_IO or a different command
+        # Need to verify with hardware
+        raise NotImplementedError("Analog output command format TBD - needs hardware verification")
 
     # -------------------------------------------------------------------------
-    # Spindle Control (Stubs - Implementation TBD)
+    # Spindle Control (Connected LS2315 via CN6 → CN7)
     # -------------------------------------------------------------------------
 
-    def set_spindle_speed(self, speed_percent: float) -> None:
+    def set_spindle_speed_voltage(self, voltage: float) -> None:
         """
-        Set spindle speed via analog output.
+        Set spindle speed via 0-10V analog output to LS2315.
+
+        The LS2315 interprets the voltage as speed command:
+        - 0V = stopped
+        - 10V = maximum RPM (50K/60K/100K depending on DIP switch)
+
+        Args:
+            voltage: Speed command voltage (0.0 - 10.0V)
+
+        Raises:
+            ValueError: If voltage out of range
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_analog_output(ANALOG_OUT_SPINDLE_SPEED, voltage)
+
+    def set_spindle_speed_percent(self, speed_percent: float) -> None:
+        """
+        Set spindle speed as percentage of maximum.
 
         Args:
             speed_percent: Speed as percentage (0.0 - 100.0)
 
+        Raises:
+            ValueError: If speed_percent out of range
+
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
         """
+        if not 0.0 <= speed_percent <= 100.0:
+            raise ValueError(f"Speed {speed_percent}% out of range. Must be 0.0-100.0%")
+
         voltage = (speed_percent / 100.0) * 10.0
-        self.set_analog_output(voltage)
+        self.set_spindle_speed_voltage(voltage)
 
-    def enable_spindle(self) -> None:
+    def enable_spindle(self, direction: str = 'forward') -> None:
         """
-        Enable spindle via mechanical relay.
+        Enable spindle via OUTPUT_SPINDLE_ON and set direction.
+
+        This sets:
+        - OUTPUT_SPINDLE_ON (Bit 2) = 1  (enables LS2315)
+        - OUTPUT_SPINDLE_DIRECTION (Bit 3) = 0 for CW, 1 for CCW
+
+        Hardware behavior (from manual page 7, CN6 description):
+        - CN6.5 (Spindle ON) goes HIGH → LS2315 CN7.5 SpindleENABLE
+        - CN6.6 (Direction) controls → LS2315 CN7.6 SpindleREVERSE
+
+        Jumper Configuration (Option 1 - this machine):
+        - J16 2-3 short: Spindle ON disabled when covers are open
+        - J20 open: Spindle must be stopped before cover unlock in Test Mode
+        - J10.3 open: Spindle operation NOT enabled in Test Mode
+
+        Args:
+            direction: 'forward' (CW) or 'reverse' (CCW)
+
+        Raises:
+            ValueError: If invalid direction
+            LDCNError: If safety constraint violated (Note 3)
 
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
         """
-        raise NotImplementedError("Spindle control not yet implemented")
+        if direction not in ('forward', 'reverse'):
+            raise ValueError(f"Invalid direction: {direction}. Must be 'forward' or 'reverse'")
+
+        # Read current outputs
+        if self.digital_outputs is None:
+            status = self.read_status()
+            self.digital_outputs = status.get('digital_outputs', 0)
+
+        # Set spindle enable and direction bits
+        new_outputs = self._set_bit(self.digital_outputs, OUTPUT_SPINDLE_ON, True)
+        new_outputs = self._set_bit(new_outputs, OUTPUT_SPINDLE_DIRECTION, direction == 'reverse')
+
+        # This will validate Note 3 constraint automatically
+        self.set_outputs(new_outputs)
 
     def disable_spindle(self) -> None:
         """
-        Disable spindle via mechanical relay.
+        Disable spindle by clearing OUTPUT_SPINDLE_ON.
+
+        This clears:
+        - OUTPUT_SPINDLE_ON (Bit 2) = 0  (disables LS2315)
+
+        The LS2315 will decelerate according to its internal ramp settings.
 
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  Implementation TBD
         """
-        raise NotImplementedError("Spindle control not yet implemented")
+        if self.digital_outputs is None:
+            status = self.read_status()
+            self.digital_outputs = status.get('digital_outputs', 0)
+
+        new_outputs = self._set_bit(self.digital_outputs, OUTPUT_SPINDLE_ON, False)
+        self.set_outputs(new_outputs)
+
+    def read_spindle_status(self) -> Dict[str, any]:
+        """
+        Read spindle status from digital inputs.
+
+        Returns dictionary with:
+        - 'off': Spindle OFF (computed from Spindle ON output and Stopped input)
+        - 'fault': Spindle fault active
+        - 'at_speed': Spindle at commanded speed
+        - 'load': Spindle load (0-10V analog feedback, if available)
+
+        Note 1 from manual page 19:
+        Spindle OFF = 1 when:
+          - Spindle ON output (Outputs/Byte0/Bit2) = 0 AND
+          - Spindle Stopped input (CN6 pin2) = HIGH
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        inputs = self.read_digital_inputs()
+
+        status = {
+            'off': self._get_bit(inputs, INPUT_SPINDLE_OFF),
+            'fault': self._get_bit(inputs, INPUT_SPINDLE_FAULT),
+            'at_speed': self._get_bit(inputs, INPUT_SPINDLE_AT_SPEED),
+        }
+
+        # Add analog load feedback if available
+        try:
+            analog = self.read_analog_inputs()
+            status['load_voltage'] = analog.get(ANALOG_IN_SPINDLE_LOAD, 0.0)
+        except:
+            status['load_voltage'] = None
+
+        return status
+
+    # -------------------------------------------------------------------------
+    # Cover Lock Control (Schmersal AZM170-02ZK-2321 Door Switch)
+    # -------------------------------------------------------------------------
+
+    def lock_cover(self) -> None:
+        """
+        Engage cover lock.
+
+        Sets OUTPUT_COVER_LOCK (Bit 9) = 1 to lock the Schmersal safety
+        switch. This prevents the door from being opened.
+
+        The Schmersal AZM170-02ZK-2321 integrated lock is controlled via
+        CN9.3-4 (Cover1 Unlock solenoid +/-).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_COVER_LOCK, True)
+
+    def unlock_cover(self) -> None:
+        """
+        Release cover lock.
+
+        Sets OUTPUT_COVER_LOCK (Bit 9) = 0 to unlock the Schmersal safety
+        switch, allowing the door to open if unlock conditions are met:
+
+        Unlock conditions (from manual page 7, CN9 description):
+        - Spindle stopped AND Power is OFF, OR
+        - Spindle stopped AND machine in Safety Zone, OR
+        - Test Mode with Acknowledge (J20 setting dependent)
+
+        Current jumper config (Option 1):
+        - J20 open: Spindle must be stopped for unlock in Test Mode
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_COVER_LOCK, False)
+
+    def read_cover_state(self) -> Dict[str, bool]:
+        """
+        Read cover/door safety switch state.
+
+        Returns:
+            Dictionary with:
+            - 'closed': True if both A and B contacts indicate door closed
+            - 'locked': True if cover lock output is active
+
+        The Schmersal AZM170-02ZK-2321 provides dual redundant contacts
+        (A and B channels) connected to CN9.1-2 and CN9.5-6.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  This method needs cover contact input bit mapping - TBD
+        """
+        # TBD: Need to determine which input bits correspond to cover contacts
+        # Manual shows CN9.1-2 (Cover1 A) and CN9.5-6 (Cover1 B)
+        # but doesn't specify the input bit mapping in Inputs/Byte0 or Byte1
+
+        outputs = self.digital_outputs if self.digital_outputs is not None else 0
+        locked = self._get_bit(outputs, OUTPUT_COVER_LOCK)
+
+        return {
+            'closed': False,  # TBD - need input bit mapping
+            'locked': locked,
+        }
+
+    # -------------------------------------------------------------------------
+    # Tool Changer & Pneumatic Control
+    # -------------------------------------------------------------------------
+
+    def read_air_pressure_ok(self) -> bool:
+        """
+        Read air pressure OK status from INPUT_AIR_PRESSURE (Bit 5).
+
+        Connected to CN7.1 (Input 5) - indicates sufficient air pressure
+        for pneumatic tool changer operations.
+
+        Returns:
+            True if air pressure is sufficient, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_AIR_PRESSURE)
+
+    def read_tool_length_switch(self) -> bool:
+        """
+        Read tool length measurement switch state.
+
+        Connected to CN7.3 (Input 6) - indicates tool length probe contact.
+
+        Returns:
+            True if switch is activated, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_TOOL_LENGTH_SWITCH)
+
+    def read_tool_changer_closed(self) -> bool:
+        """
+        Read tool changer cover closed state.
+
+        Connected to CN7.5 (Input 7).
+
+        Returns:
+            True if tool changer cover is closed, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_TOOL_CHANGER_CLOSED)
+
+    def set_tool_clamp(self, state: bool) -> None:
+        """
+        Control tool clamp solenoid.
+
+        Args:
+            state: True to clamp tool, False to release
+
+        Connected to CN7.7 (Output 5).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CLAMP, state)
+
+    def set_solenoid_valve_2(self, state: bool) -> None:
+        """
+        Control solenoid valve 2.
+
+        Args:
+            state: True to energize, False to de-energize
+
+        Connected to CN7.9 (Output 6).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_SOLENOID_VALVE_2, state)
+
+    def set_solenoid_valve_3(self, state: bool) -> None:
+        """
+        Control solenoid valve 3.
+
+        Args:
+            state: True to energize, False to de-energize
+
+        Connected to CN7.11 (Output 7).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_SOLENOID_VALVE_3, state)
+
+    def unlock_tool_changer(self) -> None:
+        """
+        Unlock tool changer cover.
+
+        Sets OUTPUT_TOOL_CHANGER_UNLOCK (Bit 8) = 1.
+        Connected to CN7.13 (Output 8).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CHANGER_UNLOCK, True)
+
+    def lock_tool_changer(self) -> None:
+        """
+        Lock tool changer cover.
+
+        Sets OUTPUT_TOOL_CHANGER_UNLOCK (Bit 8) = 0.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CHANGER_UNLOCK, False)
 
 
