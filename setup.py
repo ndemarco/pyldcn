@@ -63,12 +63,6 @@ setup(
             'mypy',
         ],
     },
-    entry_points={
-        'console_scripts': [
-            'ldcn=pyldcn.cli.network:main',
-            'drive=pyldcn.cli.motion:main',
-        ],
-    },
     include_package_data=True,
     zip_safe=False,
 )
