@@ -26,7 +26,9 @@ Date: 2025-11-05
 import sys
 import argparse
 from pyldcn import LDCNNetwork
-from pyldcn.safety_monitor import SafetyMonitor
+
+# Import SafetyMonitor from local safety_monitor.py
+from safety_monitor import SafetyMonitor
 
 
 def main():

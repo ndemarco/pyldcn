@@ -72,7 +72,7 @@ class SafetyMonitor:
 
     Example:
         from pyldcn import LDCNNetwork
-        from pyldcn.safety_monitor import SafetyMonitor
+        from safety_monitor import SafetyMonitor
 
         network = LDCNNetwork('/dev/ttyUSB0')
         network.open()
