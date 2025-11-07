@@ -819,7 +819,7 @@ class LDCNDevice(ABC):
         self.model_id: Optional[int] = None
         self.version: Optional[int] = None
 
-    def send_command(self, command: int, data: List[int] = None) -> bytes:
+    def send_command(self, command: int, data: Optional[List[int]] = None) -> bytes:
         """
         Send command to this device.
 
