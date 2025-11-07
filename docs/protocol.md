@@ -12,7 +12,6 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 - **Topology**: Daisy-chained multidrop bus
 - **Baud Rates**: 9600 to 1.25 Mbps
 - **Addressing**: Dynamic (1-127) with group addressing (128-255)
-- **Timing**: 51.2 µs servo tick (19.53 kHz control loop)
 
 ## Packet Structure
 
@@ -25,7 +24,7 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 └────────┴─────────┴──────────┴──────────────────────┴──────────┘
 ```
 
-- **Header**: Always 0xAA
+- **Header**: `0xAA`
 - **Address**: Device address (1-127) or group address (128-255)
 - **Cmd/Len**: `[Data Length (4 bits)][Command (4 bits)]`
 - **Data**: 0-16 data bytes (command-specific)
@@ -41,7 +40,7 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 ```
 
 - **Status**: Status byte (see Status Byte section)
-- **Additional Data**: Configurable via Define Status command
+- **Additional Data**: Configurable via *Define Status* command
 - **Checksum**: 8-bit sum of all bytes before checksum
 
 ## Baud Rate Divisors (BRD)
@@ -62,8 +61,8 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 The following commands are part of the base LDCN protocol and supported by **all device types** (servo drives, I/O controllers, etc.).
 
 Device-specific commands (e.g., Load Trajectory, Load Gains for servos) are documented separately:
-- Servo Drive Commands: See `SERVO_COMMANDS.md`
-- I/O Controller Commands: See hardware manual
+- Servo Drive Commands: See `servo_commands.md`
+- I/O Controller Commands: See 'io_commands.md`
 
 ### 0x1 - Set Address
 
@@ -85,7 +84,7 @@ AA 00 21 01 FF 21  # Set device to address 1, group 0xFF
 
 ### 0x2 - Define Status
 
-Configures what additional data to return in status packets.
+Selects data to return in status packets.
 
 **Data**:
 - Bytes 0-1: Status bits (16-bit little-endian)
@@ -145,7 +144,7 @@ AA 01 0E 0F  # NOP to device 1
 
 **Notes**:
 - Used for polling status
-- Fastest way to check device responsiveness
+- checks for device responsiveness
 
 ### 0xF - Hard Reset
 
@@ -162,7 +161,7 @@ AA FF 0F 0E  # Reset all devices (group command)
 - No status returned
 - Device returns to address 0x00, baud 19200
 - Typically sent to group address 0xFF to reset all devices
-- Wait 2 seconds after reset before communicating
+- Wait 2 seconds after reset before establishing communications
 
 ## Status Byte Interpretation
 
@@ -176,17 +175,17 @@ The meaning of status byte bits and auxiliary status data is **device-specific**
 |-----|------|-------------|
 | 1   | cksum_error | Checksum error in received packet |
 
-**Note**: The additional status data returned depends on the Define Status configuration and is device-specific.
+**Note**: The additional status data returned depends on the *Define Status* configuration and is device-specific.
 
 ## Initialization Sequence
 
 Typical network initialization:
 
-1. **Hard Reset** (at any baud rate)
+1. **Hard Reset** (at any valid baud rate)
    ```
    AA FF 0F 0E
    ```
-   Wait 2 seconds
+   Wait 2 seconds.
 
 2. **Set Addresses** (at 19200 baud)
    ```
@@ -212,10 +211,11 @@ Typical network initialization:
    ```
    Close serial port, wait 500ms, reopen at 125kbps
 
-5. **Configure I/O Controller**
+5. **Commmunicate**
    ```
    AA 06 22 FF FF 26  # Define full status for device 6
    ```
+   Example
 
 ## Timing Requirements
 
@@ -262,7 +262,7 @@ If device stops responding:
 ```
 
 - Use shielded twisted pair cable
-- Terminate both ends with 120Ω resistors
+- Terminate each end. LDCN devices have selectable termination. See datasheet.
 - Maximum cable length: ~1000 ft at 125kbps
 - Connect all GND for reference
 

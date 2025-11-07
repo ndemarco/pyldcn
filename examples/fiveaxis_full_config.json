@@ -291,5 +291,14 @@
         "deceleration_jerk": 10000.0
       }
     }
+  ],
+  "io_devices": [
+    {
+      "name": "supervisor",
+      "address": 6,
+      "device_type": "SK-2310g2",
+      "device_id": 2,
+      "version": 52
+    }
   ]
 }

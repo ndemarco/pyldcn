@@ -176,6 +176,75 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 
 ---
 
+### 0x9 - Set Home Mode
+
+Configures homing mode to capture home position on specified conditions.
+
+**Data**:
+- Byte 0: Homing control byte
+
+**Homing Control Byte**:
+| Bit | Function |
+|-----|----------|
+| 0   | Capture on Limit 1 (Reverse/Negative direction) |
+| 1   | Capture on Limit 2 (Forward/Positive direction) |
+| 2   | Turn motor off on home |
+| 3   | Capture on Index pulse |
+| 4   | Stop abruptly on home |
+| 5   | Stop smoothly on home |
+| 6   | Capture when position error exceeds limit |
+| 7   | Capture when current limiting occurs |
+
+**Important**: Set one (and only one) of bits 2, 4, or 5 for stop behavior.
+
+**Common Control Bytes**:
+- `0x11` (0b00010001): Home to Limit 1, stop abruptly
+- `0x12` (0b00010010): Home to Limit 2, stop abruptly
+- `0x18` (0b00011000): Home to Index, stop abruptly
+- `0x21` (0b00100001): Home to Limit 1, stop smoothly
+- `0x22` (0b00100010): Home to Limit 2, stop smoothly
+
+**Homing Sequence**:
+1. Set home mode with desired capture condition
+2. Load velocity trajectory (use velocity mode, not position mode!)
+3. Start motion (command 0x05)
+4. Wait while `home_in_progress` status bit = 1
+5. Home position captured when condition is met
+
+**Example - Home to Limit 2**:
+```
+AA 01 19 12 2C     # Set home mode: Limit 2 + stop abruptly
+AA 01 94 36 ...    # Load velocity trajectory (forward direction)
+AA 01 05 06        # Start motion
+# Wait for home_in_progress bit to clear
+```
+
+**Example - Two-Stage Homing** (Limit switch then Index pulse):
+```
+AA 01 19 12 2C     # Home to Limit 2, stop abruptly
+AA 01 94 36 ...    # Load velocity trajectory (forward)
+AA 01 05 06        # Start motion
+# Wait for home_in_progress = 0
+
+AA 01 19 18 32     # Home to Index, stop abruptly
+AA 01 94 77 ...    # Load velocity trajectory (reverse, slower)
+AA 01 05 06        # Start motion
+# Wait for home_in_progress = 0
+```
+
+**Status Monitoring**:
+- `home_in_progress` (status bit 7) is set when command is issued
+- Bit remains 1 while searching for home condition
+- Bit clears to 0 when home position is captured
+
+**Notes**:
+- Homing uses **velocity mode**, not position mode
+- The motor moves continuously until the home condition is met
+- Two-stage homing (limit + index) provides both speed and precision
+- Always ensure soft limits are configured before homing
+
+---
+
 ### 0xB - Clear Bits
 
 Clears "sticky" status bits that latch on fault conditions.

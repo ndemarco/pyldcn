@@ -1,13 +1,20 @@
-# CNC-SK-2310g2 Homing Sample Application
+# CNC-SK-2310g2 Supervisory Application Note
 
-**Source:** Doc # 710231005 / Rev. D, Page 13
-**Date:** 2025-10-30
+**Source:** Doc # 710231005 / Rev. D
+**Date:** 2025-11-05
 
 ---
 
 ## Overview
 
-The homing sample application demonstrates the proper wiring and configuration for a **Safety Zone Sensor** (home switch) used with the CNC-SK-2310g2 Supervisor I/O Controller. This implementation uses a dual-contact safety home switch to detect when the machine is in a safe position for cover opening and operator access.
+The CNC-SK-2310g2 Supervisor I/O Controller provides comprehensive machine control and safety monitoring. This application note demonstrates proper configuration and wiring for the controller's key functions:
+
+- **Centralized Safety Control**: Dual-line "work zones" (covers), comprehensive dual-line e-stop monitoring, power supply monitoring and cut-off control
+- **Safety Bus Host**: LS-231SE compatible safety bus coordinator
+- **Spindle Control Interface**: Analog/relay spindle control with safety interlocks
+- **Analog Inputs**: 3 channels for sensors/potentiometers
+- **Digital I/O**: 7 digital inputs, 8 digital outputs
+- **Safety Zone Detection**: Dual-contact home sensor for safe operator access
 
 ---
 

@@ -91,9 +91,19 @@ CMD_HARD_RESET = 0x0F
 # Device-specific commands (used by servo drives)
 CMD_LOAD_TRAJECTORY = 0x04
 CMD_START_MOTION = 0x05
-CMD_LOAD_GAINS = 0x06
+CMD_LOAD_GAINS = 0x06       # Servo: Load PID gains
 CMD_STOP_MOTOR = 0x07
+CMD_SET_HOME_MODE = 0x09
 CMD_CLEAR_BITS = 0x0B
+
+# I/O controller commands (LS-773, SK-2310g2)
+# Note: Some command codes overlap with servo commands (different device types)
+CMD_SET_PWM_IO = 0x04           # I/O: Set PWM duty cycle
+CMD_SYNCH_OUTPUT = 0x05          # I/O: Apply staged outputs
+CMD_SET_OUTPUTS = 0x06           # I/O: Set all output states
+CMD_SET_SYNCH_OUTPUT = 0x07     # I/O: Stage outputs for sync
+CMD_SET_TIMER_MODE = 0x08       # I/O: Configure counter/timer
+CMD_SYNCH_INPUT = 0x0C          # I/O: Capture inputs atomically
 
 # Baud rate divisor (BRD) values
 BAUD_RATES = {
@@ -144,11 +154,12 @@ STATUS_HOME_SOURCE = 0x20
 STATUS_LIMIT2 = 0x40
 STATUS_HOME_IN_PROG = 0x80
 
-# Stop motor flags
-STOP_ABRUPT = 0x01
-STOP_SMOOTH = 0x02
-MOTOR_OFF = 0x04
-AMP_ENABLE = 0x10
+# Stop motor flags (0x7 - STOP_MOTOR command)
+AMP_ENABLE = 0x01   # Bit 0: Pic_ae (Power Driver enable)
+MOTOR_OFF = 0x02    # Bit 1: Turn motor off (disable position servo, set PWM to 0)
+STOP_ABRUPT = 0x04  # Bit 2: Stop abruptly (set command & goal velocity to 0, enable servo)
+STOP_SMOOTH = 0x08  # Bit 3: Stop smoothly (set goal velocity to 0, decelerate)
+STOP_HERE = 0x10    # Bit 4: Stop here (move to specified position abruptly, requires 4 more bytes)
 
 
 # =============================================================================
@@ -1261,6 +1272,135 @@ class LS231SE(LDCNDevice):
         traj_data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
         self.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
+    def set_home_mode(self, limit_switch: Optional[int] = None,
+                      use_index: bool = False,
+                      stop_mode: str = 'abrupt') -> None:
+        """
+        Configure homing mode to capture home position.
+
+        Args:
+            limit_switch: Which limit switch to home to (1=reverse, 2=forward, None=no limit)
+            use_index: If True, capture on encoder index pulse
+            stop_mode: How to stop when home is found: 'abrupt', 'smooth', or 'off'
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+
+        Example:
+            # Home to Limit 2 (forward), stop abruptly
+            device.set_home_mode(limit_switch=2, stop_mode='abrupt')
+
+            # Home to index pulse, stop smoothly
+            device.set_home_mode(use_index=True, stop_mode='smooth')
+        """
+        control_byte = 0
+
+        # Limit switch selection
+        if limit_switch == 1:
+            control_byte |= 0x01  # Bit 0: Limit 1 (reverse)
+        elif limit_switch == 2:
+            control_byte |= 0x02  # Bit 1: Limit 2 (forward)
+
+        # Index pulse
+        if use_index:
+            control_byte |= 0x08  # Bit 3: Index
+
+        # Stop mode (only one should be set)
+        if stop_mode == 'off':
+            control_byte |= 0x04  # Bit 2: Turn motor off
+        elif stop_mode == 'abrupt':
+            control_byte |= 0x10  # Bit 4: Stop abruptly
+        elif stop_mode == 'smooth':
+            control_byte |= 0x20  # Bit 5: Stop smoothly
+        else:
+            raise ValueError(f"Invalid stop_mode: {stop_mode}. Must be 'abrupt', 'smooth', or 'off'")
+
+        self.send_command(CMD_SET_HOME_MODE, [control_byte])
+
+    def home_to_limit(self, limit_switch: int, velocity: int, accel: int,
+                      use_index: bool = False, index_velocity: Optional[int] = None) -> None:
+        """
+        Perform complete homing sequence to a limit switch.
+
+        This executes the homing procedure:
+        1. Set home mode for limit switch
+        2. Load velocity trajectory
+        3. Start motion
+        4. Wait for homing to complete
+        5. Optionally: Fine-tune with index pulse
+
+        Args:
+            limit_switch: Which limit switch (1=reverse, 2=forward)
+            velocity: Homing velocity in counts per servo tick
+            accel: Homing acceleration in counts per tick²
+            use_index: If True, perform second stage homing to index pulse
+            index_velocity: Velocity for index homing (default: velocity/4)
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+
+        Example:
+            # Home to Limit 2, then index pulse
+            device.home_to_limit(limit_switch=2, velocity=40000, accel=10000, use_index=True)
+        """
+        if limit_switch not in (1, 2):
+            raise ValueError("limit_switch must be 1 (reverse) or 2 (forward)")
+
+        # Stage 1: Home to limit switch
+        print(f"Homing to Limit {limit_switch}...")
+
+        # Set home mode
+        self.set_home_mode(limit_switch=limit_switch, stop_mode='abrupt')
+
+        # Load velocity trajectory
+        # Direction: forward for Limit 2, reverse for Limit 1
+        direction_bit = 0 if limit_switch == 2 else 0x40
+        traj_ctrl = 0x36 | direction_bit  # Bits: 1,2,4,5 + optional direction bit
+        traj_data = struct.pack('<Biii', traj_ctrl, 0, velocity, accel)
+        self.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
+
+        # Start motion
+        self.send_command(CMD_START_MOTION, [])
+
+        # Wait for homing to complete
+        print("Waiting for limit switch...")
+        while True:
+            status = self.read_status()
+            if not status.get('home_in_progress', False):
+                break
+            time.sleep(0.05)
+
+        print(f"Reached Limit {limit_switch}")
+
+        # Stage 2: Optional index pulse homing
+        if use_index:
+            if index_velocity is None:
+                index_velocity = velocity // 4  # Use 25% of homing velocity
+
+            print("Fine-tuning to index pulse...")
+
+            # Set home mode for index
+            self.set_home_mode(use_index=True, stop_mode='abrupt')
+
+            # Load velocity trajectory in opposite direction
+            reverse_direction_bit = 0x40 if limit_switch == 2 else 0
+            traj_ctrl = 0x36 | reverse_direction_bit
+            traj_data = struct.pack('<Biii', traj_ctrl, 0, index_velocity, accel)
+            self.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
+
+            # Start motion
+            self.send_command(CMD_START_MOTION, [])
+
+            # Wait for index capture
+            print("Waiting for index pulse...")
+            while True:
+                status = self.read_status()
+                if not status.get('home_in_progress', False):
+                    break
+                time.sleep(0.05)
+
+            print("Homed to index pulse")
+
+        print("Homing complete")
+
     # -------------------------------------------------------------------------
     # Amplifier Control
     # -------------------------------------------------------------------------
@@ -1415,6 +1555,36 @@ class SK2310g2(LDCNDevice):
         """
         status = self.read_status()
         return status.get('diagnostic', 0)
+
+    # -------------------------------------------------------------------------
+    # Digital I/O Control
+    # -------------------------------------------------------------------------
+
+    def set_outputs(self, outputs: int) -> None:
+        """
+        Set all 16 digital outputs immediately.
+
+        Args:
+            outputs: 16-bit output state (bit 0 = Output 0, ..., bit 15 = Output 15)
+
+        Output mapping (SK-2310g2):
+        - Byte 0 (bits 0-7): Outputs 0-7
+        - Byte 1 (bits 8-15): Outputs 8-15
+          - Bit 15 (0x8000): System Lock / Power ON/OFF
+
+        Example:
+            # Enable power relay (Output 15)
+            device.set_outputs(0x8000)
+
+            # Turn on outputs 0, 2, and 15
+            device.set_outputs(0x8005)  # 0x8000 | 0x0004 | 0x0001
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        byte0 = outputs & 0xFF
+        byte1 = (outputs >> 8) & 0xFF
+        self.send_command(CMD_SET_OUTPUTS, [byte0, byte1])
+        self.digital_outputs = outputs
 
     def read_power_state(self) -> bool:
         """

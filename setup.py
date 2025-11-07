@@ -65,7 +65,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'device=pyldcn.cli.device:main',
+            'ldcn=pyldcn.cli.network:main',
+            'drive=pyldcn.cli.motion:main',
         ],
     },
     include_package_data=True,
