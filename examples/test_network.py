@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-test_ldcn_module.py - Test Script for LDCN Network Module
+test_network.py - Test Script for LDCN Network Module
 
-This script tests the ldcn_network module with real hardware.
+This script tests the pyldcn library with real hardware.
 
 Usage:
-    python3 test_ldcn_module.py [options]
+    python3 test_network.py [options]
 
 Options:
     --port PORT         Serial port (default: /dev/ttyUSB0)
