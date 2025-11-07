@@ -18,7 +18,7 @@ Usage:
     # Use different port
     ./examples/safety_check.py --port /dev/ttyUSB1
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-11-05
 """

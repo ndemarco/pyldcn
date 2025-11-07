@@ -2,7 +2,7 @@
 """
 schema.py - Configuration schema definitions and constants
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

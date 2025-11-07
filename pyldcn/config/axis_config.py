@@ -2,7 +2,7 @@
 """
 axis_config.py - Axis configuration validation and management
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

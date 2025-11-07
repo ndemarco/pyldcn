@@ -15,7 +15,7 @@ Example:
         servo.initialize()
         servo.move_to(10.0, 100.0, 50.0, scale=2000.0)
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Version: 0.1.0
 """
@@ -41,7 +41,7 @@ from .devices import (
 )
 
 __version__ = '0.1.0'
-__author__ = 'LinuxCNC Community'
+__author__ = 'NickyDoes'
 __license__ = 'GPL-2.0-or-later'
 
 __all__ = [

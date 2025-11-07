@@ -4,7 +4,7 @@ util.py - LDCN Utility Functions
 
 Utility functions for device list management and configuration.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-10-29
 """

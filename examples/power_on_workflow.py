@@ -17,7 +17,7 @@ Hardware Requirements:
 Usage:
     python3 power_on_workflow.py [--port PORT] [--baud BAUD]
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

@@ -5,7 +5,7 @@ axis_control_example.py - Example of high-level axis control
 Demonstrates using the AxisController API to control axes by name
 using configuration from JSON files.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-11-06
 """

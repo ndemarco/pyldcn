@@ -13,7 +13,7 @@ This is the foundation of the three-file configuration system.
 Usage:
     python3 save_load_device_list.py [--port PORT] [--baud BAUD] [--output FILE]
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

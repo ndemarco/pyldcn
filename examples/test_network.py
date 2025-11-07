@@ -25,7 +25,7 @@ Test Sequence:
 This script and the module it tests are UNVERIFIED until tested against
 real LDCN hardware.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-10-29
 """

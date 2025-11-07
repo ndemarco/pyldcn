@@ -4,7 +4,7 @@ LS-231SE Servo Drive Device
 Servo-specific operations including motion control, status reading,
 and PID gain configuration.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

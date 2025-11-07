@@ -14,7 +14,7 @@ Public API:
     - Exceptions: ConfigError, ConfigValidationError, ConfigMergeError
     - Schema constants: AxisType, VALID_AXIS_NAMES, AXIS_CONFIG_SCHEMA
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

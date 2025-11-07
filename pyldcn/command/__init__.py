@@ -28,7 +28,7 @@ Example:
     # Stop motion
     controller.stop('Z')
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-11-06
 """

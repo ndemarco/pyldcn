@@ -2,7 +2,7 @@
 """
 exceptions.py - Configuration-related exceptions
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

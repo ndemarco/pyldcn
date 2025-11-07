@@ -10,7 +10,7 @@ This module is designed to be imported and used as a Python library:
     controller = AxisController(network, config_file)
     controller.home_axis('X')
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-11-07
 """

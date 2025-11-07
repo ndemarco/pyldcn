@@ -25,7 +25,7 @@ Usage Example:
 All functions in this module are marked as UNVERIFIED until tested against
 real LDCN hardware and behavior compared with original utility scripts.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-10-29
 """

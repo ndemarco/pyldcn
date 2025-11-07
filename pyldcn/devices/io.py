@@ -4,7 +4,7 @@ SK-2310g2 I/O Controller Device
 Generic LDCN I/O controller used for supervisory control with safety
 and spindle control functions.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 """
 

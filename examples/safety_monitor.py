@@ -5,7 +5,7 @@ safety_monitor.py - LDCN Safety System Monitor
 Monitors all LDCN devices to identify which device(s) triggered safety shutdown.
 Uses routine polling with heuristic analysis to determine the first trigger.
 
-Author: LinuxCNC Community
+Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-11-05
 """
