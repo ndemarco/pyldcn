@@ -2,13 +2,11 @@
 
 This document describes commands specific to the **LS-773 Network I/O Node** (and likely other Logosol I/O controllers).
 
-For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see `LDCN_PROTOCOL.md`.
-
 ---
 
 ## Device Overview
 
-The LS-773 is a multifunctional I/O controller designed for a wide range of applications.
+The LS-773 is a LDCN network compliant I/O controller.
 
 **Hardware Features**:
 - 10 general purpose digital inputs (with configurable pull-up/pull-down)
@@ -19,17 +17,69 @@ The LS-773 is a multifunctional I/O controller designed for a wide range of appl
 - 20 KHz PWM mode for OUTPUT 1 and OUTPUT 2
 - Device ID: 2, Version: 50
 
-**Key Specifications**:
-- Power supply: 12 to 32Vdc
-- Communication speed: 19.2 Kbps to 1.25 Mbps
-- Command rate: up to 1000/sec
-- Up to 31 LS-773 nodes on a single network
+---
+
+## Counter/Timer Overview
+
+The LS-773 includes a **32-bit counter/timer** with the following characteristics:
+
+### Operating Modes
+
+**Timer Mode** (internal clock):
+- Counts 5.0 MHz internal clock
+- Resolution: 200 ns per count
+- Maximum time: 858 seconds (14.3 minutes) at 1:1 prescaler
+
+**Counter Mode** (external input):
+- Counts high-to-low transitions on DIGITAL IN 9/COUNT
+- Prescaler divides input frequency (1:1, 2:1, 4:1, 8:1)
+
+### Overflow Behavior
+
+The counter/timer is a **free-running counter** with simple wraparound behavior:
+
+- **Maximum value**: 2^32 - 1 (4,294,967,295)
+- **On overflow**: Wraps to 0 and continues counting
+- **No interrupt**: Counter wraps silently with no status flag or notification
+- **No hardware detection**: Application must detect wraparound by comparing consecutive readings
+
+### Reset Method
+
+There is **no direct counter reset command**. To reset the counter to zero:
+
+1. Disable the counter/timer (Set Timer Mode, bit 0 = 0)
+2. Re-enable the counter/timer (Set Timer Mode, bit 0 = 1)
+
+### Practical Use Cases
+
+The LS-773 is a **polled I/O controller**, not an interrupt-driven real-time controller. The counter/timer is designed for:
+
+1. **External Event Counting** - Encoder pulses, production parts, flow meter pulses
+2. **Elapsed Time Measurement** - Time intervals between polls (not precise event timing)
+3. **Synchronized Capture** - Hardware-latched position/time snapshots using Synch Input (0xC)
+
+**For high-accuracy timed events** (e.g., "trigger output when counter reaches X"), use motion controllers (like LS-370) or PLCs with hardware timer/comparator capabilities.
 
 ---
 
-## I/O-Specific Commands
+## Command Summary
 
-### 0x4 - Set PWM
+For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see [LDCN_PROTOCOL.md](LDCN_PROTOCOL.md).
+
+| Command | Code | Data Bytes | Description |
+|---------|------|------------|-------------|
+| [Set PWM](#set-pwm-0x4) | 0x4 | 2 | Set PWM duty cycle for OUTPUT 1 and OUTPUT 2 |
+| [Synch Output](#synch-output-0x5) | 0x5 | 0 | Apply previously staged output values |
+| [Set Outputs](#set-outputs-0x6) | 0x6 | 2 | Immediately set all digital output states |
+| [Set Synch Output](#set-synch-output-0x7) | 0x7 | 4 | Stage output states and PWM values for later sync |
+| [Set Timer Mode](#set-timer-mode-0x8) | 0x8 | 1 | Configure 32-bit counter/timer operation mode |
+| [Synch Input](#synch-input-0xc) | 0xC | 0 | Atomically capture input states and counter value |
+
+---
+
+## Command Detail
+
+### **Set PWM** (0x4)
 
 Sets the PWM duty cycle for PWM-capable outputs.
 
@@ -51,28 +101,30 @@ send_command(addr, 0x04, [pwm1, pwm2])
 ```
 
 **Notes**:
-- OUTPUT 1 and OUTPUT 2 must first be enabled for PWM mode by setting their output bits to 1 using Set Outputs (0x6)
-- PWM frequency is fixed at 20 KHz
-- For simple on/off control, set PWM to 0 (fully on) or use Set Outputs command
+- OUTPUT 1 and OUTPUT 2 must first be enabled for PWM mode by setting their output bits to `1` using `Set Outputs` command
+- PWM frequency is fixed at 20 KHz (TODO: This may be selectable - verify using LDCN Utility)
+- For simple on/off control, use `Set Outputs` command or set PWM to `0` or `1`.
 
 ---
 
-### 0x5 - Synch Output
+### **Synch Output** (0x5)
 
-Synchronously applies output values previously stored with Set Synch Output command.
+Synchronously applies output values previously stored with `Set Synch Output` command.
 
 **Data**: None
 
-**Example**:
+**Example**: Claude TODO: Verify this works across nodes by reviewing the LS-773 Logosol PDF. Also explain the data format (0x5 is the command; What is 0x6 (checksum) and why Device 1? How do I sync across multiple device nodes?)
 ```
 AA 01 05 06  # Synch output on device 1
 ```
 
-**Use Case**: Allows multiple outputs to change state simultaneously across multiple nodes. First use Set Synch Output (0x7) to stage the values, then use Synch Output (0x5) to apply them atomically.
+**Use Case**: Allows simultaneous state change on multiple outputs across multiple nodes.
+
+First `Set Sync Output` to stage the values, then `Sync Output` to apply. (Claude TODO: Use the more modern 'Sync' instead of Synch.)
 
 ---
 
-### 0x6 - Set Outputs
+### **Set Outputs** (0x6)
 
 Immediately sets the states of all digital output bits.
 
@@ -108,7 +160,7 @@ send_command(addr, 0x06, [outputs, 0x00])
 
 ---
 
-### 0x7 - Set Synch Output
+### **Set Synch Output** (0x7)
 
 Stores output states and PWM values for later synchronous application.
 
@@ -126,15 +178,12 @@ pwm1 = 64   # 75%
 pwm2 = 255  # off
 send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
 
-# Later, apply the staged values atomically
+# Later, simultaneously apply the staged values
 send_command(addr, 0x05, [])  # Synch Output
 ```
-
-**Use Case**: Coordinate simultaneous output changes across multiple I/O nodes on the network.
-
 ---
 
-### 0x8 - Set Timer Mode
+### **Set Timer Mode** (0x8)
 
 Configures the 32-bit counter/timer operation mode.
 
@@ -144,19 +193,10 @@ Configures the 32-bit counter/timer operation mode.
 **Configuration Byte Bits**:
 | Bit | Function |
 |-----|----------|
-| 0   | 0 = Counter/timer disabled, 1 = Counter/timer enabled |
-| 1   | 0 = Timer mode (internal clock), 1 = Counter mode (external input) |
+| 0   | 0 = Disabled, 1 = Enabled |
+| 1   | 0 = Timer mode (5.0 MHz), 1 = Counter mode (DIGITAL IN 9/COUNT) |
 | 4-5 | Prescaler: 00=1:1, 01=2:1, 10=4:1, 11=8:1 |
 | 2,3,6,7 | Not used |
-
-**Timer Mode** (bit 1 = 0):
-- Counts internal 5.0 MHz clock
-- Resolution: 200 ns per count
-- Max time (no prescaler): 858 seconds (14.3 minutes)
-
-**Counter Mode** (bit 1 = 1):
-- Counts high-to-low transitions on DIGITAL IN 9/COUNT input
-- Prescaler divides input frequency
 
 **Example**:
 ```python
@@ -167,16 +207,20 @@ send_command(addr, 0x08, [config])
 # Enable timer mode (5.0 MHz clock), no prescaler
 config = 0b00000001  # bit 0=1 (enable), bit 1=0 (timer), bits 4-5=00 (1:1)
 send_command(addr, 0x08, [config])
+
+# Reset counter (disable then re-enable)
+send_command(addr, 0x08, [0x00])  # Disable
+send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 ```
 
 **Notes**:
 - Counter value is read via Define Status or Read Status commands (bit 4)
-- Counter is 32-bit, wraps at 2^32 - 1
-- Prescaler applies to both timer and counter modes
+- Counter wraps at 2^32 - 1 with no status indication or interrupt
+- See [Counter/Timer Overview](#countertimer-overview) for overflow behavior and use cases
 
 ---
 
-### 0xC - Synch Input
+### **Synch Input** (0xC)
 
 Captures current input states and counter/timer value atomically.
 
@@ -369,248 +413,42 @@ send_command(addr, 0x06, [0x00, 0x00])
 
 ---
 
----
+## SK-2310g2 I/O Hardware Comparison
 
-## SK-2310g2 Supervisor I/O Controller
+The **SK-2310g2** is a specialized supervisory I/O controller that uses the same LDCN command set (0x4, 0x5, 0x6, 0x7, 0x8, 0xC) but has different I/O hardware capabilities.
 
-The **SK-2310g2** (model CNC-SK-2310g2) is a **specialized supervisory I/O controller** designed for CNC machine control systems. Unlike the generic LS-773, it has dedicated safety interlock functions and spindle control capabilities.
+### I/O Hardware Differences
 
-### Device Overview
+| Feature | LS-773 | SK-2310g2 |
+|---------|--------|-----------|
+| **Digital Inputs** | 10 inputs | 7 physical + 9 internal status |
+| **Digital Outputs** | 7 outputs | 8 physical + 8 internal control |
+| **Analog Inputs** | 3 inputs (0-5/10/20/30V) | 3 inputs (ADC-1: 0-10V, ADC-2/3: 0-5V) |
+| **Analog Outputs** | None | 1 output (0-10V DAC for spindle control) |
+| **Counter/Timer** | 32-bit (5.0 MHz) | Unknown (verify with device) |
+| **PWM Outputs** | OUTPUT 1, OUTPUT 2 (20 KHz) | OUTPUT 4 (20 KHz) |
 
-**Hardware Features**:
-- 7 universal digital inputs
-- 8 short-protected digital outputs
-- 3 analog inputs (ADC-1: 0-10V, ADC-2/3: 0-5V)
-- 1 analog output (0-10V for spindle speed control)
-- Dual mechanical relay power supply control
-- Spindle control with safety Enable/Stop relay
-- Emergency stop monitoring (dual line)
-- Work zone cover control (dual contact with Lock/Unlock)
-- Safe zone sensor interface (dual line NC/NO)
-- Safety Bus interface (LS-231 compatible)
-- 5 diagnostic LEDs
+### Analog I/O Summary
 
-**Key Specifications**:
-- Power supply: 18 to 32Vdc
-- Communication speed: 19.2 Kbps to 1.25 Mbps
-- Safety-rated relay contacts (40Vdc, 0.5A)
-- Device ID: (varies by firmware)
-- Version: (varies by firmware)
+**SK-2310g2 Analog Inputs**:
+- **ADC-1** (CN6 pin 10): 0-10V (typically spindle F/V feedback)
+- **ADC-2** (CN17 pin 3): 0-5V (general purpose, potentiometer-ready)
+- **ADC-3** (CN17 pin 2): 0-5V (general purpose, potentiometer-ready)
 
-**Note**: The SK-2310g2 uses the **same LDCN command set** as the LS-773 (commands 0x4, 0x5, 0x6, 0x7, 0x8, 0xC), but has application-specific I/O mappings and additional analog output capability.
+**SK-2310g2 Analog Output**:
+- **DAC** (CN6 pin 11): 0-10V (spindle speed control)
+- Control method: Device-specific firmware command (consult SK-2310g2 documentation)
 
----
+### Application Notes
 
-### SK-2310g2 Specific Features
+**For I/O-focused applications**: Use LS-773 for general-purpose I/O with counter/timer
 
-#### Analog Output (Spindle Speed Control)
-
-The SK-2310g2 includes a 0-10V **analog output** (DAC) on connector CN6 pin 11 for controlling spindle speed.
-
-**Connector**: CN6 - SPINDLE, Pin 11 (DAC)
-**Range**: 0 to 10V
-**Resolution**: Device-specific (typically 8-bit or 10-bit)
-**Application**: Spindle VFD speed control
-
-**Control Method**:
-The analog output is typically controlled via a device-specific command or by writing to an internal register. Consult the SK-2310g2 firmware documentation for the exact command structure.
-
-**Typical Usage**:
-```python
-# Example: Set spindle speed to 50% (5.0V)
-# Exact command structure depends on SK-2310g2 firmware
-# This may use a vendor-specific extension command or DEFINE_STATUS register write
-```
-
-**Pin Assignment** (CN6 - SPINDLE):
-| Pin | Signal | Description |
-|-----|--------|-------------|
-| 1   | GND | Ground |
-| 2   | Spindle Stopped | Input: HIGH=Spindle stopped |
-| 3   | Input 3 | General purpose (typically Spindle FAULT) |
-| 4   | Input 4 | General purpose (typically Spindle AT SPEED) |
-| 5   | Spindle ON | Output: Spindle ENABLE relay |
-| 6   | Output 3 | General purpose (typically Spindle REVERSE) |
-| 7   | Output 4 | General purpose or PWM |
-| 8   | +24V | Short protected 24V source |
-| 9   | Analog GND | Analog ground |
-| 10  | ADC | Analog input 0-10V (Spindle F/V feedback) |
-| 11  | **DAC** | **Analog output 0-10V (Spindle SPEED control)** |
-
----
-
-#### Analog Inputs
-
-Unlike the LS-773 (which has uniform analog input configuration), the SK-2310g2 has **different voltage ranges** for its analog inputs:
-
-**Analog Input Configuration**:
-| Input | Connector | Range | Description |
-|-------|-----------|-------|-------------|
-| ADC-1 (ADC) | CN6 pin 10 | 0-10V | Spindle F/V (actual speed feedback) |
-| ADC-2 | CN17 pin 3 | 0-5V | General purpose analog input |
-| ADC-3 | CN17 pin 2 | 0-5V | General purpose analog input |
-
-**CN17 - ANALOG INPUTS**:
-| Pin | Signal | Description |
-|-----|--------|-------------|
-| 1   | POT (-) | GND or 100Ω to GND (J7 selectable) |
-| 2   | ADC 3 | Analog input 0-5V |
-| 3   | ADC 2 | Analog input 0-5V |
-| 4   | POT (+) | +5V or 100Ω to +5V (J6 selectable) |
-
-**Note**: ADC-2 and ADC-3 can be used with potentiometers using the POT(+) and POT(-) pins for reference voltage.
-
----
-
-#### Digital I/O Mapping (Application-Specific)
-
-The SK-2310g2 has **application-specific I/O mappings** for supervisory control. The following is the standard configuration from the documentation:
-
-**Digital Inputs (Byte0)**:
-| Bit | Input | Function | Connector | Application |
-|-----|-------|----------|-----------|-------------|
-| 0   | Input 0 | Non-dedicated | CN14 | Program run |
-| 1   | Input 1 | Non-dedicated | CN14 | Program stop |
-| 2   | Input 2 | **Spindle OFF** | CN6 | Spindle stopped detection |
-| 3   | Input 3 | Non-dedicated | CN6 | Spindle fault |
-| 4   | Input 4 | Non-dedicated | CN6 | Spindle at speed |
-| 5   | Input 5 | Non-dedicated | CN7 | Air pressure sensor |
-| 6   | Input 6 | Non-dedicated | CN7 | Measurement switch |
-| 7   | Input 7 | Non-dedicated | CN7 | Tool changer closed |
-
-**Digital Inputs (Byte1)** - Status/Safety:
-| Bit | Input | Function | Source | Description |
-|-----|-------|----------|--------|-------------|
-| 0   | Input 8 | **At Home** | Internal | Safe zone active |
-| 1   | Input 9 | **Test Mode** | Internal | Test mode active |
-| 2   | Input 10 | **Servo Fault** | CN3 | Servo drive fault monitor |
-| 3-7 | Input 11-15 | **Status LEDs** | Internal | LED1-LED5 status |
-
-**Digital Outputs (Byte0)**:
-| Bit | Output | Function | Connector | Application |
-|-----|--------|----------|-----------|-------------|
-| 0   | Output 0 | Non-dedicated | CN14 | Program running lamp |
-| 1   | Output 1 | Non-dedicated | CN14 | Program stopped lamp |
-| 2   | Output 2 | **Spindle ON** | CN6 | Spindle ENABLE output |
-| 3   | Output 3 | Non-dedicated | CN6 | Spindle direction |
-| 4   | Output 4 | Non-dedicated/PWM | CN6 | Spindle DC-braking or PWM |
-| 5   | Output 5 | Non-dedicated | CN7 | Tool clamp |
-| 6   | Output 6 | Non-dedicated | CN7 | Spindle motor cooling |
-| 7   | Output 7 | Non-dedicated | CN7 | Tool cooling |
-
-**Digital Outputs (Byte1)** - Supervisory:
-| Bit | Output | Function | Connector | Description |
-|-----|--------|----------|-----------|-------------|
-| 0   | Output 8 | Non-dedicated | CN7 | Tool changer unlock |
-| 1   | Output 9 | **Cover Lock** | CN9, CN10 | Cover lock control |
-| 2   | Output 10 | Home Enable | Internal | Home enable (automation modes) |
-| 3   | Output 11 | **Test Mode Inhibit** | Internal | Disable test mode entry |
-| 4   | Output 12 | **Safety Link Bridge** | CN3 | Safety bus bridge control |
-| 5   | Output 13 | Inverted output | CN7 | General purpose (inverted) |
-| 6   | Output 14 | Reserved | - | Cover lock/unlock (alternate) |
-| 7   | Output 15 | **System Lock** | Internal | System lock / Power ON/OFF |
-
-**Important Notes**:
-- **Spindle ON (Output 2)** and **Safety Link Bridge (Output 12)** cannot be used simultaneously
-- **Input 2 (Spindle OFF)** = 1 when: Output 2 (Spindle ON) = 0 AND physical spindle stopped signal = HIGH
-- See SK-2310g2 wiring diagrams for proper spindle control configuration (Option 1 vs Option 2)
-
----
-
-#### SK-2310g2 Diagnostic Codes
-
-The SK-2310g2 provides diagnostic information via **Byte1 bits 3-7** and **LED indicators**.
-
-**Common Diagnostic Codes** (Byte1):
-| Code | Byte1 | Description | LED Pattern |
-|------|-------|-------------|-------------|
-| 0x04 | 0x04 | Control voltage LOW (<18V) | LED: ●●○●● |
-| 0x08 | 0x08 | System LOCKED | LED: ●○●●● |
-| 0x0C | 0x0C | Cover Open Stop (Cover open, spindle not stopped) | LED: ●○○●● |
-| 0x10 | 0x10 | Emergency Stop | LED: ○●●●● |
-| 0x14 | 0x14 | Cover-1 Open, Cover-2 Open (ready to power) | LED: ○●○●● |
-| 0x1C | 0x1C | At Home, Spindle stopped, Covers Open | LED: ○○○●● |
-| 0x1F | 0x1F | Normal operation - Covers Closed, Power ON | LED: ○○○○○ |
-| 0x00 | 0x00 | Power OFF delay in progress | LED: Blinking |
-
-**LED Indicators**:
-- ● = OFF
-- ○ = ON
-- ☼ = BLINK
-
-**Reading Diagnostic Code**:
-Use the Define Status or Read Status command with appropriate status bits to retrieve Byte1, then decode the upper 5 bits (bits 3-7) for diagnostic information.
-
----
-
-#### Spindle Control
-
-The SK-2310g2 provides comprehensive spindle control with safety interlocks:
-
-**Spindle Control Signals**:
-1. **Spindle ON Output** (Output 2 / Byte0 Bit2, CN6 pin 5):
-   - Controls spindle enable relay
-   - Active when: Output2=1 AND Safety Link Bridge=0 AND Power ON AND Covers closed
-   - Additional conditions based on J16 jumper configuration
-
-2. **Spindle Speed Control** (Analog Output, CN6 pin 11):
-   - 0-10V analog output to spindle VFD
-   - Controls spindle RPM
-   - Typically: 0V = 0 RPM, 10V = Max RPM
-
-3. **Spindle Stopped Input** (Input 2 / Byte0 Bit2, CN6 pin 2):
-   - HIGH = Spindle is stopped
-   - Used for safety interlocks (cover unlock, test mode)
-
-4. **Spindle Feedback** (Analog Input, CN6 pin 10):
-   - 0-10V analog input from spindle VFD
-   - Actual spindle speed (tachometer/F-to-V output)
-   - Used for "at speed" detection and monitoring
-
-**Spindle Control Example Workflow**:
-```python
-# 1. Enable spindle (set Output 2)
-outputs = 0b00000100  # Bit 2 = Spindle ON
-send_command(addr, 0x06, [outputs, 0x00])
-
-# 2. Set spindle speed (device-specific command for analog output)
-# This requires SK-2310g2 firmware-specific command
-# Consult device documentation for analog output command
-
-# 3. Monitor spindle status
-response = send_command(addr, 0x03, [0x01])  # Read inputs
-status_byte0 = response[1]
-spindle_stopped = (status_byte0 >> 2) & 0x01  # Check Input 2
-
-# 4. Read spindle speed feedback
-response = send_command(addr, 0x03, [0x02])  # Read analog input 0
-adc_value = response[1]  # ADC-1 value (spindle F/V)
-```
-
-**Safety Notes**:
-- Spindle cannot be enabled when covers are open (unless in Test Mode with specific jumper settings)
-- Spindle ON requires Safety Link Bridge to be inactive
-- Emergency stop immediately disables spindle
-- Cover lock status affects spindle enable
-
----
-
-## Common I/O Controller Commands
-
-The following commands apply to **both LS-773 and SK-2310g2** devices (and other Logosol I/O controllers):
-
-### Command Summary Table
-
-| Command | Code | Data Bytes | LS-773 | SK-2310g2 | Description |
-|---------|------|------------|--------|-----------|-------------|
-| Set PWM | 0x4 | 2 | ✓ | ✓ | Set PWM duty cycle |
-| Synch Output | 0x5 | 0 | ✓ | ✓ | Apply staged outputs |
-| Set Outputs | 0x6 | 2 | ✓ | ✓ | Set all output states |
-| Set Synch Output | 0x7 | 4 | ✓ | ✓ | Stage outputs for sync |
-| Set Timer Mode | 0x8 | 1 | ✓ | ? | Configure counter/timer |
-| Synch Input | 0xC | 0 | ✓ | ? | Capture inputs atomically |
-
-**Note**: SK-2310g2 may not support all LS-773 features (counter/timer). Verify with device documentation.
+**For supervisory/safety applications**: See [SUPERVISORY_CONTROLLER.md](SUPERVISORY_CONTROLLER.md) for:
+- Safety system architecture and jumper configuration
+- Diagnostic codes and troubleshooting
+- Spindle control with safety interlocks
+- LDCN command reference for safety monitoring
+- Application-specific wiring and integration
 
 ---
 
