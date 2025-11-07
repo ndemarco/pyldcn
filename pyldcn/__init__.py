@@ -34,40 +34,7 @@ from .network import (
     LDCNChecksumError,
     LDCNDetectionError,
     LDCNInitializationError,
-
-    # Constants
-    HEADER,
-    ADDRESS_UNADDRESSED,
-    ADDRESS_GROUP,
-    DEFAULT_BAUD,
-    BAUD_RATES,
-
-    # Commands
-    CMD_RESET_POS,
-    CMD_SET_ADDRESS,
-    CMD_DEFINE_STATUS,
-    CMD_READ_STATUS,
-    CMD_NOP,
-    CMD_HARD_RESET,
-    CMD_SET_BAUD,
-    CMD_LOAD_TRAJECTORY,
-    CMD_START_MOTION,
-    CMD_LOAD_GAINS,
-    CMD_STOP_MOTOR,
-    CMD_CLEAR_BITS,
-
-    # Status bits
-    STATUS_MOVE_DONE,
-    STATUS_CKSUM_ERROR,
-    STATUS_CURRENT_LIMIT,
-    STATUS_POWER_ON,
-    STATUS_POS_ERROR,
-    STATUS_HOME_SOURCE,
-    STATUS_LIMIT2,
-    STATUS_HOME_IN_PROG,
 )
-
-from .safety_monitor import SafetyMonitor
 
 __version__ = '0.1.0'
 __author__ = 'LinuxCNC Community'
@@ -80,7 +47,6 @@ __all__ = [
     'UnknownDevice',
     'LS231SE',
     'SK2310g2',
-    'SafetyMonitor',
 
     # Exceptions
     'LDCNError',
