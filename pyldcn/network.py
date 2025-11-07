@@ -465,6 +465,7 @@ class LDCNNetwork:
         for baud in [230400, 125000, 57600, 38400, 19200, 9600]:
             try:
                 self._open_port(baud)
+                assert self.serial is not None  # Type checker: serial is open
                 self.serial.write(packet)
                 self.serial.flush()
                 time.sleep(0.05)  # Brief delay between attempts
@@ -479,6 +480,7 @@ class LDCNNetwork:
         self.baud_rate = DEFAULT_BAUD
 
         # Flush input buffer
+        assert self.serial is not None  # Type checker: serial is open
         self.serial.reset_input_buffer()
 
     def address_devices(self, max_devices: int = 127) -> int:
