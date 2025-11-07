@@ -15,15 +15,57 @@ from typing import Optional, Dict, List
 # Import from parent package
 from pyldcn.network import (
     LDCNDevice, LDCNNetwork,
-    CMD_READ_STATUS, CMD_LOAD_GAINS, CMD_LOAD_TRAJECTORY,
-    CMD_STOP_MOTOR, CMD_CLEAR_BITS, CMD_SET_HOME_MODE, CMD_START_MOTION,
-    STATUS_BIT_POSITION, STATUS_BIT_VELOCITY, STATUS_BIT_AUX,
-    STATUS_BIT_POS_ERROR, STATUS_BIT_AD_VALUE,
-    STATUS_MOVE_DONE, STATUS_CKSUM_ERROR, STATUS_CURRENT_LIMIT,
-    STATUS_POWER_ON, STATUS_POS_ERROR, STATUS_HOME_SOURCE,
-    STATUS_LIMIT2, STATUS_HOME_IN_PROG,
-    STOP_ABRUPT, AMP_ENABLE,
+    CMD_READ_STATUS,  # Shared command used by all devices
+    STATUS_POWER_ON,  # Shared status flag used by all devices
 )
+
+
+
+# =============================================================================
+# Servo Drive Commands
+# =============================================================================
+
+CMD_LOAD_TRAJECTORY = 0x04
+CMD_START_MOTION = 0x05
+CMD_LOAD_GAINS = 0x06
+CMD_STOP_MOTOR = 0x07
+CMD_SET_HOME_MODE = 0x09
+CMD_CLEAR_BITS = 0x0B
+
+# =============================================================================
+# Servo Status Bits (for DEFINE_STATUS command)
+# =============================================================================
+
+STATUS_BIT_POSITION = 0x0001      # Bit 0: Position (4 bytes)
+STATUS_BIT_AD_VALUE = 0x0002      # Bit 1: A/D value (1 byte)
+STATUS_BIT_VELOCITY = 0x0004      # Bit 2: Velocity (2 bytes)
+STATUS_BIT_AUX = 0x0008           # Bit 3: Auxiliary status byte
+STATUS_BIT_HOME = 0x0010          # Bit 4: Home position (4 bytes)
+STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
+STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
+
+# =============================================================================
+# Servo Status Byte Flags
+# =============================================================================
+
+STATUS_MOVE_DONE = 0x01
+STATUS_CKSUM_ERROR = 0x02
+STATUS_CURRENT_LIMIT = 0x04
+# STATUS_POWER_ON imported from network.py (shared constant)
+STATUS_POS_ERROR = 0x10
+STATUS_HOME_SOURCE = 0x20
+STATUS_LIMIT2 = 0x40
+STATUS_HOME_IN_PROG = 0x80
+
+# =============================================================================
+# Motor Control Flags (STOP_MOTOR command)
+# =============================================================================
+
+AMP_ENABLE = 0x01      # Bit 0: Pic_ae (Power Driver enable)
+MOTOR_OFF = 0x02       # Bit 1: Turn motor off
+STOP_ABRUPT = 0x04     # Bit 2: Stop abruptly
+STOP_SMOOTH = 0x08     # Bit 3: Stop smoothly
+STOP_HERE = 0x10       # Bit 4: Stop here
 
 
 class LS231SE(LDCNDevice):

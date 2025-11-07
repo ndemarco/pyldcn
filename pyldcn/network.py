@@ -32,12 +32,8 @@ Date: 2025-10-29
 
 import serial
 import time
-import struct
-import json
 from typing import Optional, List, Dict, Tuple
 from abc import ABC, abstractmethod
-from enum import IntEnum
-from datetime import datetime
 from pyldcn import util
 
 
@@ -88,23 +84,6 @@ CMD_SET_BAUD = 0x0A
 CMD_NOP = 0x0E
 CMD_HARD_RESET = 0x0F
 
-# Device-specific commands (used by servo drives)
-CMD_LOAD_TRAJECTORY = 0x04
-CMD_START_MOTION = 0x05
-CMD_LOAD_GAINS = 0x06       # Servo: Load PID gains
-CMD_STOP_MOTOR = 0x07
-CMD_SET_HOME_MODE = 0x09
-CMD_CLEAR_BITS = 0x0B
-
-# I/O controller commands (LS-773, SK-2310g2)
-# Note: Some command codes overlap with servo commands (different device types)
-CMD_SET_PWM_IO = 0x04           # I/O: Set PWM duty cycle
-CMD_SYNCH_OUTPUT = 0x05          # I/O: Apply staged outputs
-CMD_SET_OUTPUTS = 0x06           # I/O: Set all output states
-CMD_SET_SYNCH_OUTPUT = 0x07     # I/O: Stage outputs for sync
-CMD_SET_TIMER_MODE = 0x08       # I/O: Configure counter/timer
-CMD_SYNCH_INPUT = 0x0C          # I/O: Capture inputs atomically
-
 # Baud rate divisor (BRD) values
 BAUD_RATES = {
     9600: 0x81,
@@ -139,27 +118,13 @@ STATUS_BIT_DEVICE_ID = 0x0020     # Bit 5: Device ID and version (2 bytes)
 STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
 STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
 
+# Status byte flags (common to all LDCN devices)
+STATUS_POWER_ON = 0x08            # Bit 3: Power button state
+
 # Device IDs (hardware-reported, TBD - verify from real hardware)
 DEVICE_ID_UNKNOWN = 0xFF          # Placeholder for truly unknown devices
 DEVICE_ID_LS231SE = 0x00          # ✅ VERIFIED on hardware: Version 0x15
 DEVICE_ID_SK2310G2 = 0x02         # ✅ VERIFIED on hardware: Version 0x34
-
-# Servo status bit masks
-STATUS_MOVE_DONE = 0x01
-STATUS_CKSUM_ERROR = 0x02
-STATUS_CURRENT_LIMIT = 0x04
-STATUS_POWER_ON = 0x08
-STATUS_POS_ERROR = 0x10
-STATUS_HOME_SOURCE = 0x20
-STATUS_LIMIT2 = 0x40
-STATUS_HOME_IN_PROG = 0x80
-
-# Stop motor flags (0x7 - STOP_MOTOR command)
-AMP_ENABLE = 0x01   # Bit 0: Pic_ae (Power Driver enable)
-MOTOR_OFF = 0x02    # Bit 1: Turn motor off (disable position servo, set PWM to 0)
-STOP_ABRUPT = 0x04  # Bit 2: Stop abruptly (set command & goal velocity to 0, enable servo)
-STOP_SMOOTH = 0x08  # Bit 3: Stop smoothly (set goal velocity to 0, decelerate)
-STOP_HERE = 0x10    # Bit 4: Stop here (move to specified position abruptly, requires 4 more bytes)
 
 
 # =============================================================================
@@ -637,6 +602,9 @@ class LDCNNetwork:
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
+        # Import device classes here to avoid circular import
+        from pyldcn.devices import LS231SE, SK2310g2
+
         self.devices = []
 
         for device_info in device_list:
@@ -916,14 +884,6 @@ class UnknownDevice(LDCNDevice):
 # LS231SE - Servo Drive
 # =============================================================================
 
-
-# =============================================================================
-# Device Classes - Imported from pyldcn.devices
-# =============================================================================
-
-# Device classes moved to pyldcn/devices/ subpackage
-# Import them here for backward compatibility
-from pyldcn.devices import LS231SE, SK2310g2
 
 # =============================================================================
 # Module Test / Example

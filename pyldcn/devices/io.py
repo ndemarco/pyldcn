@@ -14,9 +14,22 @@ from typing import Optional, Dict
 # Import from parent package
 from pyldcn.network import (
     LDCNDevice, LDCNNetwork,
-    CMD_READ_STATUS, CMD_SET_OUTPUTS,
+    CMD_READ_STATUS,
     STATUS_POWER_ON,
 )
+
+
+
+# =============================================================================
+# I/O Controller Commands
+# =============================================================================
+
+CMD_SET_PWM_IO = 0x04          # Set PWM duty cycle
+CMD_SYNCH_OUTPUT = 0x05        # Apply staged outputs
+CMD_SET_OUTPUTS = 0x06         # Set all output states
+CMD_SET_SYNCH_OUTPUT = 0x07    # Stage outputs for sync
+CMD_SET_TIMER_MODE = 0x08      # Configure counter/timer
+CMD_SYNCH_INPUT = 0x0C         # Capture inputs atomically
 
 
 class SK2310g2(LDCNDevice):

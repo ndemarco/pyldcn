@@ -25,8 +25,6 @@ from .network import (
     LDCNNetwork,
     LDCNDevice,
     UnknownDevice,
-    LS231SE,
-    SK2310g2,
 
     # Exceptions
     LDCNError,
@@ -34,6 +32,12 @@ from .network import (
     LDCNChecksumError,
     LDCNDetectionError,
     LDCNInitializationError,
+)
+
+from .devices import (
+    # Device classes
+    LS231SE,
+    SK2310g2,
 )
 
 __version__ = '0.1.0'
