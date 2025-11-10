@@ -805,9 +805,75 @@ class LDCNNetwork:
         """
         return util.load_device_list(filename)
 
+    def soft_initialize(self, create_objects: bool = True,
+                        baud_list: Optional[List[int]] = None) -> Tuple[int, List[Dict]]:
+        """
+        Soft initialization without reset (InitMode.SOFT).
+
+        Discovers devices at their current addresses and baud rate without
+        performing a hard reset. This preserves device state including:
+        - Servo positions and gains
+        - Device configurations
+        - Status reporting settings
+
+        Steps:
+        1. Auto-detect current baud rate
+        2. Scan addresses 1-127 for responding devices
+        3. Query device types and versions
+        4. Verify communication
+        5. Optionally create device objects
+
+        Args:
+            create_objects: If True, create device objects and populate self.devices
+            baud_list: List of baud rates to try (default: COMMON_BAUDS)
+
+        Returns:
+            Tuple of (num_devices, device_info_list)
+            - num_devices: Number of devices discovered
+            - device_info_list: List of device info dicts
+
+        Raises:
+            LDCNInitializationError: If no devices found or baud detection fails
+
+        Example:
+            # Discover devices without reset (preserves state)
+            network = LDCNNetwork('/dev/ttyUSB0')
+            network.open()
+            num_devices, device_info = network.soft_initialize()
+            # Servo positions and gains are preserved
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        try:
+            # Step 1: Auto-detect baud rate
+            detected_baud = self.auto_detect_baud(baud_list)
+
+            # Step 2: Discover devices at current addresses (no reset)
+            device_info = self.discover_devices(start_address=1, end_address=127)
+
+            if len(device_info) == 0:
+                raise LDCNInitializationError("No devices found during soft discovery")
+
+            # Step 3: Verify communication
+            responding = self.verify_devices(device_info)
+
+            if len(responding) == 0:
+                raise LDCNInitializationError("No devices responding during soft discovery")
+
+            # Step 4: Create device objects if requested
+            if create_objects:
+                self.create_device_objects(device_info)
+
+            return len(responding), device_info
+
+        except LDCNDetectionError as e:
+            raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
+        except Exception as e:
+            raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
+
     def initialize(self, create_objects: bool = True) -> Tuple[int, List[Dict]]:
         """
-        Complete network initialization sequence at 19200 baud.
+        Complete network initialization sequence at 19200 baud (InitMode.FULL).
 
         Steps:
         1. Hard reset all devices (at 19200 baud)
@@ -819,6 +885,11 @@ class LDCNNetwork:
 
         This initializes the network at 19200 baud. Use set_baud_rate()
         afterwards to upgrade to a higher speed if desired.
+
+        WARNING: This performs a hard reset which loses all device state:
+        - Servo positions are reset to zero
+        - Gain configurations are lost
+        - Status reporting settings are cleared
 
         Args:
             create_objects: If True, create device objects and populate self.devices
