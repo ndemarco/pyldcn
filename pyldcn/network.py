@@ -871,75 +871,186 @@ class LDCNNetwork:
         except Exception as e:
             raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
 
-    def initialize(self, create_objects: bool = True) -> Tuple[int, List[Dict]]:
+    def initialize(self,
+                   mode: InitMode = InitMode.FULL,
+                   create_objects: bool = True,
+                   expected_devices: Optional[List[Dict]] = None) -> Tuple[int, List[Dict]]:
         """
-        Complete network initialization sequence at 19200 baud (InitMode.FULL).
+        Adaptive network initialization with multiple modes.
 
-        Steps:
-        1. Hard reset all devices (at 19200 baud)
-        2. Wait 2 seconds
-        3. Address devices sequentially (assigns addresses 1, 2, 3...)
-        4. Discover device types and versions (queries each device)
-        5. Verify all devices are responding
-        6. Optionally create device objects and populate self.devices
+        Supports multiple initialization strategies from fast validation to
+        full hard reset. Default mode is FULL for backwards compatibility.
 
-        This initializes the network at 19200 baud. Use set_baud_rate()
-        afterwards to upgrade to a higher speed if desired.
-
-        WARNING: This performs a hard reset which loses all device state:
-        - Servo positions are reset to zero
-        - Gain configurations are lost
-        - Status reporting settings are cleared
+        Initialization Modes:
+        - VALIDATE: Fast validation (~100ms) - verify existing connections
+        - SOFT: Soft discovery (~500ms) - preserve device state
+        - READDRESS: Reset and re-address (~1s) - current baud only
+        - FULL: Full reset (~2s+) - reset at all bauds (default)
+        - AUTO: Adaptive - tries VALIDATE -> SOFT -> READDRESS -> FULL
 
         Args:
+            mode: Initialization mode (default: InitMode.FULL)
             create_objects: If True, create device objects and populate self.devices
+            expected_devices: Optional list for VALIDATE/AUTO modes:
+                [{'address': 1, 'device_id': 0x17}, ...]
 
         Returns:
             Tuple of (num_devices, device_info_list)
-            - num_devices: Number of devices addressed
-            - device_info_list: List of device info dicts from discover_devices()
+            - num_devices: Number of devices found
+            - device_info_list: List of device info dicts
 
         Raises:
             LDCNInitializationError: If initialization fails
 
-        Example:
-            network = LDCNNetwork('/dev/ttyUSB0')
-            network.open()
-            num_devices, device_info = network.initialize()  # At 19200 baud
-            print(f"Found {num_devices} devices:")
-            for dev in device_info:
-                print(f"  Address {dev['address']}: ID=0x{dev['device_id']:02X}, Version=0x{dev['version']:02X}")
-            network.set_baud_rate(125000)  # Upgrade to 125kbps
+        Examples:
+            # Default: Full reset (backwards compatible)
+            network.initialize()
+
+            # Fast validation of existing connection
+            network.initialize(mode=InitMode.VALIDATE)
+
+            # Soft discovery (preserves servo positions/gains)
+            network.initialize(mode=InitMode.SOFT)
+
+            # Automatic adaptive initialization
+            network.initialize(mode=InitMode.AUTO)
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        try:
-            # Step 1: Hard reset
-            self.reset()
+        # Handle AUTO mode - try progressively more invasive approaches
+        if mode == InitMode.AUTO:
+            # Level 0: Try VALIDATE if devices exist and expected list provided
+            if self.devices and expected_devices:
+                if self.validate_devices(expected_devices):
+                    # Validation successful - network is healthy
+                    num_devices = len(self.devices)
+                    # Build device_info from existing devices
+                    device_info = [
+                        {
+                            'address': dev.address,
+                            'device_id': dev.model_id if dev.model_id else 0xFF,
+                            'version': dev.version if dev.version else 0x00,
+                            'responding': True
+                        }
+                        for dev in self.devices
+                    ]
+                    return num_devices, device_info
 
-            # Step 2: Address devices
-            num_devices = self.address_devices()
+            # Level 1: Try SOFT initialization
+            try:
+                return self.soft_initialize(create_objects=create_objects)
+            except LDCNInitializationError:
+                pass  # Fall through to next level
 
-            if num_devices == 0:
-                raise LDCNInitializationError("No devices found during addressing")
+            # Level 2: Try READDRESS (reset at detected baud only)
+            try:
+                detected_baud = self.auto_detect_baud()
+                self._open_port(detected_baud)
+                # Reset at detected baud only
+                packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
+                               CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
+                assert self.serial is not None
+                self.serial.write(packet)
+                self.serial.flush()
+                time.sleep(DELAY_AFTER_RESET)
 
-            # Step 3: Discover device types
-            device_info = self.discover_devices()
+                # Re-address and discover
+                self._open_port(DEFAULT_BAUD)
+                num_devices = self.address_devices()
+                if num_devices > 0:
+                    device_info = self.discover_devices()
+                    if create_objects:
+                        self.create_device_objects(device_info)
+                    return num_devices, device_info
+            except (LDCNDetectionError, LDCNInitializationError):
+                pass  # Fall through to FULL
 
-            # Step 4: Verify communication
-            responding = self.verify_devices(device_info)
+            # Level 3: Fallback to FULL reset
+            mode = InitMode.FULL
 
-            if len(responding) == 0:
-                raise LDCNInitializationError("No devices responding after addressing")
+        # Handle explicit modes
+        if mode == InitMode.VALIDATE:
+            if self.validate_devices(expected_devices):
+                num_devices = len(self.devices)
+                device_info = [
+                    {
+                        'address': dev.address,
+                        'device_id': dev.model_id if dev.model_id else 0xFF,
+                        'version': dev.version if dev.version else 0x00,
+                        'responding': True
+                    }
+                    for dev in self.devices
+                ]
+                return num_devices, device_info
+            else:
+                raise LDCNInitializationError("Validation failed")
 
-            # Step 5: Create device objects if requested
-            if create_objects:
-                self.create_device_objects(device_info)
+        elif mode == InitMode.SOFT:
+            return self.soft_initialize(create_objects=create_objects)
 
-            return num_devices, device_info
+        elif mode == InitMode.READDRESS:
+            # Detect baud, reset at that baud, re-address
+            try:
+                detected_baud = self.auto_detect_baud()
+                self._open_port(detected_baud)
 
-        except Exception as e:
-            raise LDCNInitializationError(f"Initialization failed: {e}") from e
+                # Reset at detected baud only
+                packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
+                               CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
+                assert self.serial is not None
+                self.serial.write(packet)
+                self.serial.flush()
+                time.sleep(DELAY_AFTER_RESET)
+
+                # Re-address and discover at default baud
+                self._open_port(DEFAULT_BAUD)
+                num_devices = self.address_devices()
+                if num_devices == 0:
+                    raise LDCNInitializationError("No devices found during re-addressing")
+
+                device_info = self.discover_devices()
+                responding = self.verify_devices(device_info)
+                if len(responding) == 0:
+                    raise LDCNInitializationError("No devices responding after re-addressing")
+
+                if create_objects:
+                    self.create_device_objects(device_info)
+
+                return num_devices, device_info
+
+            except LDCNDetectionError as e:
+                raise LDCNInitializationError(f"Re-addressing failed: {e}") from e
+
+        elif mode == InitMode.FULL:
+            # Full reset at all baud rates (original behavior)
+            try:
+                # Step 1: Hard reset at all bauds
+                self.reset()
+
+                # Step 2: Address devices
+                num_devices = self.address_devices()
+                if num_devices == 0:
+                    raise LDCNInitializationError("No devices found during addressing")
+
+                # Step 3: Discover device types
+                device_info = self.discover_devices()
+
+                # Step 4: Verify communication
+                responding = self.verify_devices(device_info)
+                if len(responding) == 0:
+                    raise LDCNInitializationError("No devices responding after addressing")
+
+                # Step 5: Create device objects if requested
+                if create_objects:
+                    self.create_device_objects(device_info)
+
+                return num_devices, device_info
+
+            except Exception as e:
+                raise LDCNInitializationError(f"Full initialization failed: {e}") from e
+
+        else:
+            raise ValueError(f"Unknown initialization mode: {mode}")
 
     # -------------------------------------------------------------------------
     # Context Manager Support
