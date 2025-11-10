@@ -59,11 +59,18 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 In addition to individual addresses (1-127), each LDCN device has a **group address** (128-255). Multiple devices can share the same group address, allowing simultaneous command execution without response collisions.
 
+** Broadcast Group Address:**
+
+| Address | Typical Use |
+|---------|-------------|
+| 0xFF    | All devices (broadcast) |
+
 Group addressing scenarios:
 - **Set Baud Rate** - Change network speed for all devices atomically
 - **Load Trajectory** - Prepare multiple axes, then trigger with group start
 - **Start Motion** - Begin coordinated multi-axis moves at the same time
 - **Stop Motion** - Emergency stop across all axes
+
 
 ### Group Leader
 
@@ -107,18 +114,6 @@ send_command(addr=3, cmd=0x8, data=trajectory_z)  # Z axis
 send_command(addr=0xF0, cmd=0x5, data=[0x00])  # Start motion on group 0xF0
 # All three axes begin moving within ±25 microseconds
 ```
-
-### Group Leader Configuration
-
-To designate a group leader, use the **Set Group Leader** command during individual addressing. Consult device documentation for specific implementation details.
-
-### Common Group Addresses
-
-| Address | Typical Use |
-|---------|-------------|
-| 0xFF    | All devices (broadcast) |
-| 0xF0    | Motion axes group |
-| 0xE0    | I/O controllers group |
 
 ### Important Notes
 
