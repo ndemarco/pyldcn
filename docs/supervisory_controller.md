@@ -618,7 +618,7 @@ For complete connector pinouts, see SK-2310g2 Manual pages 6-10.
 **pyldcn Documentation:**
 - [io_commands.md](io_commands.md) - I/O hardware specifications (digital/analog I/O, PWM, counter/timer)
 - [safety_bus.md](safety_bus.md) - Generic Safety Bus protocol specification
-- [LDCN_PROTOCOL.md](LDCN_PROTOCOL.md) - Generic LDCN network commands
+- [ldcn_protocol.md](ldcn_protocol.md) - Generic LDCN network commands
 
 **SK-2310g2 Manual Reference:**
 - Page 5: Jumper configuration summary

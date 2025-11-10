@@ -2,7 +2,7 @@
 
 This document describes commands specific to the **LS-231SE servo drives** (and likely other Logosol servo drives).
 
-For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see `LDCN_PROTOCOL.md`.
+For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
 
 ---
 

@@ -48,39 +48,13 @@ LDCNNetwork                    # pyldcn/network.py
 
 **Purpose**: Manages serial communication and network-level LDCN protocol.
 
-### Key Responsibilities
+### Design Rationale
 
-- Serial port management (open, close, baud rate control)
-- LDCN protocol packet building and transmission
-- Network initialization (reset, addressing, discovery)
-- Device object management
-- Baud rate detection and configuration
+- **Single `send_command()` implementation**: All LDCN communication goes through one method to ensure consistent packet building, checksum calculation, and error handling.
+- **Adaptive initialization**: Multiple initialization modes (VALIDATE, SOFT, READDRESS, FULL, AUTO) allow reconnection without disrupting device state or losing servo positions.
+- **Baud rate flexibility**: Auto-detection and dynamic baud rate changes support both initial setup and performance optimization.
 
-### Method Categories
-
-**Connection Management:**
-- `__init__()`, `open()`, `close()`, `_open_port()`
-
-**Core Protocol:**
-- `send_command()` - Single source of truth for LDCN communication
-
-**Baud Rate Management:**
-- `_try_baud()`, `auto_detect_baud()`, `set_baud_rate()`
-
-**Network Initialization:**
-- `reset()` - Hard reset all devices
-- `address_devices()` - Sequential addressing
-- `discover_devices()` - Query device types
-- `verify_devices()` - Verify communication
-- `create_device_objects()` - Create typed device objects
-- **`initialize()`** - Adaptive initialization with multiple modes (VALIDATE, SOFT, READDRESS, FULL, AUTO)
-- `validate_devices()` - Fast validation without state changes
-- `soft_initialize()` - State-preserving discovery
-
-**Context Manager:**
-- `__enter__()`, `__exit__()`
-
-See [pyldcn/network.py](../../pyldcn/network.py) for detailed documentation.
+See [pyldcn/network.py](../../pyldcn/network.py) for complete API documentation.
 
 ---
 
@@ -88,15 +62,15 @@ See [pyldcn/network.py](../../pyldcn/network.py) for detailed documentation.
 
 **Implementation:** [pyldcn/network.py](../../pyldcn/network.py)
 
-**Purpose**: Abstract base class for all LDCN devices.
+**Purpose**: Abstract base class defining the interface all LDCN devices must implement.
 
-### Key Responsibilities
+### Design Rationale
 
-- Device-specific command delegation
-- Generic LDCN protocol operations (NOP, define status, reset position)
-- Abstract `read_status()` for subclass implementation
+- **Delegation pattern**: Devices delegate `send_command()` to parent network, ensuring single point of protocol handling.
+- **Abstract `read_status()`**: Forces device-specific subclasses to implement their own status parsing logic.
+- **Generic operations**: Base class provides common LDCN commands (NOP, define status) used by all device types.
 
-See [pyldcn/network.py](../../pyldcn/network.py) for detailed documentation.
+See [pyldcn/network.py](../../pyldcn/network.py) for complete API documentation.
 
 ---
 
@@ -104,17 +78,15 @@ See [pyldcn/network.py](../../pyldcn/network.py) for detailed documentation.
 
 **Implementation:** [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py)
 
-**Purpose**: Servo drive specific operations.
+**Purpose**: Implements LS-231SE servo drive operations with motion control and fault monitoring.
 
-### Key Responsibilities
+### Design Rationale
 
-- 7-step servo initialization sequence
-- PID gain configuration
-- Motion control (trajectory loading, position commands)
-- Status reading and fault detection
-- Amplifier enable/disable
+- **7-step initialization sequence**: Required by hardware to properly configure PID gains, trajectory buffer, and amplifier state before motion.
+- **Fault detection**: Status byte parsing identifies checksum errors, current limit, and position error conditions critical for safe operation.
+- **Trajectory mode**: Uses hardware trajectory generator for smooth motion with velocity and acceleration control.
 
-See [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py) for detailed documentation.
+See [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py) for complete API documentation.
 
 ---
 
@@ -122,18 +94,15 @@ See [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py) for detailed docume
 
 **Implementation:** [pyldcn/devices/io.py](../../pyldcn/devices/io.py)
 
-**Purpose**: I/O controller operations. The SK-2310g2 is a generic LDCN I/O device used as supervisory controller with safety and spindle control functions.
+**Purpose**: Implements SK-2310g2 I/O controller, configured as supervisory controller with safety and spindle control.
 
-### Key Responsibilities
+### Design Rationale
 
-- Safety system monitoring (e-stop, guard doors, safe zones)
-- Diagnostic code reading and decoding
-- Power control and monitoring
-- Digital I/O operations
-- Analog I/O (spindle speed control)
-- Spindle enable/disable
+- **Application-specific configuration**: Generic I/O device configured for specific machine roles (safety monitoring, power control, spindle).
+- **Diagnostic decoding**: Translates hardware diagnostic codes into human-readable fault descriptions.
+- **Safety integration**: Monitors e-stop, guard doors, and safe zones as part of machine safety system.
 
-See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) and [SUPERVISORY_CONTROLLER.md](../SUPERVISORY_CONTROLLER.md) for detailed documentation.
+See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) and [supervisory_controller.md](../supervisory_controller.md) for complete documentation.
 
 ---
 
@@ -141,17 +110,15 @@ See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) and [SUPERVISORY_CONTROLL
 
 **Implementation:** [pyldcn/devices/io.py](../../pyldcn/devices/io.py)
 
-**Purpose**: Generic I/O controller operations for the LS-773 Network I/O Node.
+**Purpose**: Implements LS-773 Network I/O Node for general-purpose I/O, PWM, and timing operations.
 
-### Key Responsibilities
+### Design Rationale
 
-- General purpose digital I/O (10 inputs, 6+1 outputs)
-- PWM control (20 KHz on outputs 1 & 2)
-- 32-bit counter/timer with prescaler
-- 3 analog inputs (8-bit, configurable range)
-- Synchronized I/O capture and application
+- **Versatile I/O**: 10 inputs + 7 outputs support diverse machine interfacing needs.
+- **PWM generation**: Hardware PWM at 20 KHz enables motor speed control and other applications.
+- **Timing capabilities**: 32-bit counter/timer with prescaler for precise timing and frequency measurement.
 
-See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) for detailed documentation.
+See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) for complete API documentation.
 
 ---
 
@@ -172,68 +139,7 @@ See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) for detailed documentatio
 
 ---
 
-## Usage Examples
-
-See source code docstrings and example scripts:
-- [pyldcn/network.py](../../pyldcn/network.py) - Class docstrings with examples
-- [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py) - Servo usage examples
-- [pyldcn/devices/io.py](../../pyldcn/devices/io.py) - I/O controller examples
-
-### Basic Usage Pattern
-
-```python
-from pyldcn.network import LDCNNetwork, InitMode
-
-# Automatic adaptive initialization (recommended)
-with LDCNNetwork('/dev/ttyUSB0') as network:
-    num_devices, device_info = network.initialize(mode=InitMode.AUTO)
-    network.set_baud_rate(125000)  # Upgrade speed after init
-
-    # Work with devices
-    servo = network.devices[0]
-    servo.initialize()
-    servo.move_to(position=10.0, velocity=100.0, accel=50.0, scale=2000.0)
-```
-
----
-
-## Implementation Status
-
-### Completed (🟡 IMPLEMENTED - Awaiting Hardware Verification)
-
-1. ✅ **Class Design Documentation** - Complete and detailed
-2. ✅ **Module Structure** - Created modular architecture:
-   - `pyldcn/network.py` (1252 lines) - LDCNNetwork and LDCNDevice base classes
-   - `pyldcn/devices/servo.py` (595 lines) - LS231SE servo drive class
-   - `pyldcn/devices/io.py` (1328 lines) - SK2310g2 and LS773 I/O controller classes
-3. ✅ **Base Protocol Methods** - All implemented:
-   - `send_command()` - Core LDCN protocol communication
-   - `auto_detect_baud()` - Baud rate detection
-   - `set_baud_rate()` - Network baud rate changes
-   - `reset()` - Hard reset at all baud rates
-   - `address_devices()` - Sequential device addressing
-   - `discover_devices()` - Device type discovery
-   - `verify_devices()` - Communication verification
-4. ✅ **Adaptive Initialization** - Enhanced beyond original design:
-   - `validate_devices()` - Fast validation without state changes
-   - `soft_initialize()` - State-preserving discovery
-   - `initialize()` - Multi-mode adaptive initialization (VALIDATE, SOFT, READDRESS, FULL, AUTO)
-5. ✅ **Device-Specific Subclasses** - Fully implemented:
-   - **LS231SE** - Servo drive with 7-step initialization, motion control, status reading
-   - **SK2310g2** - Supervisory controller with safety monitoring, diagnostic decoding, I/O control
-   - **LS773** - Generic I/O node with PWM, counter/timer, analog I/O
-6. ✅ **High-Level Control** - Command layer implemented:
-   - `pyldcn/command/axis.py` - Axis configuration and motion control
-   - `pyldcn/command/machine.py` - Multi-axis machine coordination
-
-### In Progress
-
-7. 🔴 **Hardware Testing** - Ready for testing:
-   - All methods marked 🔴 UNVERIFIED
-   - Awaiting hardware access for verification
-   - Need to compare behavior with original utilities byte-for-byte
-
-### Next Steps
+## Future Work & Testing
 
 1. **Hardware Verification Testing**
    - Test basic protocol methods (send_command, status reading)
@@ -251,8 +157,3 @@ with LDCNNetwork('/dev/ttyUSB0') as network:
    - Add hardware test results and notes
    - Document any deviations from original behavior
    - Create user guide with examples
-
-### Implementation Notes
-
-**Current Status:** All designed functionality has been implemented in code (~3175 lines). The module is feature-complete and ready for hardware testing. The implementation includes enhancements beyond the original design, particularly the adaptive initialization system which provides state preservation and faster reconnection capabilities.
-

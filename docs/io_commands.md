@@ -64,7 +64,7 @@ The LS-773 is a **polled I/O controller**, not an interrupt-driven real-time con
 
 ## Command Summary
 
-For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see [LDCN_PROTOCOL.md](LDCN_PROTOCOL.md).
+For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
 
 | Command | Code | Data Bytes | Description |
 |---------|------|------------|-------------|
