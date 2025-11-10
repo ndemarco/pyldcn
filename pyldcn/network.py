@@ -617,6 +617,71 @@ class LDCNNetwork:
 
         return device_list
 
+    def validate_devices(self, expected_devices: Optional[List[Dict]] = None) -> bool:
+        """
+        Validate existing device objects respond correctly (InitMode.VALIDATE).
+
+        Fast validation that checks if cached device objects still respond
+        at the current baud rate without making any state changes. Optionally
+        verifies device IDs match expected types.
+
+        Args:
+            expected_devices: Optional list of expected device info dicts:
+                [{'address': 1, 'device_id': 0x17}, ...]
+                If None, validates against self.devices only
+
+        Returns:
+            True if all devices respond correctly, False otherwise
+
+        Example:
+            # Validate existing connection
+            if network.validate_devices():
+                print("Network healthy!")
+            else:
+                print("Need to re-initialize")
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # If no devices exist and none expected, validation fails
+        if not self.devices and not expected_devices:
+            return False
+
+        # If devices expected but none cached, validation fails
+        if expected_devices and not self.devices:
+            return False
+
+        try:
+            # Validate each cached device responds
+            for device in self.devices:
+                # Send NOP command to verify communication
+                response = self.send_command(device.address, CMD_NOP)
+                if len(response) < 2:
+                    return False
+
+                # If expected devices provided, verify device ID matches
+                if expected_devices:
+                    expected = next(
+                        (d for d in expected_devices if d['address'] == device.address),
+                        None
+                    )
+                    if expected:
+                        # Query device ID to verify type
+                        id_response = self.send_command(
+                            device.address,
+                            CMD_READ_STATUS,
+                            [STATUS_BIT_DEVICE_ID & 0xFF, (STATUS_BIT_DEVICE_ID >> 8) & 0xFF]
+                        )
+                        if len(id_response) >= 7:
+                            device_id = id_response[5]  # Device ID byte
+                            if device_id != expected['device_id']:
+                                return False
+
+            # All validations passed
+            return True
+
+        except (LDCNTimeoutError, LDCNChecksumError):
+            return False
+
     def verify_devices(self, device_list: List[Dict]) -> List[int]:
         """
         Verify devices are still responding.
