@@ -34,6 +34,7 @@ import serial
 import time
 from typing import Optional, List, Dict, Tuple
 from abc import ABC, abstractmethod
+from enum import Enum
 from pyldcn import util
 
 
@@ -64,6 +65,72 @@ class LDCNDetectionError(LDCNError):
 class LDCNInitializationError(LDCNError):
     """Device initialization failed."""
     pass
+
+
+# =============================================================================
+# Initialization Modes
+# =============================================================================
+
+class InitMode(Enum):
+    """
+    Initialization modes in order of invasiveness.
+
+    Each mode represents a different level of network initialization,
+    from simple validation to full hard reset.
+    """
+
+    VALIDATE = 0
+    """
+    Level 0: Validation only (fastest, ~100ms)
+    - Verify existing device objects respond at current baud rate
+    - Check device IDs match expected types
+    - No state changes, no reset, no re-addressing
+    - Use when: Network is known to be healthy, just need to confirm
+    """
+
+    SOFT = 1
+    """
+    Level 1: Soft recovery (~500ms)
+    - Auto-detect current baud rate
+    - Discover devices at current addresses
+    - Create/update device objects
+    - No reset or re-addressing
+    - Preserves: Device state, positions, gains, configurations
+    - Use when: Network may have changed, but devices are at correct addresses
+    """
+
+    READDRESS = 2
+    """
+    Level 2: Re-addressing (~1s)
+    - Detect current baud rate
+    - Hard reset at detected baud only
+    - Re-address devices sequentially (1, 2, 3, ...)
+    - Full discovery
+    - Loses: Device state, positions, gains
+    - Use when: Addressing is corrupted but baud rate is known
+    """
+
+    FULL = 3
+    """
+    Level 3: Full reset (current behavior, ~2s+)
+    - Reset at ALL baud rates (230400, 125000, 57600, 38400, 19200, 9600)
+    - Re-address devices from scratch
+    - Full discovery
+    - Loses: Everything (state, positions, gains)
+    - Use when: Network state is completely unknown or corrupted
+    - Default: Backwards compatible with existing behavior
+    """
+
+    AUTO = 4
+    """
+    Level 4: Automatic mode selection (adaptive)
+    - Tries progressively more invasive approaches:
+      1. VALIDATE (if expected_devices provided)
+      2. SOFT (if baud can be detected)
+      3. READDRESS (if soft discovery fails)
+      4. FULL (last resort fallback)
+    - Use when: Want intelligent recovery with minimal disruption
+    """
 
 
 # =============================================================================
