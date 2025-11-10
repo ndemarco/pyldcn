@@ -134,76 +134,22 @@ To designate a group leader, use the **Set Group Leader** command during individ
 
 ## Hardware Synchronization Mode
 
-LDCN servo drives support **hardware synchronization** to eliminate timing errors during coordinated multi-axis motion. This is critical for maintaining precise path accuracy over long moves.
+LS-231SE servo drives support **hardware synchronization** to eliminate timing errors from oscillator drift during coordinated multi-axis motion.
 
 ### Timing Error Sources
 
-**Without hardware sync**, two sources of timing error exist:
+Without hardware sync, two timing error sources exist:
 
-1. **Start Time Variation**: ±25 microseconds
-   - When a group "start motion" command is issued, devices start within ±25 μs
-   - At 1 inch/second, this creates ±0.000025 inch positioning error
+1. **Start Time Variation**: ±25 microseconds (group command execution spread)
+2. **Oscillator Drift**: ~10 ppm typical (each drive has independent oscillator)
 
-2. **Oscillator Drift**: ~10 ppm (parts per million)
-   - Each servo drive has its own oscillator (typically)
-   - Frequency variations cause timing to drift during motion
-   - Example: After 10 seconds at 1 inch/second:
-     - Timing error: ±0.0001 seconds
-     - Position error: ±0.0001 inches between axes
-
-**Combined Error Example:**
-- 10-second move at 1 inch/second
-- Total timing error: 0.000025 + 0.0001 = 0.000125 seconds
-- Maximum position error: 0.000125 inches
-- Path deviation (45° motion): 0.000125 inches
-- Accuracy: ±0.0000125 inches per inch of travel
-
-**Error Accumulation:**
-- Timing errors accumulate during a single coordinated move
-- Errors reset at the start of each new move
-- Long moves accumulate more error than short moves
-
-### Hardware Sync Solution
-
-**Enable/Disable Hardware Synchronization Mode** command synchronizes servo ticks across multiple LS-231SE drives connected together.
-
-**How It Works:**
-- Drives connected via dedicated sync hardware lines
-- All drives use synchronized servo tick timing
-- Eliminates oscillator drift (error source #2)
-- Reduces accumulated error to just start time variation (±25 μs)
-
-**When to Use:**
-- Precision multi-axis contouring (circular interpolation, helical paths)
-- Long duration coordinated moves (>5 seconds)
-- Applications requiring <0.0001 inch path accuracy
-- 5+ axis machines with complex kinematics
-
-**When NOT Needed:**
-- Short moves (<1 second) - error doesn't accumulate significantly
-- Point-to-point positioning (not continuous path)
-- Loose tolerance applications (±0.001 inch or greater)
-- Single-axis motion
+Oscillator drift causes timing errors to accumulate during motion. After 10 seconds, drift can produce ±0.0001 second timing error between axes. Errors reset at the start of each new move.
 
 ### Configuration
 
-See [servo_commands.md](servo_commands.md) for the **Enable/Disable Hardware Synchronization Mode** command details.
+Hardware sync mode synchronizes servo ticks across multiple drives via dedicated hardware sync lines. This eliminates oscillator drift, leaving only the ±25 μs start time variation regardless of move duration.
 
-**Typical Setup:**
-1. Wire hardware sync lines between servo drives (consult hardware manual)
-2. Enable hardware sync mode on all drives in the synchronized group
-3. Verify synchronized operation with test moves
-4. Use group commands to coordinate motion
-
-### Performance Improvement
-
-| Scenario | Without Hardware Sync | With Hardware Sync |
-|----------|----------------------|-------------------|
-| 1-second move @ 1 in/s | ±0.000035 inch | ±0.000025 inch |
-| 10-second move @ 1 in/s | ±0.000125 inch | ±0.000025 inch |
-| 60-second move @ 1 in/s | ±0.000625 inch | ±0.000025 inch |
-
-**Note**: Error remains constant with hardware sync regardless of move duration.
+See [servo_commands.md](servo_commands.md) for the **Enable/Disable Hardware Synchronization Mode** command.
 
 ## Generic LDCN Commands
 
