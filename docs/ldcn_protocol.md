@@ -10,7 +10,7 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 - **Physical Layer**: RS-485 differential signaling
 - **Topology**: Daisy-chained multidrop bus
-- **Baud Rates**: 9600 to 1.25 Mbps
+- **Baud Rates**: 9600 to 1.25 Mbps (19200 default at power on/reset)
 - **Addressing**: Dynamic (1-127) with group addressing (128-255)
 
 ## Packet Structure
@@ -55,6 +55,155 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 | 312500    | 0x0F      | High-speed |
 | 625000    | 0x07      | High-speed |
 | 1250000   | 0x03      | Maximum |
+
+## Group Addressing
+
+In addition to individual addresses (1-127), each LDCN device has a **group address** (128-255). Multiple devices can share the same group address, enabling simultaneous command execution without response collisions.
+
+### Purpose
+
+Group addressing is essential for commands that must be performed simultaneously across multiple devices:
+- **Start Motion** - Begin coordinated multi-axis moves at the same time
+- **Set Baud Rate** - Change network speed for all devices atomically
+- **Stop Motion** - Emergency stop across all axes
+- **Load Trajectory** - Prepare multiple axes, then trigger with group start
+
+### How It Works
+
+**Command Execution:**
+1. Host sends command to group address (e.g., 0xFF)
+2. All devices with that group address execute the command
+3. **No devices respond** - prevents RS-485 bus collisions from multiple simultaneous responses
+
+**Group Leader (Optional):**
+- One device in the group can be designated as the "group leader"
+- The group leader sends a status response even for group commands
+- Allows host to verify command was received and executed
+- Other group members remain silent
+
+### Configuration
+
+Group addresses are set using the **Set Address** command (0x1):
+
+```
+AA 00 21 [individual] [group] [checksum]
+```
+
+**Example - Creating a motion group:**
+```
+AA 00 21 01 F0 11  # Device 1: individual=1, group=0xF0
+AA 00 21 02 F0 12  # Device 2: individual=2, group=0xF0
+AA 00 21 03 F0 13  # Device 3: individual=3, group=0xF0
+```
+
+Now all three devices belong to group 0xF0.
+
+### Synchronized Motion Example
+
+**Workflow for coordinated 3-axis move:**
+
+```python
+# 1. Load trajectories on each axis individually (bit 7 = 0, don't start yet)
+send_command(addr=1, cmd=0x8, data=trajectory_x)  # X axis
+send_command(addr=2, cmd=0x8, data=trajectory_y)  # Y axis
+send_command(addr=3, cmd=0x8, data=trajectory_z)  # Z axis
+
+# 2. Start all axes simultaneously with group command
+send_command(addr=0xF0, cmd=0x5, data=[0x00])  # Start motion on group 0xF0
+# All three axes begin moving within ±25 microseconds
+```
+
+### Group Leader Configuration
+
+To designate a group leader, use the **Set Group Leader** command during individual addressing. Consult device documentation for specific implementation details.
+
+### Common Group Addresses
+
+| Address | Typical Use |
+|---------|-------------|
+| 0xFF    | All devices (broadcast) |
+| 0xF0    | Motion axes group |
+| 0xE0    | I/O controllers group |
+
+### Important Notes
+
+- **No response collision**: Group commands never generate responses (except from group leader)
+- **Baud rate changes**: Always use group address 0xFF and do NOT set a group leader
+- **Timing**: Devices execute group commands within ±25 microseconds of each other
+- **Each device has one group**: A device can only belong to one group at a time
+
+## Hardware Synchronization Mode
+
+LDCN servo drives support **hardware synchronization** to eliminate timing errors during coordinated multi-axis motion. This is critical for maintaining precise path accuracy over long moves.
+
+### Timing Error Sources
+
+**Without hardware sync**, two sources of timing error exist:
+
+1. **Start Time Variation**: ±25 microseconds
+   - When a group "start motion" command is issued, devices start within ±25 μs
+   - At 1 inch/second, this creates ±0.000025 inch positioning error
+
+2. **Oscillator Drift**: ~10 ppm (parts per million)
+   - Each servo drive has its own oscillator (typically)
+   - Frequency variations cause timing to drift during motion
+   - Example: After 10 seconds at 1 inch/second:
+     - Timing error: ±0.0001 seconds
+     - Position error: ±0.0001 inches between axes
+
+**Combined Error Example:**
+- 10-second move at 1 inch/second
+- Total timing error: 0.000025 + 0.0001 = 0.000125 seconds
+- Maximum position error: 0.000125 inches
+- Path deviation (45° motion): 0.000125 inches
+- Accuracy: ±0.0000125 inches per inch of travel
+
+**Error Accumulation:**
+- Timing errors accumulate during a single coordinated move
+- Errors reset at the start of each new move
+- Long moves accumulate more error than short moves
+
+### Hardware Sync Solution
+
+**Enable/Disable Hardware Synchronization Mode** command synchronizes servo ticks across multiple LS-231SE drives connected together.
+
+**How It Works:**
+- Drives connected via dedicated sync hardware lines
+- All drives use synchronized servo tick timing
+- Eliminates oscillator drift (error source #2)
+- Reduces accumulated error to just start time variation (±25 μs)
+
+**When to Use:**
+- Precision multi-axis contouring (circular interpolation, helical paths)
+- Long duration coordinated moves (>5 seconds)
+- Applications requiring <0.0001 inch path accuracy
+- 5+ axis machines with complex kinematics
+
+**When NOT Needed:**
+- Short moves (<1 second) - error doesn't accumulate significantly
+- Point-to-point positioning (not continuous path)
+- Loose tolerance applications (±0.001 inch or greater)
+- Single-axis motion
+
+### Configuration
+
+See [servo_commands.md](servo_commands.md) for the **Enable/Disable Hardware Synchronization Mode** command details.
+
+**Typical Setup:**
+1. Wire hardware sync lines between servo drives (consult hardware manual)
+2. Enable hardware sync mode on all drives in the synchronized group
+3. Verify synchronized operation with test moves
+4. Use group commands to coordinate motion
+
+### Performance Improvement
+
+| Scenario | Without Hardware Sync | With Hardware Sync |
+|----------|----------------------|-------------------|
+| 1-second move @ 1 in/s | ±0.000035 inch | ±0.000025 inch |
+| 10-second move @ 1 in/s | ±0.000125 inch | ±0.000025 inch |
+| 60-second move @ 1 in/s | ±0.000625 inch | ±0.000025 inch |
+
+**Note**: Error remains constant with hardware sync regardless of move duration.
 
 ## Generic LDCN Commands
 
