@@ -249,13 +249,14 @@ Resets controller to power-up state.
 
 **Example**:
 ```
-AA FF 0F 0E  # Reset all devices (group command)
+AA FF 0F 0E  # Reset all devices
 ```
 
 **Notes**:
 - No status returned
 - Device returns to address 0x00, baud 19200
-- Typically sent to group address 0xFF to reset all devices
+- **Special behavior at address 0xFF**: Resets device regardless of its configured group address
+- Can reset entire network or contiguous sub-chain (if at default baud)
 - Wait 2 seconds after reset before establishing communications
 
 ## Status Byte Interpretation
