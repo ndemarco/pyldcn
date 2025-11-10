@@ -9,7 +9,7 @@ License: GPL v2 or later
 """
 
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 # Import from parent package
 from pyldcn.network import (
@@ -82,7 +82,7 @@ OUTPUT_SOLENOID_VALVE_3 = 7        # Bit 7: CN7 - Solenoid valve 3
 
 # Byte1 - System Control Outputs
 OUTPUT_TOOL_CHANGER_UNLOCK = 8     # Bit 0: CN7 - Tool changer cover unlock
-OUTPUT_COVER_LOCK = 9              # Bit 1: CN9/CN10 - Cover lock control
+OUTPUT_GUARD_LOCK = 9              # Bit 1: CN9/CN10 - Guard lock control
 OUTPUT_HOME_ENABLE = 10            # Bit 2: See automation modes / Home enable
 OUTPUT_TEST_MODE_INHIBIT = 11      # Bit 3: Test mode inhibit control
 OUTPUT_SAFETY_LINK_BRIDGE = 12     # Bit 4: CN3 Safety Bus - Safety Link Bridge (see Note 3)
@@ -163,8 +163,8 @@ class SK2310g2(LDCNDevice):
         - Spindle stopped AND machine in Safety Zone, OR
         - Test Mode with Acknowledge (J20 setting dependent)
 
-    Jumper J16 2-3 short ensures Spindle ON is disabled when covers are open.
-    Jumper J20 open requires spindle stopped before cover unlock in Test Mode.
+    Jumper J16 2-3 short ensures Spindle ON is disabled when guards are open.
+    Jumper J20 open requires spindle stopped before guard unlock in Test Mode.
     See pages 11-12 of SK-2310g2 manual for complete jumper configurations.
 
     TOOL CHANGER & PNEUMATIC CONTROL (CN7):
@@ -289,7 +289,7 @@ class SK2310g2(LDCNDevice):
         status = self.read_status()
         return status.get('diagnostic', 0)
 
-    def decode_diagnostic(self, diag_code: Optional[int] = None) -> Dict[str, any]:
+    def decode_diagnostic(self, diag_code: Optional[int] = None) -> Dict[str, Any]:
         """
         Decode diagnostic code to human-readable system state.
 
@@ -302,7 +302,7 @@ class SK2310g2(LDCNDevice):
             Dictionary with:
             - 'code': Diagnostic code (0x00-0xFF)
             - 'description': Human-readable description
-            - 'power_enable': True if Power Enable relay is ON
+            - 'power_enable': True if Power Enable is ON (TODO: Determine if this is a state - flashing power LED?)
             - 'power_relays': True if Power A & B relays are ON
             - 'motor_power_on': True if motor power is actually ON
             - 'byte1_bits': Dict of Byte1 status bits (bits 7,6,5,4,3)
@@ -345,42 +345,42 @@ class SK2310g2(LDCNDevice):
                 'details': 'Output short circuit detected'
             },
             0x04: {
-                'desc': 'Control voltage LOW (<18V)',
+                'desc': 'Control voltage low (<18V)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,2,4,5],
                 'details': 'Control voltage below 18V'
             },
             0x05: {
-                'desc': 'Home/Test switch malfunction (both contacts ON)',
+                'desc': 'Safe / Manual switch malfunction (both contacts ON)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,2,4],
-                'details': 'Both Home or Test Mode switch contacts are ON'
+                'details': 'Both Safe or Manual Mode switch contacts are ON'
             },
             0x06: {
-                'desc': 'Power-up Home error',
+                'desc': 'Power-up Safe error',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,2,5],
-                'details': 'Home sensor error detected at power-up'
+                'details': 'Machine Safe error detected at power-up'
             },
             0x07: {
-                'desc': 'Power-up Test Mode error',
+                'desc': 'Power-up Manual Override Mode error',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,2],
-                'details': 'Test Mode switch error detected at power-up'
+                'details': 'Manual Override Mode switch error detected at power-up'
             },
             0x08: {
-                'desc': 'System LOCKED',
+                'desc': 'System Locked',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,3,4,5],
                 'details': 'System locked via software command'
             },
             0x09: {
-                'desc': 'Watchdog Stop',
+                'desc': 'Watchdog Timeout',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,3,4],
@@ -391,35 +391,35 @@ class SK2310g2(LDCNDevice):
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,3,5],
-                'details': 'Safety Link daisy-chain broken'
+                'details': 'Safety Link daisy-chain broken. Check each device status'
             },
             0x0B: {
-                'desc': 'Cover Open Stop (Spindle not stopped)',
+                'desc': 'Guard Open Stop (Spindle not stopped)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,3],
-                'details': 'Cover open but spindle still running'
+                'details': 'Guard open while spindle was moving'
             },
             0x0C: {
-                'desc': 'Cover Open Stop (Not at Home)',
+                'desc': 'Guard Open Stop (machine not safe)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,4,5],
-                'details': 'Cover open and machine not at home position'
+                'details': 'Guard open and machine not safe'
             },
             0x0D: {
-                'desc': 'Cover Open Stop (Test Mode without Acknowledge)',
+                'desc': 'Guard Open Stop (Manual mode without Acknowledge)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,4],
-                'details': 'Cover open in Test Mode without Acknowledge pressed'
+                'details': 'Guard open in Manual mode without Acknowledge pressed'
             },
             0x0E: {
-                'desc': 'Cover contact Fault',
+                'desc': 'Guard contact Fault',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [1,5],
-                'details': 'One or more cover contacts malfunctioning'
+                'details': 'One or more guard contacts malfunctioning'
             },
             0x0F: {
                 'desc': 'Limit Switch Stop',
@@ -457,95 +457,95 @@ class SK2310g2(LDCNDevice):
                 'details': 'Motor power supply (UM) voltage too low'
             },
             0x14: {
-                'desc': 'Covers open (ready to power)',
+                'desc': 'Guards open (ready to power)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [2,4,5],
-                'details': 'Both covers open, system ready for power ON'
+                'details': 'Both guards open, Power LED flashing'
             },
             0x15: {
-                'desc': 'Cover1 closed, Cover2 open (ready to power)',
+                'desc': 'Guard 1 closed, Guard 2 open (ready to power)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [2,4],
-                'details': 'Cover1 closed, Cover2 open'
+                'details': 'Guard 1 closed, Guard 2 open, Power LED flashing'
             },
             0x16: {
-                'desc': 'Cover1 open, Cover2 closed (ready to power)',
+                'desc': 'Guard 1 open, Guard 2 closed (ready to power)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [2,5],
-                'details': 'Cover1 open, Cover2 closed'
+                'details': 'Guard 1 open, Guard 2 closed, Power LED flashing'
             },
             0x17: {
-                'desc': 'Covers closed (ready to power)',
+                'desc': 'Both Guards closed (ready to power)',
                 'power_enable': False,
                 'power_ab': False,
                 'leds': [2],
-                'details': 'All covers closed, ready for power ON'
+                'details': 'Both guards closed, Power LED flashing'
             },
             0x18: {
-                'desc': 'Covers open, Test Mode',
+                'desc': 'Both guards open, Manual mode enabled',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [3,4,5],
-                'details': 'Test Mode active with covers open'
+                'details': 'Manual mode active with guards open'
             },
             0x19: {
-                'desc': 'Cover1 closed, Cover2 open, Test Mode',
+                'desc': 'Guard 1 closed, Guard 2 open, Manual mode enabled',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [3,4],
-                'details': 'Test Mode: Cover1 closed, Cover2 open'
+                'details': 'Manual mode: Guard 1 closed, Guard 2 open'
             },
             0x1A: {
-                'desc': 'Cover1 open, Cover2 closed, Test Mode',
+                'desc': 'Guard 1 open, Guard 2 closed, Manual mode enabled',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [3,5],
-                'details': 'Test Mode: Cover1 open, Cover2 closed'
-            },
+                'details': 'Manual mode: Guard 1 open, Guard 2 closed'
+        },
             0x1B: {
-                'desc': 'Covers closed, Test Mode',
+                'desc': 'Both guards closed, Manual Mode',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [3],
-                'details': 'Test Mode active with covers closed'
+                'details': 'Manual mode active with both guards closed'
             },
             0x1C: {
-                'desc': 'At Home, spindle stopped, covers open',
+                'desc': 'Machine safe, spindle stopped, guards open',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [4,5],
-                'details': 'Machine at home, spindle stopped, covers open'
+                'details': 'Machine safe, spindle stopped, guards open'
             },
             0x1D: {
-                'desc': 'At Home, spindle stopped, Cover1 closed, Cover2 open',
+                'desc': 'Machine safe, spindle stopped, Guard 1 closed, Guard 2 open',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [4],
-                'details': 'At home with Cover1 closed, Cover2 open'
+                'details': 'Machine safe with Guard 1 closed, Guard 2 open'
             },
             0x1E: {
-                'desc': 'At Home, spindle stopped, Cover1 open, Cover2 closed',
+                'desc': 'Machine safe, spindle stopped, Guard 1 open, Guard 2 closed',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [5],
-                'details': 'At home with Cover1 open, Cover2 closed'
+                'details': 'Machine safe with Guard 1 open, Guard 2 closed'
             },
             0x1F: {
-                'desc': 'Normal operation - covers closed',
+                'desc': 'Normal operation - Guards closed',
                 'power_enable': True,
                 'power_ab': True,
                 'leds': [],
-                'details': 'All systems ready, covers closed, powered'
+                'details': 'All systems ready, guards closed, powered'
             },
             0x00: {
                 'desc': 'Power OFF delay in progress',
                 'power_enable': False,
                 'power_ab': True,
                 'leds': [1,2,3,4,5],
-                'details': 'Power OFF command delay (J2 setting)'
+                'details': 'Power OFF command delay (per J2 setting)'
             },
         }
 
@@ -580,7 +580,7 @@ class SK2310g2(LDCNDevice):
             'led_states': diag_info['leds'],
         }
 
-    def get_system_state(self) -> Dict[str, any]:
+    def get_system_state(self) -> Dict[str, Any]:
         """
         Get comprehensive system state combining diagnostic and I/O status.
 
@@ -591,7 +591,7 @@ class SK2310g2(LDCNDevice):
             - 'spindle_status': Spindle state (off/fault/at_speed)
             - 'safety_status': Safety system state
             - 'io_status': Digital I/O states
-            - 'cover_status': Door/cover states
+            - 'guard_status': Door/guard states
             - 'system_ready': True if system is operational
 
         This provides a complete snapshot of machine state.
@@ -725,7 +725,7 @@ class SK2310g2(LDCNDevice):
 
         - Byte 1 (bits 8-15): System control outputs
           - Bit 8: Tool changer unlock
-          - Bit 9: Cover lock
+          - Bit 9: Guard lock
           - Bit 10: Home enable
           - Bit 11: Test mode inhibit
           - Bit 12: Safety Link Bridge (⚠️ Note 3 constraint)
@@ -869,18 +869,18 @@ class SK2310g2(LDCNDevice):
         # TBD: Read appropriate digital inputs
         raise NotImplementedError("E-stop monitoring not yet implemented - I/O mapping TBD")
 
-    def read_cover_state(self) -> bool:
+    def read_guard_state(self) -> bool:
         """
-        Read work zone cover state (guarded area contacts).
+        Read work zone guard state (guarded area contacts).
 
         Returns:
-            True if covers closed (safe), False if any cover open
+            True if guards closed (safe), False if any guard open
 
         🔴 UNVERIFIED - Not yet tested on hardware
         ⚠️  Implementation TBD - depends on I/O channel mapping
         """
         # TBD: Read appropriate digital inputs
-        raise NotImplementedError("Cover monitoring not yet implemented - I/O mapping TBD")
+        raise NotImplementedError("Guard monitoring not yet implemented - I/O mapping TBD")
 
     def read_safe_zone_state(self) -> bool:
         """
@@ -1077,9 +1077,9 @@ class SK2310g2(LDCNDevice):
         - CN6.6 (Direction) controls → LS2315 CN7.6 SpindleREVERSE
 
         Jumper Configuration (Option 1 - this machine):
-        - J16 2-3 short: Spindle ON disabled when covers are open
-        - J20 open: Spindle must be stopped before cover unlock in Test Mode
-        - J10.3 open: Spindle operation NOT enabled in Test Mode
+        - J16 2-3 short: Spindle ON disabled when guards are open
+        - J20 open: Spindle must be stopped before guard unlock in Manual mode
+        - J10.3 open: Spindle operation NOT enabled in Manual mode
 
         Args:
             direction: 'forward' (CW) or 'reverse' (CCW)
@@ -1123,7 +1123,7 @@ class SK2310g2(LDCNDevice):
         new_outputs = self._set_bit(self.digital_outputs, OUTPUT_SPINDLE_ON, False)
         self.set_outputs(new_outputs)
 
-    def read_spindle_status(self) -> Dict[str, any]:
+    def read_spindle_status(self) -> Dict[str, Any]:
         """
         Read spindle status from digital inputs.
 
@@ -1152,69 +1152,69 @@ class SK2310g2(LDCNDevice):
         try:
             analog = self.read_analog_inputs()
             status['load_voltage'] = analog.get(ANALOG_IN_SPINDLE_LOAD, 0.0)
-        except:
+        except Exception:
             status['load_voltage'] = None
 
         return status
 
     # -------------------------------------------------------------------------
-    # Cover Lock Control (Schmersal AZM170-02ZK-2321 Door Switch)
+    # Guard Lock Control (Schmersal AZM170-02ZK-2321 Door Switch)
     # -------------------------------------------------------------------------
 
-    def lock_cover(self) -> None:
+    def lock_guard(self) -> None:
         """
-        Engage cover lock.
+        Engage guard lock.
 
-        Sets OUTPUT_COVER_LOCK (Bit 9) = 1 to lock the Schmersal safety
+        Sets OUTPUT_GUARD_LOCK (Bit 9) = 1 to lock the Schmersal safety
         switch. This prevents the door from being opened.
 
         The Schmersal AZM170-02ZK-2321 integrated lock is controlled via
-        CN9.3-4 (Cover1 Unlock solenoid +/-).
+        CN9.3-4 (Guard1 Unlock solenoid +/-).
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        self.set_output_bit(OUTPUT_COVER_LOCK, True)
+        self.set_output_bit(OUTPUT_GUARD_LOCK, True)
 
-    def unlock_cover(self) -> None:
+    def unlock_guard(self) -> None:
         """
-        Release cover lock.
+        Release guard lock.
 
-        Sets OUTPUT_COVER_LOCK (Bit 9) = 0 to unlock the Schmersal safety
+        Sets OUTPUT_GUARD_LOCK (Bit 9) = 0 to unlock the Schmersal safety
         switch, allowing the door to open if unlock conditions are met:
 
         Unlock conditions (from manual page 7, CN9 description):
         - Spindle stopped AND Power is OFF, OR
         - Spindle stopped AND machine in Safety Zone, OR
-        - Test Mode with Acknowledge (J20 setting dependent)
+        - Manual mode with Acknowledge (J20 setting dependent)
 
         Current jumper config (Option 1):
-        - J20 open: Spindle must be stopped for unlock in Test Mode
+        - J20 open: Spindle must be stopped for unlock in Manual mode
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        self.set_output_bit(OUTPUT_COVER_LOCK, False)
+        self.set_output_bit(OUTPUT_GUARD_LOCK, False)
 
-    def read_cover_state(self) -> Dict[str, bool]:
+    def read_guard_lock_state(self) -> Dict[str, bool]:
         """
-        Read cover/door safety switch state.
+        Read guard/door safety switch state.
 
         Returns:
             Dictionary with:
             - 'closed': True if both A and B contacts indicate door closed
-            - 'locked': True if cover lock output is active
+            - 'locked': True if guard lock output is active
 
         The Schmersal AZM170-02ZK-2321 provides dual redundant contacts
         (A and B channels) connected to CN9.1-2 and CN9.5-6.
 
         🔴 UNVERIFIED - Not yet tested on hardware
-        ⚠️  This method needs cover contact input bit mapping - TBD
+        ⚠️  This method needs guard contact input bit mapping - TBD
         """
-        # TBD: Need to determine which input bits correspond to cover contacts
-        # Manual shows CN9.1-2 (Cover1 A) and CN9.5-6 (Cover1 B)
+        # TBD: Need to determine which input bits correspond to guard contacts
+        # Manual shows CN9.1-2 (Guard1 A) and CN9.5-6 (Guard1 B)
         # but doesn't specify the input bit mapping in Inputs/Byte0 or Byte1
 
         outputs = self.digital_outputs if self.digital_outputs is not None else 0
-        locked = self._get_bit(outputs, OUTPUT_COVER_LOCK)
+        locked = self._get_bit(outputs, OUTPUT_GUARD_LOCK)
 
         return {
             'closed': False,  # TBD - need input bit mapping

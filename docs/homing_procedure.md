@@ -96,20 +96,17 @@ while True:
 print("Homed to Index pulse")
 ```
 
-## Velocity Mode for Homing
-
-**Important:** Homing uses **velocity mode**, not position mode!
+## Home using Velocity Mode
 
 In velocity mode:
 - The motor moves continuously at the specified velocity
 - The `position` field in LOAD_TRAJECTORY is ignored (set to 0)
 - Direction is set by bit 6 of the trajectory control byte:
-  - Bit 6 = 0: Forward direction
-  - Bit 6 = 1: Reverse direction
-- Motion continues until:
+  Motion continues until any of:
   - Home condition is triggered (limit switch, index, etc.)
   - STOP_MOTOR command is sent
   - Position error or current limit (if configured in SET_HOME_MODE)
+  - Opposite direction limit switch is reached
 
 ### Trajectory Control Byte for Velocity Mode
 
@@ -124,12 +121,6 @@ In velocity mode:
 | 6   | Direction (0 = forward, 1 = reverse) |
 | 7   | Start now |
 
-**Common values:**
-- `0x36` (0b00110110): Velocity mode, forward, load vel+acc
-- `0x76` (0b01110110): Velocity mode, reverse, load vel+acc
-- `0x37` (0b00110111): Velocity mode, forward, load all
-- `0x77` (0b01110111): Velocity mode, reverse, load all
-
 ## Status Monitoring
 
 Monitor the `home_in_progress` bit (bit 7) in the status byte:
@@ -137,20 +128,14 @@ Monitor the `home_in_progress` bit (bit 7) in the status byte:
 - Remains 1 while searching for home condition
 - Clears to 0 when home position is captured
 
-## Safety Considerations
+## Two-Stage Homing
 
-1. **Always set soft limits** before homing to prevent runaway
-2. **Monitor position error** to detect mechanical problems
-3. **Use appropriate velocities** - slower is safer
-4. **Test with covers open** (test mode) first
-5. **Ensure limit switches are properly wired** and functioning
+Two stage homing establishes a more precise home position. The coarse position must only
+find the home position within one motor revolution. The fine home finds the home position
+within 1/encoder count revolution.
 
-## Two-Stage Homing (Recommended)
-
-For precise homing:
-
-1. **Coarse home:** Move to limit switch at moderate speed
-2. **Fine home:** Move slowly back to index pulse for repeatable position
+1. **Stage 1 - Coarse** Move to limit switch at moderate speed (coarse position)
+2. **Stage 2 - Fine** Move slowly back to encoder index pulse (highly repeatable position)
 
 This provides:
 - Speed: Fast approach to limit
