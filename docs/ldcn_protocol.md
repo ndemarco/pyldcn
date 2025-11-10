@@ -65,22 +65,20 @@ Group addressing scenarios:
 - **Start Motion** - Begin coordinated multi-axis moves at the same time
 - **Stop Motion** - Emergency stop across all axes
 
+### Group Leader
+
+One device in a group can be designated as the **group leader**. Only the group's leader responds to group commands. All other group members remain silent to elminate bus contention.
+
 ### How It Works
 
 **Command Execution:**
 1. Host sends command to group address (e.g., 0xFF)
 2. All devices with that group address execute the command
-3. **No devices respond** - prevents RS-485 bus collisions from multiple simultaneous responses
-
-**Group Leader (Optional):**
-- One device in the group can be designated as the "group leader"
-- The group leader sends a status response even for group commands
-- Allows host to verify command was received and executed
-- Other group members remain silent
+3. If a group leader is configured, it responds. If no leader is configured, all devices remain silent.
 
 ### Configuration
 
-Group addresses are set using the **Set Address** command (0x1):
+Set group addresses using the **Set Address** command (0x1):
 
 ```
 AA 00 21 [individual] [group] [checksum]
