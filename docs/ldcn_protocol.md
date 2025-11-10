@@ -59,11 +59,11 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 In addition to individual addresses (1-127), each LDCN device has a **group address** (128-255). Multiple devices can share the same group address, allowing simultaneous command execution without response collisions.
 
-** Broadcast Group Address:**
+**Broadcast Group Address:**
 
-| Address | Typical Use |
+| Address | Description |
 |---------|-------------|
-| 0xFF    | All devices (broadcast) |
+| 0xFF    | All devices (broadcast) - no group leader |
 
 Group addressing scenarios:
 - **Set Baud Rate** - Change network speed for all devices atomically
@@ -71,14 +71,11 @@ Group addressing scenarios:
 - **Start Motion** - Begin coordinated multi-axis moves at the same time
 - **Stop Motion** - Emergency stop across all axes
 
-
 ### Group Leader
 
 One device in a group can be designated as the **group leader**. Only the group's leader responds to group commands. All other group members remain silent to elminate bus contention.
 
-### How It Works
-
-**Command Execution:**
+**How It Works**
 1. Host sends command to group address (e.g., 0xFF)
 2. All devices with that group address execute the command
 3. If a group leader is configured, it responds. If no leader is configured, all devices remain silent.
