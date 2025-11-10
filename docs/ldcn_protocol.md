@@ -8,10 +8,22 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 ### Key Characteristics
 
-- **Physical Layer**: RS-485 differential signaling
-- **Topology**: Daisy-chained multidrop bus
+- **Physical Layer**: RS-485, Daisy-chained multidrop topology
 - **Baud Rates**: 9600 to 1.25 Mbps (19200 default at power on/reset)
 - **Addressing**: Dynamic (1-127) with group addressing (128-255)
+
+## Baud Rate Divisors (BRD)
+
+| Baud Rate | BRD Value | Typical Use |
+|-----------|-----------|-------------|
+| 9600      | 0x81      | Debugging |
+| 19200     | 0x3F      | Default after reset |
+| 57600     | 0x14      | - |
+| 115200    | 0x0A      | - |
+| **125000**| **0x27**  | **Recommended** |
+| 312500    | 0x0F      | High-speed |
+| 625000    | 0x07      | High-speed |
+| 1250000   | 0x03      | Maximum |
 
 ## Packet Structure
 
@@ -43,30 +55,15 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 - **Additional Data**: Configurable via *Define Status* command
 - **Checksum**: 8-bit sum of all bytes before checksum
 
-## Baud Rate Divisors (BRD)
-
-| Baud Rate | BRD Value | Typical Use |
-|-----------|-----------|-------------|
-| 9600      | 0x81      | Debugging |
-| 19200     | 0x3F      | Default after reset |
-| 57600     | 0x14      | - |
-| 115200    | 0x0A      | - |
-| **125000**| **0x27**  | **Recommended** |
-| 312500    | 0x0F      | High-speed |
-| 625000    | 0x07      | High-speed |
-| 1250000   | 0x03      | Maximum |
-
 ## Group Addressing
 
-In addition to individual addresses (1-127), each LDCN device has a **group address** (128-255). Multiple devices can share the same group address, enabling simultaneous command execution without response collisions.
+In addition to individual addresses (1-127), each LDCN device has a **group address** (128-255). Multiple devices can share the same group address, allowing simultaneous command execution without response collisions.
 
-### Purpose
-
-Group addressing is essential for commands that must be performed simultaneously across multiple devices:
-- **Start Motion** - Begin coordinated multi-axis moves at the same time
+Group addressing scenarios:
 - **Set Baud Rate** - Change network speed for all devices atomically
-- **Stop Motion** - Emergency stop across all axes
 - **Load Trajectory** - Prepare multiple axes, then trigger with group start
+- **Start Motion** - Begin coordinated multi-axis moves at the same time
+- **Stop Motion** - Emergency stop across all axes
 
 ### How It Works
 
