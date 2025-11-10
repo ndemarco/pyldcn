@@ -103,7 +103,30 @@ These handle low-level serial communication, packet building, and network manage
 - 🔴 **UNVERIFIED** `initialize()`
   - **Used in:** ldcn_init.py
   - **Function:** Complete initialization sequence (reset, address, baud, configure)
-  - **Target:** `LDCNNetwork.initialize(target_baud, num_servos) -> bool`
+  - **Target:** `LDCNNetwork.initialize(mode, create_objects, expected_devices) -> (int, list[dict])`
+  - **Enhancement:** Now supports adaptive initialization with multiple modes:
+    - **InitMode.VALIDATE** - Fast validation (~100ms): Verify existing device connections
+    - **InitMode.SOFT** - Soft discovery (~500ms): Discover without reset, preserves state
+    - **InitMode.READDRESS** - Re-addressing (~1s): Reset at detected baud, re-address
+    - **InitMode.FULL** - Full reset (~2s+): Reset at all bauds (default, backwards compatible)
+    - **InitMode.AUTO** - Adaptive: Automatic fallback through levels 0→1→2→3
+  - **Benefits:**
+    - Preserves servo positions and gains when possible (SOFT/VALIDATE modes)
+    - Faster reconnection for healthy networks
+    - Backwards compatible (default mode unchanged)
+    - Automatic intelligent recovery in AUTO mode
+
+- 🔴 **UNVERIFIED** `validate_devices()`
+  - **New function** added for adaptive initialization
+  - **Function:** Validate existing device objects still respond correctly
+  - **Target:** `LDCNNetwork.validate_devices(expected_devices) -> bool`
+  - **Use case:** Fast health check without state changes
+
+- 🔴 **UNVERIFIED** `soft_initialize()`
+  - **New function** added for adaptive initialization
+  - **Function:** Discover devices without hard reset (preserves state)
+  - **Target:** `LDCNNetwork.soft_initialize(create_objects, baud_list) -> (int, list[dict])`
+  - **Use case:** Re-discover network without losing servo positions/gains
 
 ---
 
@@ -237,49 +260,51 @@ These provide helper functionality - logging, formatting, display.
 ## Function Mapping Summary
 
 ### LDCNNetwork Class
-| Method | Source Function(s) | Status | Purpose |
-|--------|-------------------|--------|---------|
-| `__init__(port, baud=None)` | New | 🔴 | Initialize network |
-| `open()` | `open_serial()` | 🔴 | Open serial port |
-| `close()` | New | 🔴 | Close serial port |
-| `send_command()` | `send_command()` | 🔴 | Send command to any device |
-| `auto_detect_baud()` | `auto_detect_baud()` / `find_current_baud()` | 🔴 | Detect current baud |
-| `set_baud_rate()` | `change_baud_rate()` | 🔴 | Change network baud |
-| `reset()` | `hard_reset()` | 🔴 | Hard reset all devices |
-| `address_devices()` | `address_devices()` | 🔴 | Address all devices |
-| `discover_devices()` | `test_all_devices()` | 🔴 | Discover and create device objects |
-| `initialize()` | `initialize()` from ldcn_init.py | 🔴 | Full init sequence |
+| Method | Source Function(s) | Notes |
+|--------|-------------------|-------|
+| `__init__(port, baud=None)` | New | Initialize network |
+| `open()` | `open_serial()` | Open serial port |
+| `close()` | New | Close serial port |
+| `send_command()` | `send_command()` | Send command to any device |
+| `auto_detect_baud()` | `auto_detect_baud()` / `find_current_baud()` | Detect current baud |
+| `set_baud_rate()` | `change_baud_rate()` | Change network baud |
+| `reset()` | `hard_reset()` | Hard reset all devices |
+| `address_devices()` | `address_devices()` | Address all devices |
+| `discover_devices()` | `test_all_devices()` | Discover and create device objects |
+| `validate_devices()` | New | Fast validation without state changes |
+| `soft_initialize()` | New | Soft discovery preserving device state |
+| `initialize()` | `initialize()` from ldcn_init.py | Adaptive initialization with multiple modes |
 
 ### LDCNDevice Base Class
-| Method | Source | Status | Purpose |
-|--------|--------|--------|---------|
-| `__init__(network, address)` | New | 🔴 | Base device init |
-| `send_command()` | Delegates to network | 🔴 | Send command to this device |
-| `read_status()` | Abstract | 🔴 | Device-specific status read |
+| Method | Source | Notes |
+|--------|--------|-------|
+| `__init__(network, address)` | New | Base device init |
+| `send_command()` | Delegates to network | Send command to this device |
+| `read_status()` | Abstract | Device-specific status read |
 
 ### LS231SE Class (extends LDCNDevice)
-| Method | Source Function(s) | Status | Purpose |
-|--------|-------------------|--------|---------|
-| `initialize()` | `initialize_servo()` | 🔴 | 7-step init sequence |
-| `read_status()` | `parse_servo_status()` | 🔴 | Read detailed status |
-| `read_position()` | `read_drive_position()` | 🔴 | Read position only |
-| `set_gains()` | Extracted from `initialize_servo()` | 🔴 | Set PID gains |
-| `move_to()` | `send_position_command()` | 🔴 | Position command |
-| `enable()` | Extracted from `initialize_servo()` | 🔴 | Enable amplifier |
-| `disable()` | New | 🔴 | Disable amplifier |
-| `reset_position()` | Extracted from `initialize_servo()` | 🔴 | Reset position counter |
-| `clear_faults()` | Extracted from `initialize_servo()` | 🔴 | Clear sticky bits |
-| `check_faults()` | `check_faults()` | 🔴 | Check for fault conditions |
+| Method | Source Function(s) | Notes |
+|--------|-------------------|-------|
+| `initialize()` | `initialize_servo()` | 7-step init sequence |
+| `read_status()` | `parse_servo_status()` | Read detailed status |
+| `read_position()` | `read_drive_position()` | Read position only |
+| `set_gains()` | Extracted from `initialize_servo()` | Set PID gains |
+| `move_to()` | `send_position_command()` | Position command |
+| `enable()` | Extracted from `initialize_servo()` | Enable amplifier |
+| `disable()` | New | Disable amplifier |
+| `reset_position()` | Extracted from `initialize_servo()` | Reset position counter |
+| `clear_faults()` | Extracted from `initialize_servo()` | Clear sticky bits |
+| `check_faults()` | `check_faults()` | Check for fault conditions |
 
 ### SK2310g2 Class (extends LDCNDevice)
-| Method | Source Function(s) | Status | Purpose |
-|--------|-------------------|--------|---------|
-| `configure()` | `configure_io_controller()` | 🔴 | Configure for full status |
-| `read_diagnostic()` | `read_device_status()` | 🔴 | Read diagnostic code |
-| `read_power_state()` | Extracted | 🔴 | Check power button state |
-| `wait_for_power_button()` | `test_power_detection()` | 🔴 | Wait for power press |
-| `read_digital_inputs()` | New | 🔴 | Read digital inputs |
-| `set_digital_outputs()` | New | 🔴 | Set digital outputs |
+| Method | Source Function(s) | Notes |
+|--------|-------------------|-------|
+| `configure()` | `configure_io_controller()` | Configure for full status |
+| `read_diagnostic()` | `read_device_status()` | Read diagnostic code |
+| `read_power_state()` | Extracted | Check power button state |
+| `wait_for_power_button()` | `test_power_detection()` | Wait for power press |
+| `read_digital_inputs()` | New | Read digital inputs |
+| `set_digital_outputs()` | New | Set digital outputs |
 
 ---
 
