@@ -64,11 +64,18 @@ The SK-2310g2 serves as the **safety system coordinator** in LDCN-based CNC syst
 
 ---
 ## Emergency Stop
-Operators command an emergency stop by activating an emergency stop (e-stop) switch. E-stop switches operate two electrically independent normally closed contacts. The 2310g2 supports wiring of e-stop switches to [any of four connectors](#cn3---safety-bus-connector). Each connector is monitored in parallel; activating any e-stop switch puts the 2310g2 in emergency stop state.
+Operators command an emergency stop (e-stop) by activating an emergency stop switch. E-stop switches operate two electrically independent normally closed contacts. The 2310g2 supports e-stop switches via [any of four connectors](#cn3---safety-bus-connector),  monitored in parallel; activating any e-stop switch puts the 2310g2 in emergency stop state.
 
 The integrity of the e-stop system is assured by:
 1. Normally closed architecture - failure of a wire activates e-stop
 1. dual circuit - failure of a single switch contact raises a [system alarm](#diagnostic-codes)
+
+**E-stop state**
+Enterint e-stop state:
+- disconnects drive motor (UM) power (CN16.8)
+- disables SafetyLINK drive enable (CN3.3)
+- disconnects spindle power supply (? how)
+- affects digital outputs and status code
 
 **Timing Requirement:**
 - Transition time between contacts must not exceed 100msec
