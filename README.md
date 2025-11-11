@@ -19,12 +19,12 @@ The library provides a clean, object-oriented interface with full type hints and
 
 ### Key Features
 
-✅ **Clean Architecture** - Object-oriented design with base classes and device-specific subclasses
-✅ **Type Hints** - Full typing support for IDE autocomplete and static analysis
-✅ **Comprehensive** - All LDCN protocol commands implemented
-✅ **Well-Documented** - Extensive docstrings and documentation
-✅ **Context Managers** - Pythonic `with` statement support
-✅ **Zero Duplication** - Single source of truth for all protocol operations
+- **Clean Architecture** - Object-oriented design with base classes and device-specific subclasses
+- **Type Hints** - Full typing support for IDE autocomplete and static analysis
+- **Comprehensive** - All LDCN protocol commands implemented
+- **Well-Documented** - Extensive docstrings and documentation
+- **Context Managers** - Pythonic `with` statement support
+- **Zero Duplication** - Single source of truth for all protocol operations
 
 ---
 
@@ -138,7 +138,7 @@ with LDCNNetwork('/dev/ttyUSB0') as network:
     network.set_baud_rate(125000)
 
     # Create axis controller from JSON configuration
-    controller = AxisController(network, 'config/axes.json')
+    controller = AxisController(network, 'examples/fiveaxis_full_config.json')
 
     # Home an axis (automatically handles power-on sequence)
     controller.home_axis('X')
@@ -186,13 +186,13 @@ logging.basicConfig(
 
 ```bash
 # Full test suite
-python3 tests/test_network.py
+python3 examples/test_network.py
 
 # Custom options
-python3 tests/test_network.py --port /dev/ttyUSB1 --target-baud 115200
+python3 examples/test_network.py --port /dev/ttyUSB1 --target-baud 115200
 
 # Test specific servo
-python3 tests/test_network.py --test-servo 2
+python3 examples/test_network.py --test-servo 2
 ```
 
 ### Test Coverage
@@ -326,26 +326,6 @@ All functions in this library are marked as **UNVERIFIED** until tested against 
 
 ---
 
-## Development
-
-### Project Structure
-
-```
-pyldcn/
-├── pyldcn/             # Main package
-│   ├── __init__.py     # Package exports
-│   └── network.py      # All classes and protocol
-├── tests/              # Test suite
-│   └── test_network.py # Comprehensive tests
-├── docs/               # Documentation
-│   ├── protocol.md     # LDCN protocol spec
-│   ├── servo_commands.md
-│   └── design/         # Design documentation
-├── examples/           # Usage examples
-├── setup.py            # Package setup
-└── README.md           # This file
-```
-
 ### Contributing
 
 When adding new functions or fixing bugs:
@@ -353,7 +333,7 @@ When adding new functions or fixing bugs:
 1. Add comprehensive docstring with Args, Returns, Raises
 2. Add type hints for all parameters and return values
 3. Mark as 🔴 UNVERIFIED until hardware tested
-4. Add test case to test_network.py
+4. Add test case to examples/test_network.py
 5. Compare behavior with original utilities
 6. Update verification status after testing
 
