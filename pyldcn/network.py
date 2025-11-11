@@ -21,10 +21,6 @@ Usage Example:
         servo.initialize()
         servo.move_to(position=10.0, velocity=100.0, accel=50.0, scale=2000.0)
 
-⚠️ HARDWARE VERIFICATION STATUS: UNVERIFIED
-All functions in this module are marked as UNVERIFIED until tested against
-real LDCN hardware and behavior compared with original utility scripts.
-
 Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-10-29
@@ -81,16 +77,16 @@ class InitMode(Enum):
 
     VALIDATE = 0
     """
-    Level 0: Validation only (fastest, ~100ms)
+    Validation only
     - Verify existing device objects respond at current baud rate
     - Check device IDs match expected types
     - No state changes, no reset, no re-addressing
-    - Use when: Network is known to be healthy, just need to confirm
+    - Use when: Reconnecting to a known healthy network
     """
 
     SOFT = 1
     """
-    Level 1: Soft recovery (~500ms)
+    Soft recovery (~500ms)
     - Auto-detect current baud rate
     - Discover devices at current addresses
     - Create/update device objects
@@ -101,7 +97,7 @@ class InitMode(Enum):
 
     READDRESS = 2
     """
-    Level 2: Re-addressing (~1s)
+    Re-addressing (~1s, node quantity dependent)
     - Detect current baud rate
     - Hard reset at detected baud only
     - Re-address devices sequentially (1, 2, 3, ...)
@@ -112,7 +108,7 @@ class InitMode(Enum):
 
     FULL = 3
     """
-    Level 3: Full reset (current behavior, ~2s+)
+    Full reset (~2s+, node quantity dependent)
     - Reset at ALL baud rates (230400, 125000, 57600, 38400, 19200, 9600)
     - Re-address devices from scratch
     - Full discovery
@@ -221,11 +217,11 @@ class LDCNNetwork:
         Initialize LDCN network manager.
 
         The network will be opened at 19200 baud (default LDCN reset state).
-        Use set_baud_rate() after initialization to upgrade to higher speeds.
+        Upgrade to higher speeds with set_baud_rate().
 
         Args:
             port: Serial port path (e.g., '/dev/ttyUSB0')
-            timeout: Serial read timeout in seconds (default: 0.2)
+            timeout: Serial read timeout in seconds
         """
         self.port = port
         self.baud_rate = DEFAULT_BAUD
@@ -244,16 +240,12 @@ class LDCNNetwork:
 
         All LDCN networks start at 19200 baud after reset.
         Use set_baud_rate() after initialization to upgrade speed.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._open_port(DEFAULT_BAUD)
 
     def close(self) -> None:
         """
         Close serial port and cleanup resources.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if self.serial and self.serial.is_open:
             self.serial.close()
@@ -268,8 +260,6 @@ class LDCNNetwork:
 
         Raises:
             ValueError: If baud rate not supported
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if baud not in BAUD_RATES:
             raise ValueError(f"Unsupported baud rate: {baud}")
@@ -297,7 +287,7 @@ class LDCNNetwork:
         """
         Send LDCN command packet and return response.
 
-        This is the SINGLE source of truth for LDCN communication.
+        This is the only route for LDCN communication .
         All other send_command() methods delegate to this.
 
         Packet format:
@@ -318,8 +308,6 @@ class LDCNNetwork:
         Raises:
             LDCNTimeoutError: No response received
             LDCNChecksumError: Response checksum mismatch
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if data is None:
             data = []
@@ -363,8 +351,6 @@ class LDCNNetwork:
 
         Returns:
             True if checksum valid
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if len(response) < 2:
             return False
@@ -388,8 +374,6 @@ class LDCNNetwork:
 
         Returns:
             True if any device responds
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         try:
             self._open_port(baud)
@@ -421,8 +405,6 @@ class LDCNNetwork:
 
         Raises:
             LDCNDetectionError: No response at any baud rate
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if baud_list is None:
             baud_list = COMMON_BAUDS
@@ -456,8 +438,6 @@ class LDCNNetwork:
         Example:
             network.initialize()  # At 19200 baud
             network.set_baud_rate(125000)  # Upgrade to 125kbps
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if baud not in BAUD_RATES:
             raise ValueError(f"Unsupported baud rate: {baud}. Supported: {list(BAUD_RATES.keys())}")
@@ -486,8 +466,6 @@ class LDCNNetwork:
         devices are reset regardless of their current baud rate.
         After reset, devices return to address 0x00 and 19200 baud.
         Waits 2 seconds after final reset for devices to initialize.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         # Reset packet
         packet = bytes([HEADER, ADDRESS_GROUP, 0x0F, 0x0E])
@@ -532,8 +510,6 @@ class LDCNNetwork:
         Example:
             num_found = network.address_devices()
             # Devices are now at addresses 1, 2, 3, ..., num_found
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         addressed = 0
 
