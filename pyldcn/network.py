@@ -233,7 +233,7 @@ class LDCNNetwork:
         timeout: Serial read timeout in seconds
     """
 
-    def __init__(self, port: str, timeout: float = 0.05):
+    def __init__(self, port: str, timeout: float = 0.015):
         """
         Initialize LDCN network manager.
 
@@ -295,7 +295,8 @@ class LDCNNetwork:
             port=self.port,
             baudrate=baud,
             timeout=self.timeout,
-            write_timeout=self.timeout
+            write_timeout=self.timeout,
+            inter_byte_timeout=0.01  # 10ms max gap between bytes
         )
         self.baud_rate = baud
         time.sleep(0.05)  # Brief delay for port to stabilize
@@ -375,23 +376,17 @@ class LDCNNetwork:
         # Send packet
         self.serial.write(packet)
         self.serial.flush()
-        time.sleep(DELAY_AFTER_COMMAND)
 
         # Calculate expected response size
         expected_size = self._calculate_response_size(command, data)
 
-        # Read response in two stages to avoid timeout on unsupported status bits
-        # Stage 1: Read minimum response (status + checksum)
-        response = self.serial.read(2)
-
-        # Stage 2: Read additional data if expected (and give brief time for it to arrive)
-        if expected_size > 2 and len(response) == 2:
-            time.sleep(0.002)  # 2ms for remaining data to arrive
-            available = self.serial.in_waiting
-            if available > 0:
-                # Read available bytes, up to expected size
-                remaining = min(available, expected_size - 2)
-                response += self.serial.read(remaining)
+        # Read exact response size
+        # With inter_byte_timeout=10ms, read() will:
+        # - Wait up to timeout (50ms) for first byte
+        # - Wait up to inter_byte_timeout (10ms) between subsequent bytes
+        # - Return when expected_size bytes received or timeout expires
+        # At 125kbaud: 22 bytes = 1.76ms transmission, well under 10ms inter-byte timeout
+        response = self.serial.read(expected_size)
 
         if len(response) < 2:
             # Some commands (like SET_BAUD to group address) don't return responses
