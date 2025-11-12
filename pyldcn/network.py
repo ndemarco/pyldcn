@@ -369,6 +369,9 @@ class LDCNNetwork:
         checksum = (address + cmd_byte + sum(data)) & 0xFF
         packet = bytes([header, address, cmd_byte] + data + [checksum])
 
+        # Flush input buffer to discard any stale data
+        self.serial.reset_input_buffer()
+
         # Send packet
         self.serial.write(packet)
         self.serial.flush()
