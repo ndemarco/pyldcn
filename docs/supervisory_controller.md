@@ -408,30 +408,30 @@ device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
 | 0x08 | ⚫🟢⚫⚫⚫ | System LOCKED | OFF | OFF |
 | 0x09 | ⚫🟢⚫⚫🟢 | Watchdog Stop | OFF | OFF |
 | 0x0A | ⚫🟢⚫🟢⚫ | Safety Link Error | OFF | OFF |
-| 0x0B | ⚫🟢⚫🟢🟢 | Cover Open Stop - Covers open, spindle not stopped (contacts OK) | OFF | OFF |
-| 0x0B | ⚫🟡⚫🟡🟡 | Cover Open Stop - Covers open, spindle not stopped (contact fault) | OFF | OFF |
-| 0x0C | ⚫🟢🟢⚫⚫ | Cover Open Stop - Covers open, not at home (contacts OK) | OFF | OFF |
-| 0x0C | ⚫🟡🟡⚫⚫ | Cover Open Stop - Covers open, not at home (contact fault) | OFF | OFF |
-| 0x0D | ⚫🟢🟢⚫🟢 | Cover Open Stop - manual override without Acknowledge (contacts OK) | OFF | OFF |
-| 0x0D | ⚫🟡🟡⚫🟡 | Cover Open Stop - manual override without Acknowledge (contact fault) | OFF | OFF |
-| 0x0E | ⚫🟡🟡🟡⚫ | Cover contact fault (one or more contacts malfunctioning) | Prior state | Prior state |
+| 0x0B | ⚫🟢⚫🟢🟢 | Guard Open Stop - Guards open, spindle not stopped (contacts OK) | OFF | OFF |
+| 0x0B | ⚫🟡⚫🟡🟡 | Guard Open Stop - Guards open, spindle not stopped (contact fault) | OFF | OFF |
+| 0x0C | ⚫🟢🟢⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contacts OK) | OFF | OFF |
+| 0x0C | ⚫🟡🟡⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contact fault) | OFF | OFF |
+| 0x0D | ⚫🟢🟢⚫🟢 | Guard Open Stop - Manual override without Enable button held (contacts OK) | OFF | OFF |
+| 0x0D | ⚫🟡🟡⚫🟡 | Guard Open Stop - Manual override without Enable button held (contact fault) | OFF | OFF |
+| 0x0E | ⚫🟡🟡🟡⚫ | Guard contact fault (one or more contacts malfunctioning) | Prior state | Prior state |
 | 0x0F | ⚫🟢🟢🟢🟢 | Limit Switch Stop | OFF | OFF |
 | 0x10 | 🟢⚫⚫⚫⚫ | Emergency Stop | OFF | OFF |
 | 0x11 | 🟢⚫⚫⚫🟢 | Emergency Stop contact fault or Monitor Loop Open | OFF | OFF |
 | 0x12 | 🟢⚫⚫🟢⚫ | Busy (≤6s) or Power button short/Monitor Loop Open (>6s) | OFF | OFF |
 | 0x13 | 🟢⚫⚫🟢🟢 | Motor Power Supply under-voltage | ON | ON |
-| 0x14 | 🟢⚫🟢⚫⚫ | Cover-1 Open; Cover-2 Open (ready to power) | OFF | OFF |
-| 0x15 | 🟢⚫🟢⚫🟢 | Cover-1 Closed; Cover-2 Open (ready to power) | OFF | OFF |
-| 0x16 | 🟢⚫🟢🟢⚫ | Cover-1 Open; Cover-2 Closed (ready to power) | OFF | OFF |
-| 0x17 | 🟢⚫🟢🟢🟢 | Cover-1 Closed; Cover-2 Closed (ready to power) | OFF | OFF |
-| 0x18 | 🟢🟢⚫⚫⚫ | Cover-1 Open; Cover-2 Open; manual override | ON | ON |
-| 0x19 | 🟢🟢⚫⚫🟢 | Cover-1 Closed; Cover-2 Open; manual override | ON | ON |
-| 0x1A | 🟢🟢⚫🟢⚫ | Cover-1 Open; Cover-2 Closed; manual override | ON | ON |
-| 0x1B | 🟢🟢⚫🟢🟢 | Cover-1 Closed; Cover-2 Closed; manual override | ON | ON |
-| 0x1C | 🟢🟢🟢⚫⚫ | Cover-1 Open; Cover-2 Open; At Home; Spindle stopped | ON | ON |
-| 0x1D | 🟢🟢🟢⚫🟢 | Cover-1 Closed; Cover-2 Open; At Home; Spindle stopped | ON | ON |
-| 0x1E | 🟢🟢🟢🟢⚫ | Cover-1 Open; Cover-2 Closed; At Home; Spindle stopped | ON | ON |
-| 0x1F | 🟢🟢🟢🟢🟢 | **Normal operation** - All covers closed | ON | ON |
+| 0x14 | 🟢⚫🟢⚫⚫ | Guard-1 Open; Guard-2 Open (ready to power) | OFF | OFF |
+| 0x15 | 🟢⚫🟢⚫🟢 | Guard-1 Closed; Guard-2 Open (ready to power) | OFF | OFF |
+| 0x16 | 🟢⚫🟢🟢⚫ | Guard-1 Open; Guard-2 Closed (ready to power) | OFF | OFF |
+| 0x17 | 🟢⚫🟢🟢🟢 | Guard-1 Closed; Guard-2 Closed (ready to power) | OFF | OFF |
+| 0x18 | 🟢🟢⚫⚫⚫ | Guard-1 Open; Guard-2 Open; Manual override | ON | ON |
+| 0x19 | 🟢🟢⚫⚫🟢 | Guard-1 Closed; Guard-2 Open; Manual override | ON | ON |
+| 0x1A | 🟢🟢⚫🟢⚫ | Guard-1 Open; Guard-2 Closed; Manual override | ON | ON |
+| 0x1B | 🟢🟢⚫🟢🟢 | Guard-1 Closed; Guard-2 Closed; Manual override | ON | ON |
+| 0x1C | 🟢🟢🟢⚫⚫ | Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
+| 0x1D | 🟢🟢🟢⚫🟢 | Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
+| 0x1E | 🟢🟢🟢🟢⚫ | Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped | ON | ON |
+| 0x1F | 🟢🟢🟢🟢🟢 | **Normal operation** - All guards closed | ON | ON |
 
 † **Power Ready:** Indicates if power enable signal allows power-on. The action to enable Power On depends is configured by [J21](#j21---power-on-control-method).
 

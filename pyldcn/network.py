@@ -163,23 +163,44 @@ BAUD_RATES = {
 DEFAULT_BAUD = 19200
 
 # Common baud rates for auto-detection (in order of likelihood)
-COMMON_BAUDS = [19200, 125000, 115200, 57600, 9600]
+# 125000 first - typical operating speed after initialization
+COMMON_BAUDS = [125000, 19200, 115200, 57600, 9600]
 
 # Timing constants (seconds)
-DELAY_AFTER_COMMAND = 0.02
+DELAY_AFTER_COMMAND = 0.001  # 1ms - devices respond within microseconds
 DELAY_AFTER_RESET = 2.0
-DELAY_AFTER_ADDRESS = 0.3
-DELAY_AFTER_BAUD_CHANGE = 0.5
+DELAY_AFTER_ADDRESS = 0.05   # Reduced from 0.3s
+DELAY_AFTER_BAUD_CHANGE = 0.1  # Reduced from 0.5s
 
-# Status bits for device discovery
+# Status bits for device discovery (16-bit, little-endian)
 STATUS_BIT_POSITION = 0x0001      # Bit 0: Position (4 bytes)
 STATUS_BIT_AD_VALUE = 0x0002      # Bit 1: A/D value (1 byte)
 STATUS_BIT_VELOCITY = 0x0004      # Bit 2: Velocity (2 bytes)
-STATUS_BIT_AUX = 0x0008           # Bit 3: Auxiliary status byte
+STATUS_BIT_AUX = 0x0008           # Bit 3: Auxiliary status byte (1 byte)
 STATUS_BIT_HOME = 0x0010          # Bit 4: Home position (4 bytes)
 STATUS_BIT_DEVICE_ID = 0x0020     # Bit 5: Device ID and version (2 bytes)
 STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
 STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
+STATUS_BIT_DIGITAL_IN = 0x0100    # Bit 8: Digital inputs (2 bytes)
+STATUS_BIT_ANALOG_IN = 0x0200     # Bit 9: Analog inputs (2 bytes)
+STATUS_BIT_WATCHDOG = 0x1000      # Bit 12: Watchdog status (2 bytes)
+STATUS_BIT_MOTOR_POS = 0x2000     # Bit 13: Motor position and error (6 bytes)
+
+# Map status bits to their byte sizes for response calculation
+STATUS_BIT_SIZES = {
+    STATUS_BIT_POSITION: 4,
+    STATUS_BIT_AD_VALUE: 1,
+    STATUS_BIT_VELOCITY: 2,
+    STATUS_BIT_AUX: 1,
+    STATUS_BIT_HOME: 4,
+    STATUS_BIT_DEVICE_ID: 2,
+    STATUS_BIT_POS_ERROR: 2,
+    STATUS_BIT_PATH_COUNT: 1,
+    STATUS_BIT_DIGITAL_IN: 2,
+    STATUS_BIT_ANALOG_IN: 2,
+    STATUS_BIT_WATCHDOG: 2,
+    STATUS_BIT_MOTOR_POS: 6,
+}
 
 # Status byte flags (common to all LDCN devices)
 STATUS_POWER_ON = 0x08            # Bit 3: Power button state
@@ -212,7 +233,7 @@ class LDCNNetwork:
         timeout: Serial read timeout in seconds
     """
 
-    def __init__(self, port: str, timeout: float = 0.2):
+    def __init__(self, port: str, timeout: float = 0.05):
         """
         Initialize LDCN network manager.
 
@@ -221,7 +242,7 @@ class LDCNNetwork:
 
         Args:
             port: Serial port path (e.g., '/dev/ttyUSB0')
-            timeout: Serial read timeout in seconds
+            timeout: Serial read timeout in seconds (default 0.05s/50ms)
         """
         self.port = port
         self.baud_rate = DEFAULT_BAUD
@@ -267,7 +288,7 @@ class LDCNNetwork:
         # Close existing connection
         if self.serial and self.serial.is_open:
             self.serial.close()
-            time.sleep(0.2)
+            time.sleep(0.05)  # Brief delay for port cleanup
 
         # Open at specified baud rate
         self.serial = serial.Serial(
@@ -277,11 +298,37 @@ class LDCNNetwork:
             write_timeout=self.timeout
         )
         self.baud_rate = baud
-        time.sleep(0.2)  # Let port stabilize
+        time.sleep(0.05)  # Brief delay for port to stabilize
 
     # -------------------------------------------------------------------------
     # Core Protocol
     # -------------------------------------------------------------------------
+
+    def _calculate_response_size(self, command: int, data: Optional[List[int]]) -> int:
+        """
+        Calculate expected response size based on command and data.
+
+        Args:
+            command: LDCN command (0x00-0x0F)
+            data: Data bytes sent with command
+
+        Returns:
+            Expected response size in bytes
+        """
+        # Base response: status byte + checksum
+        size = 2
+
+        # For Read Status (0x3) or Define Status (0x2) with status bit request
+        if command in [CMD_READ_STATUS, CMD_DEFINE_STATUS] and data and len(data) >= 2:
+            # Parse 16-bit status bits (little-endian)
+            status_bits = data[0] | (data[1] << 8)
+
+            # Add bytes for each requested status bit
+            for bit, byte_count in STATUS_BIT_SIZES.items():
+                if status_bits & bit:
+                    size += byte_count
+
+        return size
 
     def send_command(self, address: int, command: int, data: Optional[List[int]] = None) -> bytes:
         """
@@ -327,8 +374,21 @@ class LDCNNetwork:
         self.serial.flush()
         time.sleep(DELAY_AFTER_COMMAND)
 
-        # Read response
-        response = self.serial.read(50)
+        # Calculate expected response size
+        expected_size = self._calculate_response_size(command, data)
+
+        # Read response in two stages to avoid timeout on unsupported status bits
+        # Stage 1: Read minimum response (status + checksum)
+        response = self.serial.read(2)
+
+        # Stage 2: Read additional data if expected (and give brief time for it to arrive)
+        if expected_size > 2 and len(response) == 2:
+            time.sleep(0.002)  # 2ms for remaining data to arrive
+            available = self.serial.in_waiting
+            if available > 0:
+                # Read available bytes, up to expected size
+                remaining = min(available, expected_size - 2)
+                response += self.serial.read(remaining)
 
         if len(response) < 2:
             # Some commands (like SET_BAUD to group address) don't return responses
@@ -413,8 +473,8 @@ class LDCNNetwork:
             if self._try_baud(baud):
                 return baud
 
-        # Default to 19200 if nothing found
-        return DEFAULT_BAUD
+        # No devices responding at any baud rate
+        raise LDCNDetectionError("No devices responding at any baud rate")
 
     def set_baud_rate(self, baud: int) -> None:
         """
@@ -532,7 +592,8 @@ class LDCNNetwork:
         self._last_addressed_count = addressed
         return addressed
 
-    def discover_devices(self, start_address: int = 1, end_address: Optional[int] = None) -> List[Dict]:
+    def discover_devices(self, start_address: int = 1, end_address: Optional[int] = None,
+                        early_exit_threshold: int = 3) -> List[Dict]:
         """
         Discover device types and versions on the network.
 
@@ -541,7 +602,9 @@ class LDCNNetwork:
 
         Args:
             start_address: First address to query (default: 1)
-            end_address: Last address to query (default: last addressed device)
+            end_address: Last address to query (default: last addressed device, or 127 if specified)
+            early_exit_threshold: Stop scanning after this many consecutive non-responding
+                                addresses (default: 3). Set to 0 to disable early exit.
 
         Returns:
             List of device info dictionaries:
@@ -564,9 +627,10 @@ class LDCNNetwork:
         🔴 UNVERIFIED - Not yet tested on hardware
         """
         if end_address is None:
-            end_address = self._last_addressed_count if self._last_addressed_count > 0 else 6
+            end_address = self._last_addressed_count if self._last_addressed_count > 0 else 127
 
         device_list = []
+        consecutive_non_responding = 0
 
         for addr in range(start_address, end_address + 1):
             device_info = {
@@ -584,12 +648,17 @@ class LDCNNetwork:
                     device_info['responding'] = True
                     device_info['device_id'] = response[1]
                     device_info['version'] = response[2]
+                    consecutive_non_responding = 0  # Reset counter on successful response
 
             except (LDCNTimeoutError, LDCNChecksumError):
                 # Device not responding
-                pass
+                consecutive_non_responding += 1
 
             device_list.append(device_info)
+
+            # Early exit if too many consecutive non-responding addresses
+            if early_exit_threshold > 0 and consecutive_non_responding >= early_exit_threshold:
+                break
 
         return device_list
 
@@ -825,22 +894,20 @@ class LDCNNetwork:
             detected_baud = self.auto_detect_baud(baud_list)
 
             # Step 2: Discover devices at current addresses (no reset)
-            device_info = self.discover_devices(start_address=1, end_address=127)
+            # Uses early exit after 3 consecutive non-responding addresses
+            device_info = self.discover_devices(start_address=1)
 
-            if len(device_info) == 0:
+            # Filter to only responding devices
+            responding_devices = [d for d in device_info if d['responding']]
+
+            if len(responding_devices) == 0:
                 raise LDCNInitializationError("No devices found during soft discovery")
 
-            # Step 3: Verify communication
-            responding = self.verify_devices(device_info)
-
-            if len(responding) == 0:
-                raise LDCNInitializationError("No devices responding during soft discovery")
-
-            # Step 4: Create device objects if requested
+            # Step 3: Create device objects if requested
             if create_objects:
-                self.create_device_objects(device_info)
+                self.create_device_objects(responding_devices)
 
-            return len(responding), device_info
+            return len(responding_devices), responding_devices
 
         except LDCNDetectionError as e:
             raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
