@@ -5,6 +5,55 @@
 
 ---
 
+## Important Implementation Note (2025-11-12)
+
+**Reading Status from SK-2310g2:**
+
+The SK-2310g2 uses **LS-773 format**, NOT standard LDCN format. This is critical for correct parsing.
+
+### Key Differences from Standard LDCN:
+
+1. **Response byte order is different**: Byte0/Byte1 come FIRST, immediately after status byte
+2. **NOP returns minimal status**: Only `[status_byte, checksum]` - no diagnostic code
+3. **CMD_READ_STATUS required**: Must use CMD_READ_STATUS (0x03) with `[0xFF, 0xFF]` to get diagnostic
+
+### LS-773 Response Format:
+```
+[status] [byte0] [byte1] [position] [ad] [velocity] [aux] [home] [dev_id] [pos_err] [pathbuf] [analog] [checksum]
+ idx=0    idx=1   idx=2    idx=3-6   ...
+```
+
+**NOT** standard LDCN format:
+```
+[status] [position] [ad] [velocity] ... [byte0] [byte1] [analog] [checksum]  ← WRONG for SK-2310g2
+```
+
+### Correct Implementation:
+```python
+# Method 1: Use the dedicated parser (recommended)
+from pyldcn.devices.sk2310g2 import parse_ls773_status
+response = device.send_command(CMD_READ_STATUS, [0xFF, 0xFF])
+status = parse_ls773_status(response)  # Returns complete status dict
+
+# Method 2: Manual parsing
+response = send_command(addr, CMD_READ_STATUS, [0xFF, 0xFF])
+byte0 = response[1]  # Digital inputs
+byte1 = response[2]  # Internal status + diagnostic
+diagnostic = (byte1 >> 3) & 0x1F  # Extract diagnostic from Byte1 bits [7:3]
+```
+
+### Incorrect Approaches:
+```python
+# WRONG: Using NOP - no diagnostic code returned
+response = send_command(addr, CMD_NOP)  # Returns only [status] [checksum]
+
+# WRONG: Parsing as standard LDCN format
+byte0 = response[18]  # Would read wrong data - this is pathbuf in LS-773 format
+byte1 = response[19]  # Would read wrong data - this is analog data in LS-773 format
+```
+
+---
+
 ## Document Purpose
 
 This document covers:
@@ -39,9 +88,42 @@ This document covers:
 - [Testing Procedures](#testing-procedures)
 
 **Reference:**
+- [Python API Reference](#python-api-reference)
 - [Wiring Examples](#wiring-examples)
 - [Detailed Jumper Configuration](#detailed-jumper-configuration)
 - [Connector Pinouts](#connector-pinouts)
+
+---
+
+# Python API Reference
+
+The `pyldcn.devices.sk2310g2` module provides encoding/decoding utilities for SK-2310g2 status and I/O operations.
+
+## Module Functions
+
+**Status Parsing:**
+- `parse_ls773_status(response)` - Parse LS-773 format response into status dictionary
+- `format_status(status)` - Format status dict as human-readable multi-line string
+- `format_led_pattern(diagnostic)` - Format diagnostic code as LED pattern (🟢⚫🟢🟢🟢)
+
+**Data Access:**
+- `DIAGNOSTIC_CODES[code]` - Lookup table mapping codes (0x00-0x1F) to condition descriptions
+
+**Output Encoding:**
+- `encode_output_byte0(outputs)` - Encode digital outputs 1-8 for SET_OUTPUTS command
+- `encode_output_byte1(power_a, power_b)` - Encode power outputs A/B for SET_OUTPUTS command
+
+**Status Dictionary Fields:**
+
+Raw bytes: `status`, `byte0`, `byte1`
+
+SK-2310g2 fields: `diagnostic`, `power_state`, `safe_state`, `manual_override`, `servo_fault`
+
+Digital inputs: `input1`-`input6`, `spindle_stopped`, `spindle_fault`
+
+LDCN motion fields: `position`, `velocity`, `home`, `device_id`, `version`
+
+See module source for detailed function signatures and usage examples.
 
 ---
 
@@ -388,6 +470,66 @@ device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
 ---
 
 # Diagnostic Codes
+
+## Status Response Format
+
+The SK-2310g2 inherits the LS-773 status response format. When CMD_READ_STATUS (0x03) is sent with data byte `[0xFF, 0xFF]` to request all status fields, the response contains:
+
+```
+[status_byte] [byte0] [byte1] [position] [velocity] [home] [checksum]
+```
+
+### Status Byte (First Response Byte)
+
+The status byte uses the LS-773 format:
+
+| Bit | Name | Description |
+|-----|------|-------------|
+| 7-3 | (Defined) | Defined for SK-2310g2 but **NOT** used for diagnostic transmission |
+| 2 | (Undefined) | Ignore |
+| 1 | Checksum Error | 1 = Device detected checksum error in last command received |
+| 0 | (Undefined) | Ignore |
+
+**Important:** The diagnostic code is **NOT** transmitted in the status byte. It is transmitted in Byte1.
+
+### Byte0 - Digital Inputs (Second Response Byte)
+
+| Bit | Signal |
+|-----|--------|
+| 7 | Input 6 |
+| 6 | Input 5 |
+| 5 | Input 4 |
+| 4 | Input 3 |
+| 3 | Spindle Fault |
+| 2 | Spindle Stopped |
+| 1 | Input 2 |
+| 0 | Input 1 |
+
+### Byte1 - Internal Status (Third Response Byte)
+
+| Bit | Signal | Description |
+|-----|--------|-------------|
+| 7-3 | **Diagnostic Code** | 5-bit diagnostic code (0x00-0x1F) displayed on LED panel |
+| 2 | Servo Fault | 1 = Servo drive fault detected |
+| 1 | Manual Override | 1 = Manual override mode active |
+| 0 | Safe State | 1 = System in safe state |
+
+**Diagnostic Code Extraction:**
+```python
+diagnostic = (byte1 >> 3) & 0x1F
+```
+
+**LED Mapping:** The 5 diagnostic bits map directly to the 5 LED indicators:
+- Bit 7 → LED 5 (leftmost)
+- Bit 6 → LED 4
+- Bit 5 → LED 3
+- Bit 4 → LED 2
+- Bit 3 → LED 1 (rightmost)
+
+**Example:** Diagnostic code 0x06 = binary `00110`
+- Bit pattern: 0-0-1-1-0
+- LED display: ⚫⚫🟢🟢⚫ (LEDs 3,2 ON; LEDs 5,4,1 OFF)
+- Condition: "Power UP Home error"
 
 ## Diagnostic Code Table
 

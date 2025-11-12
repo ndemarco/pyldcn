@@ -102,7 +102,7 @@ See [pyldcn/devices/servo.py](../../pyldcn/devices/servo.py) for complete API do
 - **Diagnostic decoding**: Translates hardware diagnostic codes into human-readable fault descriptions.
 - **Safety integration**: Monitors e-stop, guard doors, and safe zones as part of machine safety system.
 
-See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) and [supervisory_controller.md](../supervisory_controller.md) for complete documentation.
+See [pyldcn/devices/io.py](../../pyldcn/devices/io.py) and [SK-2310g2_supervisor.md](../SK-2310g2_supervisor.md) for complete documentation.
 
 ---
 

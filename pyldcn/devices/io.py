@@ -18,6 +18,9 @@ from pyldcn.network import (
     STATUS_POWER_ON,
 )
 
+# Import SK-2310g2 specific parsing
+from . import sk2310g2
+
 
 
 # =============================================================================
@@ -238,41 +241,56 @@ class SK2310g2(LDCNDevice):
         """
         Read complete I/O controller status.
 
+        Returns complete status including all LDCN status data plus SK-2310g2 specific
+        digital inputs (Byte0/Byte1 from supervisory controller documentation).
+
         Returns:
             {
                 'status': status_byte,
-                'diagnostic': diagnostic_code,
+                'position': int,
+                'ad_value': int,
+                'velocity': int,
+                'auxiliary': int,
+                'home': int,
+                'device_id': int,
+                'version': int,
+                'position_error': int,
+                'path_buffer': int,
+                'byte0': int,              # SK-2310g2 digital inputs
+                'byte1': int,              # SK-2310g2 internal status
+                'analog_inputs': int,
+                'diagnostic': int,         # Extracted from byte1 bits [7:3]
                 'power_state': bool,
-                'digital_inputs': int (16-bit),
-                ...
+                # Decoded Byte0 fields:
+                'input1': bool,
+                'input2': bool,
+                'spindle_stopped': bool,
+                'spindle_fault': bool,
+                'input3': bool,
+                'input4': bool,
+                'input5': bool,
+                'input6': bool,
+                # Decoded Byte1 fields:
+                'safe_state': bool,
+                'manual_override': bool,
+                'servo_fault': bool,
             }
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        # Configure for full status if not already done
+        # Request all status bits (0xFFFF)
         response = self.send_command(CMD_READ_STATUS, [0xFF, 0xFF])
 
-        if len(response) < 3:
+        # Use SK-2310g2 specific LS-773 format parser
+        status = sk2310g2.parse_ls773_status(response)
+
+        if not status:
             return {}
 
-        # For I/O controller with full status, diagnostic is at index 1
-        status_byte = response[0]
-        diagnostic = response[1]
+        # Update instance variables
+        self.diagnostic_code = status.get('diagnostic', 0)
+        self.status_byte = status.get('status', 0)
+        self.power_state = status.get('power_state', False)
 
-        self.diagnostic_code = diagnostic
-        self.status_byte = status_byte
-        self.power_state = bool(status_byte & STATUS_POWER_ON)
-
-        result = {
-            'status': status_byte,
-            'diagnostic': diagnostic,
-            'power_state': self.power_state,
-        }
-
-        # Parse additional data if available
-        # (Implementation depends on actual response format - TBD from hardware)
-
-        return result
+        return status
 
     def read_diagnostic(self) -> int:
         """
