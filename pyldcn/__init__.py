@@ -25,6 +25,7 @@ from .network import (
     LDCNNetwork,
     LDCNDevice,
     UnknownDevice,
+    InitMode,
 
     # Exceptions
     LDCNError,
@@ -49,6 +50,7 @@ __all__ = [
     'LDCNNetwork',
     'LDCNDevice',
     'UnknownDevice',
+    'InitMode',
     'LS231SE',
     'SK2310g2',
 
