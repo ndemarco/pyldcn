@@ -32,23 +32,20 @@ Date: 2025-10-29
 import time
 from typing import Optional, List, Dict, Tuple
 
-from .protocol import LDCNProtocol
-from .discovery import DeviceDiscovery
-from .device import LDCNDevice, UnknownDevice
-from .exceptions import (
-    LDCNError,
-    LDCNTimeoutError,
-    LDCNChecksumError,
-    LDCNDetectionError,
-    LDCNInitializationError,
-)
 from .protocol import (
+    LDCNProtocol,
+    HEADER,
     ADDRESS_GROUP,
     CMD_HARD_RESET,
     DEFAULT_BAUD,
     DELAY_AFTER_RESET,
 )
-from .discovery import InitMode
+from .discovery import DeviceDiscovery, InitMode
+from .device import LDCNDevice, UnknownDevice
+from .exceptions import (
+    LDCNDetectionError,
+    LDCNInitializationError,
+)
 from . import util
 
 
