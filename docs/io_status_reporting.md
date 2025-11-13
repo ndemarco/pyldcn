@@ -10,10 +10,12 @@
 
 This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-2310g2. The '773 is a general purpose I/O device, whereas the '2310 is a supervisory controller with I/O characteristics, plus general I/O features. The LDCN protocol and commands are substantially similar between the two.
 
-In this document, the differences will be explained.
+These are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
 
 
-## LS-773 Hardware Features
+## Specific Models
+
+### LS-773 Hardware Features
 - 10 general purpose digital inputs (with configurable pull-up/pull-down)
 - 6 open collector outputs (1A max each)
 - 1 solid-state relay output (0.5A max, OUTPUT 0/POWER)
@@ -22,15 +24,112 @@ In this document, the differences will be explained.
 - 20 KHz PWM mode for OUTPUT 1 and OUTPUT 2
 - Device ID: 2, Version: 50
 
+#### LS-773 Input Bit Layout
 
-## SK-2310g2 Hardware Features
-TODO: Insert hardware features here.
+Byte 0:
+| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|-----|---|---|---|---|---|---|---|---|
+| Input | IN7 | IN6 | IN5 | IN4 | IN3 | IN2 | IN1 | IN0 |
+
+Byte 1:
+| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|-----|---|---|---|---|---|---|---|---|
+| Input | - | - | - | - | - | - | IN9 | IN8 |
+| Flag | - | - | - | - | - | OUT_SH | - | - |
+
+#### OUT_SH Flag (Byte 1, bit 1):
+- OUT_SH = 1: One or more outputs are shorted to POWER(+)
+- OUT_SH = 0: Normal operation
+
+### SK-2310g2 Hardware Features
+The SK-2310g2 is a supervisory controller with specialized hardware and I/O capabilities.
+
+### I/O Hardware Differences
+
+| Feature | LS-773 | SK-2310g2 |
+|---------|--------|-----------|
+| **Digital Inputs** | 10 inputs | 7 physical + 9 internal status |
+| **Digital Outputs** | 7 outputs | 8 physical + 8 internal control |
+| **Analog Inputs** | 3 inputs (0-5/10/20/30V) | 3 inputs (ADC-1: 0-10V, ADC-2/3: 0-5V) |
+| **Analog Outputs** | None | 1 output (0-10V DAC for spindle control) |
+| **Counter/Timer** | 32-bit (5.0 MHz) | Unknown (verify with device) |
+| **PWM Outputs** | OUTPUT 1, OUTPUT 2 (20 KHz) | OUTPUT 4 (20 KHz) |
+
+### Analog I/O Summary
+
+**SK-2310g2 Analog Inputs**:
+- **ADC-1** (CN6 pin 10): 0-10V (typically spindle F/V feedback)
+- **ADC-2** (CN17 pin 3): 0-5V (general purpose, potentiometer-ready)
+- **ADC-3** (CN17 pin 2): 0-5V (general purpose, potentiometer-ready)
+
+**SK-2310g2 Analog Output**:
+- **DAC** (CN6 pin 11): 0-10V (spindle speed control)
+- Control method: Device-specific firmware command (consult SK-2310g2 documentation)
+
 
 ## Common Features
 
-### Counter/Timer Overview
+### Status Reporting
+
+Logosol LDCN compliant I/O nodes convey their input state and other state details via status reporting. These nodes report status in response to `READ STATUS` and `NOP` commands and return a configurable set of status details.
+
+To return a defined status one time, request status with `Read Status`, and append the byte encoded set of desired status items.
+
+To define a persistent subset of status information, send the `Define Status` command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items.
+
+By default, both methods to read status will return the full set of status information (`0x00`). The status configuration is cleared upon `Hard Reset`.
+
+It is not possible to read the state of outputs. The host must store the output state if desired.
+
+---
+
+### Status Response
+
+Every status response packet consists of three parts, with packet size being the sum of `Define Status` item sizes:
+
+#### 1. Status Byte
+
+The first byte of every response packet contains error flags:
+
+| Bit | Description | Note |
+|-----|-------------|-----|
+| **0** | Undefined | ignore |
+| **1** | Checksum error flag | Set if a checksum error was detected in the most recent command packet |
+| **2-7** | Undefined | ignore |
+
+#### 2. Status Items
+
+The data to include in status responses is encoded into a byte as follows. Set a bit to include the item, clear a bit to omit the item.
+
+| Bit | Data Item | Size | Description |
+|-----|-----------|------|-------------|
+| **0** | Input Bytes | 2 bytes | Digital input Byte 0, Byte 1 |
+| **1** | Analog Input 0 | 1 byte | Analog input channel 0 (0-255) |
+| **2** | Analog Input 1 | 1 byte | Analog input channel 1 (0-255) |
+| **3** | Analog Input 2 | 1 byte | Analog input channel 2 (0-255) |
+| **4** | Counter/Timer | 4 bytes | Counter/timer value (LSB first) |
+| **5** | Device ID/Version | 2 bytes | Device ID byte, Version byte|
+| **6** | Sync Input Bits | 2 bytes | Input bits captured with Sync Input command |
+| **7** | Sync Counter/Timer | 4 bytes | Counter/timer captured with Sync Input (LSB first) |
+
+#### 3. Checksum Byte
+
+The checksum byte is the 8-bit sum of the status byte plus all data bytes.
+
+#### Item: Device ID and Version
+
+When bit 5 is set, response includes:
+- Byte 0: Device ID = `0x02` (LS-773)
+- Byte 1: Version = `0x32` (50 decimal)
+
+### Counter/Timer
 
 A single 32-bit counter/timer. 
+
+**Counter/Timer Modes:**
+- Timer mode: Counts time intervals
+- Counter mode: Counts external events on configured input
+- Sync mode (bit 7): Captures counter/timer value with Sync Input command
 
 #### Timer Mode
 - Counts 5.0 MHz internal clock
@@ -54,59 +153,9 @@ There is no explicit reset command. To reset the counter to zero:
 1. Disable the counter/timer (Set Timer Mode, bit 0 = 0)
 2. Re-enable the counter/timer (Set Timer Mode, bit 0 = 1)
 
-#### Practical Uses
+## Command Reference
 
-The I/O nodes are polled I/O controllers, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
-
-
-### Status Reporting
-
-Logosol LDCN compliant I/O nodes convey their input state and other state details via status reporting. These nodes report status in response to `READ STATUS` and `NOP` commands and return a configurable set of status details.
-
-To return a defined status one time, request status with `Read Status`, and append the byte encoded set of desired status items.
-
-To define a persistent subset of status information, send the `Define Status` command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items.
-
-By default, both methods to read status will return the full set of status information (`0x00`). The status configuration is cleared upon `Hard Reset`.
-
-It is not possible to read the state of outputs. The host must store the output state if desired.
-
----
-
-### Status Response
-
-Every status response packet consists of three parts, in order:
-
-#### 1. Status Byte
-
-The first byte of every response packet contains error flags:
-
-| Bit | Description | Note |
-|-----|-------------|-----|
-| **0** | Undefined | ignore |
-| **1** | Checksum error flag |Set if a checksum error was detected in the most recent command packet |
-| **2-7** | Undefined | ignore |
-
-#### 2. Status Items
-
-The data to include in status responses is encoded into a byte as follows. Set a bit to include the item, clear a bit to omit the item.
-
-| Bit | Data Item | Size | Description |
-|-----|-----------|------|-------------|
-| **0** | Input Bytes | 2 bytes | Digital input Byte 0, Byte 1 |
-| **1** | Analog Input 0 | 1 byte | Analog input channel 0 (0-255) |
-| **2** | Analog Input 1 | 1 byte | Analog input channel 1 (0-255) |
-| **3** | Analog Input 2 | 1 byte | Analog input channel 2 (0-255) |
-| **4** | Counter/Timer | 4 bytes | Counter/timer value (LSB first) |
-| **5** | Device ID/Version | 2 bytes | Device ID byte, Version byte|
-| **6** | Sync Input Bits | 2 bytes | Input bits captured with Sync Input command |
-| **7** | Sync Counter/Timer | 4 bytes | Counter/timer captured with Sync Input (LSB first) |
-
-#### 3. Checksum Byte
-
-The checksum byte is the 8-bit sum of the status byte plus all data bytes.
-
-### I/O Specific Commands
+### Command Summary Table
 
 For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
 
@@ -123,7 +172,7 @@ For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.m
 
 ---
 
-## Define Status Command
+### Define Status Command
 
 **Command:** `0x02` (CMD_DEFINE_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
@@ -136,7 +185,7 @@ Causes subsequent `Nop` commands to return the defined status items.
 
 ---
 
-## Read Status Command
+### Read Status Command
 
 **Command:** `0x03` (CMD_READ_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
@@ -146,7 +195,7 @@ This is a non-permanent version of the Define Status command. The status packet 
 
 ---
 
-## Set PWM
+### Set PWM
 
 **Command:** `0x04` (CMD_SET_PWM)
 **Data bytes:** 2 bytes
@@ -178,7 +227,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 ---
 
-## Sync Output
+### Sync Output
 
 **Command:** `0x05` (CMD_SYNC_OUTPUT)
 **Data bytes:** 0 bytes
@@ -192,7 +241,7 @@ First `Set Sync Output` to stage the values, then `Sync Output` to apply.
 
 ---
 
-## Set Outputs
+### Set Outputs
 
 **Command:** `0x06` (CMD_SET_OUTPUTS)
 **Data bytes:** 2 bytes
@@ -232,7 +281,7 @@ send_command(addr, 0x06, [outputs, 0x00])
 
 ---
 
-## Set Sync Output
+### Set Sync Output
 
 **Command:** `0x07` (CMD_SET_SYNC_OUTPUT)
 **Data bytes:** 4 bytes
@@ -260,7 +309,7 @@ send_command(addr, 0x05, [])  # Sync Output
 
 ---
 
-## Set Timer Mode
+### Set Timer Mode
 
 **Command:** `0x08` (CMD_SET_TIMER_MODE)
 **Data bytes:** 1 byte
@@ -297,102 +346,11 @@ send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 **Notes**:
 - Counter value is read via Define Status or Read Status commands (bit 4)
 - Counter wraps at 2^32 - 1 with no status indication or interrupt
-- See [Counter/Timer Overview](#countertimer-overview) for overflow behavior and use cases
+- See [Counter/Timer](#countertimer) for overflow behavior and use cases
 
 ---
 
-### Status Response Format
-
-Status response size depends on which bits are set in Define Status.
-
-#### Example Configurations
-
-**Inputs only:**
-```python
-send_command(CMD_DEFINE_STATUS, [0x01])  # Bit 0 only
-# Response: 4 bytes total
-#   [0] = status byte
-#   [1] = input byte 0
-#   [2] = input byte 1
-#   [3] = checksum
-```
-
-**Inputs + All Analog:**
-```python
-send_command(CMD_DEFINE_STATUS, [0x0F])  # Bits 0-3
-# Response: 7 bytes total
-#   [0] = status byte
-#   [1] = input byte 0
-#   [2] = input byte 1
-#   [3] = analog input 0 (0-255)
-#   [4] = analog input 1 (0-255)
-#   [5] = analog input 2 (0-255)
-#   [6] = checksum
-```
-
-**Inputs + Counter/Timer:**
-```python
-send_command(CMD_DEFINE_STATUS, [0x11])  # Bits 0 and 4
-# Response: 8 bytes total
-#   [0] = status byte
-#   [1] = input byte 0
-#   [2] = input byte 1
-#   [3] = counter/timer LSB
-#   [4] = counter/timer byte 1
-#   [5] = counter/timer byte 2
-#   [6] = counter/timer MSB
-#   [7] = checksum
-```
-
-**Everything:**
-```python
-send_command(CMD_DEFINE_STATUS, [0xFF])  # All bits
-# Response: 19 bytes total
-#   [0]  = status byte
-#   [1]  = input byte 0
-#   [2]  = input byte 1
-#   [3]  = analog input 0
-#   [4]  = analog input 1
-#   [5]  = analog input 2
-#   [6]  = counter/timer LSB
-#   [7]  = counter/timer byte 1
-#   [8]  = counter/timer byte 2
-#   [9]  = counter/timer MSB
-#   [10] = device ID (0x02 for LS-773)
-#   [11] = version (0x32 = 50 decimal)
-#   [12] = Sync input byte 0
-#   [13] = Sync input byte 1
-#   [14] = Sync counter/timer LSB
-#   [15] = Sync counter/timer byte 1
-#   [16] = Sync counter/timer byte 2
-#   [17] = Sync counter/timer MSB
-#   [18] = checksum
-```
-
----
-
-### Counter/Timer
-
-When bit 4 or 7 is set, counter/timer values are included as 4 bytes (32-bit), least significant byte first.
-
-**Counter/Timer Modes:**
-- Timer mode: Counts time intervals
-- Counter mode: Counts external events on configured input
-- Sync mode (bit 7): Captures counter/timer value with Sync Input command
-
-See manual for counter/timer configuration commands.
-
----
-
-### Device ID and Version
-
-When bit 5 is set, response includes:
-- Byte 0: Device ID = `0x02` (LS-773)
-- Byte 1: Version = `0x32` (50 decimal)
-
----
-
-## Sync Input Command
+### Sync Input Command
 
 **Command:** `0x0C` (CMD_SYNC_INPUT)
 **Data bytes:** 0 bytes
@@ -422,83 +380,7 @@ response = send_command(addr, 0x03, [status_bits])
 # - Checksum
 ```
 
-Use for time-critical applications requiring synchronized input sampling.
-
----
-
-## Digital Input Configuration
-
-Digital inputs have configurable pull resistors (10K) via DIP switches or jumper:
-
-**Active LOW** (default):
-- Inputs have pull-up resistors to POWER(+)
-- Input reads 1 when pulled to GND
-- Input reads 0 when floating or at POWER(+)
-
-**Active HIGH**:
-- Inputs have pull-down resistors to GND
-- Input reads 1 when connected to POWER(+) or SENSOR POWER
-- Input reads 0 when floating or at GND
-
-**Input Bit Layout**:
-
-Byte 0:
-| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-|-----|---|---|---|---|---|---|---|---|
-| Input | IN7 | IN6 | IN5 | IN4 | IN3 | IN2 | IN1 | IN0 |
-
-Byte 1:
-| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
-|-----|---|---|---|---|---|---|---|---|
-| Input | - | - | - | - | - | - | IN9 | IN8 |
-| Flag | - | - | - | - | - | OUT_SH | - | - |
-
-**OUT_SH Flag** (Byte 1, bit 1):
-- OUT_SH = 1: One or more outputs are shorted to POWER(+)
-- OUT_SH = 0: Normal operation
-
----
-
-## Analog Input Configuration
-
-Analog inputs are 8-bit (0-255) and support multiple voltage ranges via DIP switches:
-
-**Voltage Range Selection** (DIP switches 3-8):
-- 0-5V
-- 0-10V
-- 0-20V
-- 0-30V
-
-**Resolution**:
-- 5V range: ~19.6 mV per count
-- 10V range: ~39.2 mV per count
-- 20V range: ~78.4 mV per count
-- 30V range: ~117.6 mV per count
-
-**Example**:
-```python
-# Read all three analog inputs
-status_bits = 0b00001110  # bits 1, 2, 3
-response = send_command(addr, 0x03, [status_bits])
-# Response: [status_byte, an0, an1, an2, checksum]
-
-# Convert to voltage (assuming 0-10V range)
-voltage = (response[1] / 255.0) * 10.0
-```
-
----
-
-## Output Protection
-
-**Short Circuit Protection**:
-- All outputs are protected against short circuits
-- If any open collector output (OUTPUT 1-6) is shorted to POWER(+), all outputs turn off
-- Normal operation resumes after next Set Outputs command
-- OUT_SH flag in input status indicates short condition
-
-**Overcurrent Protection**:
-- OUTPUT 0/POWER: 0.5A max, solid-state relay with short-to-GND protection
-- OUTPUT 1-6: 1A max per output, open collector with short-to-POWER(+) protection
+**Note:** There is no trigger or interrupt to capture all values on an input. Capture can only be initiated via a LDCN command and is subject to transmission and command processing delays.
 
 ---
 
@@ -556,7 +438,7 @@ checksum = response[6]        # Checksum
 
 ---
 
-## LS-773 Initialization Sequence
+## Initialization Sequence
 
 Basic initialization sequence for I/O controller:
 
@@ -607,45 +489,6 @@ send_command(addr, 0x06, [0x00, 0x00])
 
 ---
 
-## SK-2310g2 I/O Hardware Comparison
-
-The **SK-2310g2** is a specialized supervisory I/O controller that uses the same LDCN command set (0x4, 0x5, 0x6, 0x7, 0x8, 0xC) but has different I/O hardware capabilities.
-
-### I/O Hardware Differences
-
-| Feature | LS-773 | SK-2310g2 |
-|---------|--------|-----------|
-| **Digital Inputs** | 10 inputs | 7 physical + 9 internal status |
-| **Digital Outputs** | 7 outputs | 8 physical + 8 internal control |
-| **Analog Inputs** | 3 inputs (0-5/10/20/30V) | 3 inputs (ADC-1: 0-10V, ADC-2/3: 0-5V) |
-| **Analog Outputs** | None | 1 output (0-10V DAC for spindle control) |
-| **Counter/Timer** | 32-bit (5.0 MHz) | Unknown (verify with device) |
-| **PWM Outputs** | OUTPUT 1, OUTPUT 2 (20 KHz) | OUTPUT 4 (20 KHz) |
-
-### Analog I/O Summary
-
-**SK-2310g2 Analog Inputs**:
-- **ADC-1** (CN6 pin 10): 0-10V (typically spindle F/V feedback)
-- **ADC-2** (CN17 pin 3): 0-5V (general purpose, potentiometer-ready)
-- **ADC-3** (CN17 pin 2): 0-5V (general purpose, potentiometer-ready)
-
-**SK-2310g2 Analog Output**:
-- **DAC** (CN6 pin 11): 0-10V (spindle speed control)
-- Control method: Device-specific firmware command (consult SK-2310g2 documentation)
-
-### Application Notes
-
-**For I/O-focused applications**: Use LS-773 for general-purpose I/O with counter/timer
-
-**For supervisory/safety applications**: See [SK-2310g2_supervisor.md](SK-2310g2_supervisor.md) for:
-- Safety system architecture and jumper configuration
-- Diagnostic codes and troubleshooting
-- Spindle control with safety interlocks
-- LDCN command reference for safety monitoring
-- Application-specific wiring and integration
-
----
-
 ## References
 
 - Logosol LS-773 Network I/O Node Datasheet (Doc# 712773001, Rev. B)
@@ -656,8 +499,3 @@ The **SK-2310g2** is a specialized supervisory I/O controller that uses the same
   - Includes analog output for spindle control
 - [ldcn_protocol.md](ldcn_protocol.md) - Generic LDCN network protocol documentation
 
----
-
-## Hardware Verification Status
-
-🔴 **UNVERIFIED** - Command formats documented from manual, not yet tested on hardware.
