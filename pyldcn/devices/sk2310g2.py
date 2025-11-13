@@ -256,7 +256,7 @@ def format_led_pattern(diagnostic: int) -> str:
 
 def format_status(status: Dict[str, Any]) -> str:
     """
-    Format SK-2310g2 status dictionary for readable display.
+    Format SK-2310g2 status dictionary for readable display (compact).
 
     Args:
         status: Status dictionary from parse_ls773_status()
@@ -265,66 +265,40 @@ def format_status(status: Dict[str, Any]) -> str:
         Multi-line formatted string with all status information
     """
     lines = []
-    lines.append("=" * 60)
-    lines.append("SK-2310g2 SUPERVISORY CONTROLLER STATUS")
-    lines.append("=" * 60)
 
-    # Device info
-    lines.append(f"\nDevice:")
-    lines.append(f"  Device ID:      {status.get('device_id', 0)}")
-    lines.append(f"  Version:        {status.get('version', 0)}")
-
-    # Diagnostic code with LED display
+    # Header with diagnostic
     diagnostic = status.get('diagnostic', 0)
     led_pattern = format_led_pattern(diagnostic)
-    condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
+    condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown")
+    pwr = "PWR:ON" if status.get('power_state') else "PWR:OFF"
+    lines.append(f"SK-2310g2 | Diag:0x{diagnostic:02X} {led_pattern} {condition[:30]} | {pwr}")
 
-    lines.append(f"\nDiagnostic Code:")
-    lines.append(f"  Code:           0x{diagnostic:02X} ({diagnostic:05b}b)")
-    lines.append(f"  LED Display:    {led_pattern}  (5-4-3-2-1)")
-    lines.append(f"  Condition:      {condition}")
-
-    # Raw values
-    lines.append(f"\nRaw Status:")
-    lines.append(f"  Status byte:    0x{status.get('status', 0):02X}")
-    lines.append(f"  Byte0:          0x{status.get('byte0', 0):02X}")
-    lines.append(f"  Byte1:          0x{status.get('byte1', 0):02X}")
-
-    # Digital inputs - Byte0 (bits 0-7)
+    # Digital inputs - compact two-column format
     byte0 = status.get('byte0', 0)
-    lines.append(f"\nDigital Inputs (Byte0):")
-    for bit in range(8):
-        value = (byte0 >> bit) & 1
-        state = "HIGH" if value else "LOW "
-        _, _, function = DIGITAL_INPUT_LABELS.get(bit, ("", "", "Unknown"))
-        lines.append(f"  Input {bit}:       {state}  - {function}")
-
-    # Digital inputs - Byte1 (bits 8-15)
     byte1_val = status.get('byte1', 0)
-    lines.append(f"\nDigital Inputs (Byte1):")
-    for bit in range(8, 16):
-        value = (byte1_val >> (bit - 8)) & 1
-        state = "HIGH" if value else "LOW "
-        _, _, function = DIGITAL_INPUT_LABELS.get(bit, ("", "", "Unknown"))
-        lines.append(f"  Input {bit}:      {state}  - {function}")
 
-    # Analog inputs
+    for row in range(8):
+        # Byte0 input (bits 0-7)
+        bit0 = row
+        val0 = (byte0 >> bit0) & 1
+        state0 = "1" if val0 else "0"
+        _, _, func0 = DIGITAL_INPUT_LABELS.get(bit0, ("", "", "?"))
+
+        # Byte1 input (bits 8-15)
+        bit1 = row + 8
+        val1 = (byte1_val >> row) & 1
+        state1 = "1" if val1 else "0"
+        _, _, func1 = DIGITAL_INPUT_LABELS.get(bit1, ("", "", "?"))
+
+        lines.append(f"In{bit0:2d}:{state0} {func0[:18]:<18} | In{bit1:2d}:{state1} {func1[:18]:<18}")
+
+    # Analog inputs - single line each
     analog_raw = status.get('analog_inputs', 0)
-    lines.append(f"\nAnalog Inputs:")
-    # Channel 0: 0-10V (bits 0-9)
     ch0_raw = (analog_raw >> 0) & 0x3FF
-    ch0_percent = (ch0_raw / 1023.0) * 100.0
-    lines.append(f"  Channel 0:      {ch0_raw:4d} (0x{ch0_raw:03X}) = {ch0_percent:5.1f}% - Spindle Load")
-    # Channel 1: 0-5V (bits 10-14, scaled to 10-bit)
-    ch1_raw = ((analog_raw >> 10) & 0x1F) << 5  # Scale 5-bit to 10-bit
-    ch1_percent = (ch1_raw / 1023.0) * 100.0
-    lines.append(f"  Channel 1:      {ch1_raw:4d} (0x{ch1_raw:03X}) = {ch1_percent:5.1f}% - ADC2 (GP)")
-    # Channel 2: TBD
-    lines.append(f"  Channel 2:      (not yet decoded) - ADC3 (GP)")
-
-    # Power state
-    lines.append(f"\nPower:")
-    lines.append(f"  Power state:    {status.get('power_state', False)}")
+    ch0_pct = (ch0_raw / 1023.0) * 100.0
+    ch1_raw = ((analog_raw >> 10) & 0x1F) << 5
+    ch1_pct = (ch1_raw / 1023.0) * 100.0
+    lines.append(f"A0:{ch0_raw:4d}({ch0_pct:5.1f}%) Spindle Load | A1:{ch1_raw:4d}({ch1_pct:5.1f}%) ADC2")
 
     return "\n".join(lines)
 
