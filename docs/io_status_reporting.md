@@ -77,19 +77,15 @@ It is not possible to read the state of outputs. The host must store the output 
 
 Every status response packet consists of three parts, in order:
 
-1. 1 status byte
-2. 0-16 status items bytes, configurable
-3. 1 checksum byte
-
 #### 1. Status Byte
 
 The first byte of every response packet contains error flags:
 
-| Bit | Description |
-|-----|-------------|
-| **0** | Undefined - ignore |
-| **1** | Checksum error flag - Set if a checksum error was detected in the most recent command packet |
-| **2-7** | Undefined - ignore |
+| Bit | Description | Note |
+|-----|-------------|-----|
+| **0** | Undefined | ignore |
+| **1** | Checksum error flag |Set if a checksum error was detected in the most recent command packet |
+| **2-7** | Undefined | ignore |
 
 #### 2. Status Items
 
@@ -127,7 +123,7 @@ For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.m
 
 ---
 
-#### Define Status Command
+## Define Status Command
 
 **Command:** `0x02` (CMD_DEFINE_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
@@ -140,7 +136,7 @@ Causes subsequent `Nop` commands to return the defined status items.
 
 ---
 
-#### Read Status Command
+## Read Status Command
 
 **Command:** `0x03` (CMD_READ_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
@@ -150,7 +146,7 @@ This is a non-permanent version of the Define Status command. The status packet 
 
 ---
 
-#### Set PWM
+## Set PWM
 
 **Command:** `0x04` (CMD_SET_PWM)
 **Data bytes:** 2 bytes
@@ -182,7 +178,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 ---
 
-#### Synch Output
+## Synch Output
 
 **Command:** `0x05` (CMD_SYNCH_OUTPUT)
 **Data bytes:** 0 bytes
@@ -196,7 +192,7 @@ First `Set Synch Output` to stage the values, then `Synch Output` to apply.
 
 ---
 
-#### Set Outputs
+## Set Outputs
 
 **Command:** `0x06` (CMD_SET_OUTPUTS)
 **Data bytes:** 2 bytes
@@ -236,7 +232,7 @@ send_command(addr, 0x06, [outputs, 0x00])
 
 ---
 
-#### Set Synch Output
+## Set Synch Output
 
 **Command:** `0x07` (CMD_SET_SYNCH_OUTPUT)
 **Data bytes:** 4 bytes
@@ -264,7 +260,7 @@ send_command(addr, 0x05, [])  # Synch Output
 
 ---
 
-#### Set Timer Mode
+## Set Timer Mode
 
 **Command:** `0x08` (CMD_SET_TIMER_MODE)
 **Data bytes:** 1 byte
@@ -305,11 +301,11 @@ send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 
 ---
 
-#### Status Response Format
+### Status Response Format
 
 Status response size depends on which bits are set in Define Status.
 
-##### Example Configurations
+#### Example Configurations
 
 **Inputs only:**
 ```python
@@ -375,7 +371,7 @@ send_command(CMD_DEFINE_STATUS, [0xFF])  # All bits
 
 ---
 
-#### Counter/Timer
+### Counter/Timer
 
 When bit 4 or 7 is set, counter/timer values are included as 4 bytes (32-bit), least significant byte first.
 
@@ -388,7 +384,7 @@ See manual for counter/timer configuration commands.
 
 ---
 
-#### Device ID and Version
+### Device ID and Version
 
 When bit 5 is set, response includes:
 - Byte 0: Device ID = `0x02` (LS-773)
@@ -396,7 +392,7 @@ When bit 5 is set, response includes:
 
 ---
 
-#### Synch Input Command
+## Synch Input Command
 
 **Command:** `0x0C` (CMD_SYNCH_INPUT)
 **Data bytes:** 0 bytes
