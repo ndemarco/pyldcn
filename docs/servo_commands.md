@@ -106,13 +106,6 @@ Defines what additional data will be sent in status packets along with the statu
 | 13 | motor_pos | 6 bytes | Motor position and position error |
 | 14-15 | (reserved) | - | Clear to 0 |
 
-**Example**:
-```python
-# Request position, velocity, aux status, and position error
-status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # bits 0, 2, 3, 6
-send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-```
-
 **Notes**:
 - Status data is always sent in bit order (0, 1, 2, 3, ...)
 - Setting bits causes corresponding data to be appended after status byte
@@ -127,13 +120,6 @@ send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 **Returns:** Yes - Status packet with requested status items (one time only)
 
 Non-permanent version of Define Status. The status packet returned includes the specified data, but subsequent packets use the previously defined configuration.
-
-**Example**:
-```python
-# Read position once without changing defined status
-status_bits = 0x0001  # bit 0: position
-send_command(addr, 0x03, [status_bits])
-```
 
 ---
 
@@ -169,27 +155,6 @@ Loads a motion trajectory into the servo drive's path planner.
 - `0x9F` (bits 0,1,2,3,4,7): Load all params + servo mode + start now
 - `0x97` (bits 0,1,2,4,7): Load pos/vel/acc + servo mode + start now
 - `0x90` (bits 4,7): Servo mode + start now (no new data)
-
-**Examples**:
-```python
-# Example 1: Load all trajectory parameters and start immediately
-traj_ctrl = 0x97  # bits 0,1,2,4,7: Load pos+vel+acc, servo mode, start now
-position = 2000
-velocity = 100000
-accel = 50000
-data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
-send_command(addr, 0x04, list(data))
-
-# Example 2: Load position only and start immediately
-traj_ctrl = 0x91  # bits 0,4,7: Load position, servo mode, start now
-position = 5000
-data = struct.pack('<Bi', traj_ctrl, position)
-send_command(addr, 0x04, list(data))
-
-# Example 3: Start motion with previously loaded parameters
-traj_ctrl = 0x90  # bits 4,7: Servo mode, start now (no new data)
-send_command(addr, 0x04, [traj_ctrl])
-```
 
 **Notes**:
 - Position is absolute in encoder counts
@@ -233,25 +198,6 @@ Sets PID control loop gains for the servo drive.
 - Bytes 9-10: el - Position error limit (uint16)
 - Byte 11: sr - Servo rate divisor (uint8)
 - Byte 12: db - Deadband (uint8)
-
-**Typical Values** (from test_servo_init.py):
-```python
-kp = 2       # Position gain
-kd = 50      # Velocity gain
-ki = 0       # Integral gain
-il = 40      # Integration limit
-ol = 255     # Output limit
-cl = 0       # Current limit (0 = disabled)
-el = 2000    # Position error limit (counts)
-sr = 20      # Servo rate divisor (51.2µs * 20 = 1.024ms)
-db = 0       # Deadband
-```
-
-**Example**:
-```python
-gain_data = struct.pack('<HHHBBBHBB', kp, kd, ki, il, ol, cl, el, sr, db)
-send_command(addr, 0x06, list(gain_data))
-```
 
 **Notes**:
 - Gains must be tuned for specific motor and load
@@ -331,23 +277,6 @@ Controls brake output and configures path point buffer timing.
 - Purpose: Sets time interval between path points
 - Calculation: `time_between_points = counter × 51.2 µs`
 - Example: counter = 100 → 5.12 ms between points
-
-**Examples**:
-```python
-# Example 1: Set path point timing to 5.12 ms (100 × 51.2 µs)
-control = 0x40  # Bit 6 set: load path point counter
-counter = 100
-data = struct.pack('<BH', control, counter)
-send_command(addr, 0x08, list(data))
-
-# Example 2: Manually enable brake output
-control = 0x03  # Bit 0 and 1 set: manual mode, brake on
-send_command(addr, 0x08, [control])
-
-# Example 3: Return brake to automatic control
-control = 0x00  # Bit 0 clear: automatic mode
-send_command(addr, 0x08, [control])
-```
 
 **Notes**:
 - Brake output is typically controlled automatically based on drive status
@@ -526,59 +455,6 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 - Example: Counter = 100 → 5.12 ms per point
 - Must be set via I/O Control (0x8) command before path execution
 
-**Examples**:
-```python
-# Example 1: Configure path timing and add points
-# Step 1: Set path point timing to 10 ms (195.3 × 51.2 µs ≈ 10 ms)
-counter = 195
-send_command(addr, 0x08, [0x40, counter & 0xFF, (counter >> 8) & 0xFF])
-
-# Step 2: Add path points (incremental velocities)
-# Each point is int8.frac8 format: (integer_part << 8) | fractional_part
-point1 = 0x0280  # 2.5 counts/tick (2 << 8 | 128)
-point2 = 0x0300  # 3.0 counts/tick
-point3 = 0x0200  # 2.0 counts/tick
-
-# Add 3 points at once
-data = struct.pack('<hhh', point1, point2, point3)
-send_command(addr, 0x0D, [6] + list(data))  # Command 0x6D
-
-# Step 3: Start path execution
-send_command(addr, 0x0D, [])  # Command 0x0D (0 bytes)
-```
-
-```python
-# Example 2: Circular motion using path points
-import math
-
-radius = 1000  # encoder counts
-num_points = 64
-path_timing = 100  # 5.12 ms per point
-
-# Configure timing
-send_command(addr, 0x08, [0x40, path_timing & 0xFF, (path_timing >> 8) & 0xFF])
-
-# Generate circular path points
-for i in range(0, num_points, 7):  # Add 7 points at a time
-    points = []
-    for j in range(min(7, num_points - i)):
-        angle = 2 * math.pi * (i + j) / num_points
-        # Incremental position for this segment
-        dx = radius * math.cos(angle) / path_timing
-        dy = radius * math.sin(angle) / path_timing
-
-        # Convert to int8.frac8 format
-        point = int(dx * 256)  # dx is the velocity for this axis
-        points.append(point & 0xFFFF)
-
-    # Add points to buffer
-    data = struct.pack(f'<{len(points)}h', *points)
-    send_command(addr, 0x0D, [len(points) * 2] + list(data))
-
-# Start path execution
-send_command(addr, 0x0D, [])
-```
-
 **Status Monitoring**:
 - Use Status bit 7 (path_count) to monitor buffer usage
 - Use Auxiliary Status bit 6 (path_mode) to check if path is executing
@@ -647,17 +523,6 @@ Configures automatic stop behavior when limit switches are triggered.
 - **Bit 3 set**: Motor decelerates smoothly to zero velocity
 - **All bits 0-3 clear**: Stop on limits function disabled (default)
 
-**Example**:
-```python
-# Enable smooth stop on both limits
-limit1_ctrl = 0x08  # Bit 3: stop smoothly on reverse limit
-limit2_ctrl = 0x08  # Bit 3: stop smoothly on forward limit
-send_command(addr, 0x0E, [3, 0x00, limit1_ctrl, limit2_ctrl])
-
-# Disable stop on limits
-send_command(addr, 0x0E, [3, 0x00, 0x00, 0x00])
-```
-
 ---
 
 #### Sub-command 0x01: Read Hall Sensors and Initialize Angle
@@ -676,11 +541,6 @@ Reads hall sensor state and calculates initial motor angle for brushless motors.
 - Reads current hall sensor inputs
 - Calculates initial rotor angle
 - Angle will be overwritten when first index pulse arrives
-
-**Example**:
-```python
-send_command(addr, 0x0E, [1, 0x01])
-```
 
 **Use Case**: Brushless motor commutation initialization
 
@@ -701,11 +561,6 @@ Requests the drive to resend its last status response.
 **Description**:
 - Drive resends the most recent status packet
 - Useful for recovering from communication errors without re-executing command
-
-**Example**:
-```python
-send_command(addr, 0x0E, [1, 0x02])
-```
 
 **Use Case**: Communication error recovery, status verification
 
@@ -733,13 +588,6 @@ Synchronizes servo ticks across multiple drives via hardware sync lines.
 **Timing Error Reduction**:
 - Without hardware sync: ~10 ppm oscillator drift accumulates over time
 - With hardware sync: Only ±25 µs start time variation remains
-
-**Example**:
-```python
-# Enable hardware sync on all drives in system
-for addr in [1, 2, 3]:
-    send_command(addr, 0x0E, [2, 0x04, 0x01])
-```
 
 **Hardware Requirements**:
 - Physical sync connections between drives
@@ -782,33 +630,6 @@ Configures watchdog timer for communication fault detection.
 - Timeout = byte_2 × 8.192 ms
 - Example: byte_2 = 122 → ~1000 ms (1 second)
 
-**Examples**:
-```python
-# Example 1: Enable watchdog with 1 second timeout, disable amp on timeout
-timeout_ms = 1000
-timeout_count = int(timeout_ms / 8.192)  # ≈ 122
-send_command(addr, 0x0E, [3, 0x05, 0x01, timeout_count])
-
-# Example 2: Enable watchdog with 500 ms timeout, stop smoothly
-timeout_count = int(500 / 8.192)  # ≈ 61
-send_command(addr, 0x0E, [3, 0x05, 0x03, timeout_count])
-
-# Example 3: Disable watchdog
-send_command(addr, 0x0E, [3, 0x05, 0x00, 0x00])
-
-# Example 4: Monitor watchdog status
-status_bits = 0x1000  # Bit 12: watchdog status
-response = send_command(addr, 0x03, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-watchdog_status = int.from_bytes(response[2:4], 'little')
-if watchdog_status == 0xFFFF:
-    print("Watchdog disabled")
-elif watchdog_status == 0:
-    print("Watchdog expired!")
-else:
-    remaining_ms = watchdog_status * 8.192
-    print(f"Watchdog active: {remaining_ms:.1f} ms remaining")
-```
-
 **Use Case**: Safety interlock, detect lost communication
 
 ---
@@ -831,13 +652,6 @@ Sets the motor position error limit for dual-loop control systems.
 - After power-up: motor error limit = master error limit
 - Set Gain command also resets motor error limit to master error limit
 - This command independently sets motor error limit
-
-**Example**:
-```python
-motor_error_limit = 500  # encoder counts
-data = struct.pack('<BH', 0x10, motor_error_limit)
-send_command(addr, 0x0E, list(data))
-```
 
 **Use Case**: Dual-loop servo systems with separate motor and load encoders
 
@@ -911,54 +725,19 @@ When configured via Define Status (bit 3), an auxiliary status byte is returned:
 
 Complete 7-step initialization sequence for servo drives:
 
-```python
-def initialize_servo(addr):
-    # Step 1: Define status reporting
-    status_bits = 0x01 | 0x04 | 0x08 | 0x40  # pos, vel, aux, pos_err
-    send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-
-    # Step 2: Set PID gains
-    kp, kd, ki = 2, 50, 0
-    il, ol, cl = 40, 255, 0
-    el, sr, db = 2000, 20, 0
-    gain_data = struct.pack('<HHHBBBHBB', kp, kd, ki, il, ol, cl, el, sr, db)
-    send_command(addr, 0x06, list(gain_data))
-
-    # Step 3: Load initial trajectory (position 0)
-    # Use 0x9F to load all params: pos, vel, acc, PWM, servo mode, start now
-    traj_ctrl = 0x9F  # bits 0,1,2,3,4,7
-    traj_data = struct.pack('<Biiii', traj_ctrl, 0, 0, 1, 0)  # pos=0, vel=0, acc=1, pwm=0
-    send_command(addr, 0x04, list(traj_data))
-
-    # Step 4: Enable amplifier and close servo loop
-    send_command(addr, 0x07, [0x05])  # Pic_ae (bit 0) + Stop abruptly (bit 2)
-
-    # Step 5: Reset position counter
-    send_command(addr, 0x00, [])
-
-    # Step 6: Clear sticky status bits
-    send_command(addr, 0x0B, [])
-
-    # Step 7: Read and verify status
-    response = send_command(addr, 0x0E, [])  # NOP to read status
-    return parse_status(response)
-```
+1. Define status reporting
+2. Set PID gains (KP, KD, KI, IL, OL, CL, EL, SR, DB)
+3. Load initial trajectory (position 0, minimal acceleration)
+4. Enable amplifier and close servo loop
+5. Reset position counter
+6. Clear sticky status bits
+7. Read and verify status
 
 ---
 
 ## Position Scaling
 
-Convert between physical units and encoder counts:
-
-```python
-SCALE = 2000.0  # counts per mm (example)
-
-# Physical to counts
-position_counts = position_mm * SCALE
-
-# Counts to physical
-position_mm = position_counts / SCALE
-```
+Convert between physical units and encoder counts using a scale factor.
 
 **Common Scales**:
 - Direct-drive: 2000-10000 counts/mm
