@@ -446,6 +446,7 @@ When testing on hardware, verify these I/O assignments:
 2. **Status response format** - Exact encoding of analog values in status response
 3. **Guard contact mapping** - Which input bits reflect guard door closed state (CN9.1-2, CN9.5-6)
 4. **CN14 pinout** - Specific pin assignments for Inputs 0-1 and Outputs 0-1
+5. **Counter/Timer input** - Verify if Input 9 (CN13.1-2) is the counter input for Set Timer Mode (0x8), or identify which input is used. Note: Input 9 is currently assigned to Manual Override keyswitch, which may conflict with counter mode
 
 ### Design Decisions for Implementation
 1. Use constants defined in [pyldcn/devices/io.py](../pyldcn/devices/io.py) for bit positions
