@@ -359,42 +359,50 @@ Result reflected in Input 8 (At Home / Safe State).
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| 1-2 | E-stop A | Input | (Hardware) | in series with other e-stop contacts |
-| 3-4 | E-stop B | Input | (Hardware) | in series with other e-stop contacts |
-| 5-6 | Power Button | Input | (Hardware) |  |
-| 7 | Power Lamp | Output | (Hardware) | flashing when ready for power on, on when power on |
-| 8 | GND |
-| 9 | Manual Override Lamp | Output | (Hardware) | On when in manual override mode|
-| 10 | GND |
-11 Manual override A (normally open)
-12 | +24Vdc|
-13 | Manual override B (normally closed)
+| 1-2 | E-stop A | Input | (Hardware) | Emergency stop channel A (series chain) |
+| 3-4 | E-stop B | Input | (Hardware) | Emergency stop channel B (series chain) |
+| 5-6 | Power Button | Input | (Hardware) | Power ON/OFF button |
+| 7 | Power Lamp | Output | (Hardware) | Flashing when ready, ON when powered |
+| 8 | GND | - | - | Ground |
+| 9 | Manual Override Lamp | Output | (Hardware) | ON when in manual override mode |
+| 10 | GND | - | - | Ground |
+| 11 | Manual Override A | Input | (Hardware) | Normally open contact |
+| 12 | +24VDC | - | - | +24V supply |
+| 13 | Manual Override B | Input | (Hardware) | Normally closed contact |
 
-Note: Manual override mode will only enable if A & B contacts transition within 100 ms, and Manual Override Inhibit (Output 11, Byte1/Bit3) is 0. 
-
+**Manual Override Mode:**
+- Requires A & B contact transitions within 100ms
+- Manual Override Inhibit (Output 11, Byte1/Bit3) must be 0
 
 ### CN16 - Power Control Connector
 
 **Power Supply Enable Functionality:**
 - Redundant power enable inputs (A & B channels) - must be shorted to ground to enable power
 - Spindle power enable output
-- Power-on monitoring (see CN15 for monitor loop)
+- Power monitor loop (pins 5-6) verifies relay contacts are properly closed
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
 | 1 | Ground | - | - | Ground reference for Power Enable A |
 | 2 | Power Enable A | Input | (Hardware) | Short to pin 1 (GND) to enable power |
 | 4 | Power Enable B | Input | (Hardware) | Short to pin 9 (GND) to enable power |
-| 5 | Power Monitor Input | Input | (Hardware) | monitors power-on relay - return |
-| 6 | Power Monitor Output | Output | (Hardware) | monitors power-on relay - supply (-27V) |
+| 5 | Power Monitor Input | Input | (Hardware) | Return from series-connected relay contacts |
+| 6 | Power Monitor Output | Output | (Hardware) | -27V monitor supply |
 | 8 | Power Enable (UM) | Output | (Hardware) | Motor voltage contactor control |
 | 9 | Ground | - | - | Ground reference for Power Enable B |
-| 10 | Spindle Power Enable | Output | (Hardware) | wired to CN6.5 |
+| 10 | Spindle Power Enable | Output | (Hardware) | Spindle power control (connects to CN6.5) |
+
+**Power Monitor Loop:**
+- Pin 6 outputs -27V
+- Pin 5 receives return through series-connected power-on relay contacts
+- Verifies relay contacts are properly closed before enabling power
 
 **Notes:**
 - "UM" = Motor voltage (Logosol term)
 - Power enable inputs A & B are redundant - both must be shorted to ground for power-on
-- Power Monitor circuit is complete when power enable relays are closed
+
+---
+
 ### CN17 - Analog Input Connector
 
 | Pin | Signal | Type | Channel | Notes |
@@ -404,9 +412,11 @@ Note: Manual override mode will only enable if A & B contacts transition within 
 
 ---
 
-## Implementation Guidance for sk2310g2.py
+## Implementation Guidance
 
-When implementing high-level methods in [pyldcn/devices/sk2310g2.py](../pyldcn/devices/sk2310g2.py), use these I/O assignments as the reference.
+When implementing high-level methods in the SK2310g2 class ([pyldcn/devices/io.py](../pyldcn/devices/io.py)), use these I/O assignments as the reference.
+
+**Note:** The [pyldcn/devices/sk2310g2.py](../pyldcn/devices/sk2310g2.py) module contains parsing utilities and label mappings, while the SK2310g2 device class is implemented in io.py.
 
 ### Example: Spindle Control Implementation
 
@@ -460,49 +470,6 @@ def unlock_guards(self) -> None:
     self.set_output_bit(OUTPUT_GUARD_LOCK, False)
 ```
 
----
-
-## Testing Checklist
-
-When testing on hardware, verify these I/O assignments:
-
-### Digital Inputs
-- [ ] Input 0 (Program Run) - CN14
-- [ ] Input 1 (Program Stop) - CN14
-- [ ] Input 3 (Spindle Fault) - CN6.3
-- [ ] Input 4 (Spindle At Speed) - CN6.4
-- [ ] Input 5 (Air Pressure) - CN7.1
-- [ ] Input 6 (Measure Switch) - CN7.3
-- [ ] Input 7 (Tool Changer Closed) - CN7.5
-- [ ] Input 8 (At Home) - Internal/CN8
-- [ ] Input 9 (Test Mode) - CN13.1-2
-- [ ] Input 10 (Servo Fault) - CN3.4
-
-### Digital Outputs
-- [ ] Output 0 (Program Running Lamp) - CN14
-- [ ] Output 1 (Program Stopped Lamp) - CN14
-- [ ] Output 2 (Spindle ON) - CN6.5
-- [ ] Output 3 (Spindle Direction) - CN6.6
-- [ ] Output 4 (Spindle DC-brake) - CN6.7
-- [ ] Output 5 (Tool Clamp) - CN7.7
-- [ ] Output 6 (Spindle Motor Cooling) - CN7.9
-- [ ] Output 7 (Tool Cooling) - CN7.11
-- [ ] Output 8 (Tool Changer Unlock) - CN7.13
-- [ ] Output 9 (Guard Lock) - CN9.3-4, CN10.3-4
-
-### Analog I/O
-- [ ] Analog Input 0 (Spindle Load) - CN6.10
-- [ ] Analog Input 1 (ADC2) - CN17.3
-- [ ] Analog Input 2 (ADC3) - CN17.2
-- [ ] Analog Output 0 (Spindle Speed) - CN6.11
-
-### Safety Constraints
-- [ ] Verify Output 2 and Output 12 cannot both be 1 simultaneously
-- [ ] Verify Spindle OFF computation (Input 2)
-- [ ] Verify guard unlock conditions work correctly
-- [ ] Verify diagnostic codes reflect guard states
-
----
 
 ## Related Documentation
 
@@ -516,31 +483,14 @@ When testing on hardware, verify these I/O assignments:
 
 ## Notes and Observations
 
-### Current Understanding
-- Physical I/O assignments are well-documented in the manual (page 19)
-- Bit-level assignments are clearly defined
-- Safety constraints are explicitly documented
-- Connector pinouts are specified
 
 ### Needs Clarification (Hardware Testing Required)
-1. **Analog output data format** - CMD_SET_PWM_IO (0x04) command identified, data format TBD (likely [channel, value])
-2. **Analog input reading** - Read via DEFINE_STATUS/READ_STATUS (bits 1-3), exact byte ordering in response TBD
-3. **Guard contact mapping** - Which input bits reflect guard door closed state (CN9.1-2, CN9.5-6)
-4. **CN14 pinout** - Specific pin assignments for Inputs 0-1 and Outputs 0-1
 5. **Counter/Timer input** - Verify if Input 9 (CN13.1-2) is the counter input for Set Timer Mode (0x8), or identify which input is used. Note: Input 9 is currently assigned to Manual Override keyswitch, which may conflict with counter mode
-6. **System Status expansion** - Document complete system status monitoring capabilities (TODO: expand this section later)
+
 
 ### Design Decisions for Implementation
 1. Use constants defined in [pyldcn/devices/io.py](../pyldcn/devices/io.py) for bit positions
 2. Validate safety constraints in software before sending commands
-3. Provide both low-level (bit manipulation) and high-level (named methods) interfaces
-4. Return human-readable dictionaries from status reading methods
-5. Raise clear exceptions when safety constraints would be violated
 
----
 
-**Next Steps:**
-1. Use this document to guide implementation of high-level methods in SK2310g2 class
-2. Test each I/O assignment on hardware and mark verified items
-3. Document any deviations or corrections discovered during testing
-4. Add hardware-specific notes (timing requirements, quirks, etc.)
+
