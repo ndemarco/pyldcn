@@ -1,12 +1,38 @@
 # LS-231SE Servo Drive Commands
 
-This document describes commands specific to the **LS-231SE servo drives** (and likely other Logosol servo drives).
+This document describes commands for the **LS-231SE servo drives** (and likely other Logosol servo drives).
 
-For generic LDCN network commands (Set Address, Define Status, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
+For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
+
+**Reference**: LS-231SE Datasheet (Doc # 712231004 / Rev. A, 05/05/2011)
 
 ---
 
-## Servo-Specific Commands
+## Command Summary
+
+| Cmd | Name | Data Bytes | Cmd Byte | Description |
+|-----|------|------------|----------|-------------|
+| 0x0 | Reset Position | 0 | 0x00 | Reset 32-bit encoder counter to zero |
+| 0x1 | Set Address | 2 | 0x21 | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0x2 | Define Status | 1-2 | 0x12/0x22 | Configure persistent status reporting |
+| 0x3 | Read Status | 1-2 | 0x13/0x23 | Request status data (one-time) |
+| 0x4 | Load Trajectory | 1-15 | 0x14-0xF4 | Load motion parameters (position, velocity, accel, PWM) |
+| 0x5 | Start Motion | 0 | 0x05 | Execute previously loaded trajectory |
+| 0x6 | Set Gain | 14 | 0xE6 | Set PID gains and servo parameters |
+| 0x7 | Stop Motor | 1 or 5 | 0x17/0x57 | Stop motor with various modes (abrupt, smooth, etc.) |
+| 0x8 | I/O Control | n | 0x18-0xn8 | Control brake output and set path point timing |
+| 0x9 | Set Homing Mode | 1 | 0x19 | Configure homing capture conditions |
+| 0xA | Set Baud Rate | 1 | 0x1A | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0xB | Clear Sticky Bits | 0 | 0x0B | Clear latched fault status bits |
+| 0xC | Save Current Position as Home | 0 | 0x0C | Store current position as home position |
+| 0xD | Add Path Points | 0-14 | 0x0D-0xED | Add points to path buffer (up to 7 points per command) |
+| 0xE | No Operation (NOP) | 0 | 0x0E | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0xE | Extended Commands | 1-n | 0x1E-0xnE | Sub-commands for advanced features |
+| 0xF | Hard Reset | 0 | 0x0F | See [ldcn_protocol.md](ldcn_protocol.md) |
+
+---
+
+## Command Descriptions
 
 ### 0x0 - Reset Position
 
@@ -20,6 +46,74 @@ AA 01 00 01  # Reset position on device 1
 ```
 
 **Use Case**: Zeroing the machine coordinate system at a known position.
+
+---
+
+### 0x1 - Set Address
+
+See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
+
+**Summary**: Sets individual address (1-127) and group address (128-255).
+
+---
+
+### 0x2 - Define Status
+
+Defines what additional data will be sent in status packets along with the status byte.
+
+**Data**: 1 or 2 bytes (16-bit little-endian status configuration)
+
+**Command Byte**:
+- `0x12`: 1 data byte (for status bits 0-7)
+- `0x22`: 2 data bytes (for status bits 0-15)
+
+**Default**: `0x0000` (no additional status data)
+
+**Status Configuration Bits** (Servo Devices):
+
+| Bit | Data Item | Size | Description |
+|-----|-----------|------|-------------|
+| 0 | position | 4 bytes | Current encoder position (int32, little-endian) |
+| 1 | ad_value | 1 byte | Analog-to-digital converter value (0-255) |
+| 2 | velocity | 2 bytes | Actual velocity (int16, no fractional component) |
+| 3 | auxiliary | 1 byte | Auxiliary status byte (see below) |
+| 4 | home | 4 bytes | Captured home position (int32) |
+| 5 | device_id | 2 bytes | Device ID (0) + Version (20-29 decimal) |
+| 6 | pos_error | 2 bytes | Current position following error (int16) |
+| 7 | path_count | 1 byte | Number of points in path buffer (0-255) |
+| 8 | digital_in | 2 bytes | Digital input states |
+| 9 | analog_in | 2 bytes | Analog input values |
+| 10-11 | (reserved) | - | Clear to 0 |
+| 12 | watchdog | 2 bytes | Watchdog status (0xFFFF=disabled, 0x0000=expired) |
+| 13 | motor_pos | 6 bytes | Motor position and position error |
+| 14-15 | (reserved) | - | Clear to 0 |
+
+**Example**:
+```python
+# Request position, velocity, aux status, and position error
+status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # bits 0, 2, 3, 6
+send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+```
+
+**Notes**:
+- Status data is always sent in bit order (0, 1, 2, 3, ...)
+- Setting bits causes corresponding data to be appended after status byte
+- Power-up default includes only status byte + checksum
+
+---
+
+### 0x3 - Read Status
+
+Non-permanent version of Define Status. The status packet returned includes the specified data, but subsequent packets use the previously defined configuration.
+
+**Data**: 1 or 2 bytes (same format as Define Status)
+
+**Example**:
+```python
+# Read position once without changing defined status
+status_bits = 0x0001  # bit 0: position
+send_command(addr, 0x03, [status_bits])
+```
 
 ---
 
@@ -176,6 +270,16 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 
 ---
 
+### 0x8 - I/O Control
+
+**Data**: Variable (n bytes)
+
+**Description**: Controls brake output and sets path point buffer timing.
+
+**TODO**: Add complete documentation from LS-231SE datasheet.
+
+---
+
 ### 0x9 - Set Home Mode
 
 Configures homing mode to capture home position on specified conditions.
@@ -245,6 +349,14 @@ AA 01 05 06        # Start motion
 
 ---
 
+### 0xA - Set Baud Rate
+
+See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
+
+**Summary**: Configures the serial communication baud rate for the device.
+
+---
+
 ### 0xB - Clear Bits
 
 Clears "sticky" status bits that latch on fault conditions.
@@ -265,65 +377,39 @@ AA 01 0B 0C  # Clear sticky bits on device 1
 
 ---
 
-## Define Status & Read Status Commands
+### 0xC - Save Current Position as Home
 
-These commands configure what additional data is returned in status packets. They are part of the base LDCN protocol but device-specific status items vary.
+**Data**: None
 
-### 0x2 - Define Status
+**Description**: Stores the current encoder position as the home position.
 
-Defines what additional data will be sent in status packets along with the status byte.
+**TODO**: Add complete documentation from LS-231SE datasheet.
 
-**Data**: 1 or 2 bytes (16-bit little-endian status configuration)
+---
 
-**Command Byte**:
-- `0x12`: 1 data byte (for status bits 0-7)
-- `0x22`: 2 data bytes (for status bits 0-15)
+### 0xD - Add Path Points
 
-**Default**: `0x0000` (no additional status data)
+**Data**: Variable (0-14 bytes)
 
-**Status Configuration Bits** (Servo Devices):
+**Description**: Adds up to 7 path points to the path buffer for continuous motion.
 
-| Bit | Data Item | Size | Description |
-|-----|-----------|------|-------------|
-| 0 | position | 4 bytes | Current encoder position (int32, little-endian) |
-| 1 | ad_value | 1 byte | Analog-to-digital converter value (0-255) |
-| 2 | velocity | 2 bytes | Actual velocity (int16, no fractional component) |
-| 3 | auxiliary | 1 byte | Auxiliary status byte (see below) |
-| 4 | home | 4 bytes | Captured home position (int32) |
-| 5 | device_id | 2 bytes | Device ID (0) + Version (20-29 decimal) |
-| 6 | pos_error | 2 bytes | Current position following error (int16) |
-| 7 | path_count | 1 byte | Number of points in path buffer (0-255) |
-| 8 | digital_in | 2 bytes | Digital input states |
-| 9 | analog_in | 2 bytes | Analog input values |
-| 10-11 | (reserved) | - | Clear to 0 |
-| 12 | watchdog | 2 bytes | Watchdog status (0xFFFF=disabled, 0x0000=expired) |
-| 13 | motor_pos | 6 bytes | Motor position and position error |
-| 14-15 | (reserved) | - | Clear to 0 |
+**TODO**: Add complete documentation from LS-231SE datasheet.
 
-**Example**:
-```python
-# Request position, velocity, aux status, and position error
-status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # bits 0, 2, 3, 6
-send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-```
+---
 
-**Notes**:
-- Status data is always sent in bit order (0, 1, 2, 3, ...)
-- Setting bits causes corresponding data to be appended after status byte
-- Power-up default includes only status byte + checksum
+### 0xE - No Operation (NOP)
 
-### 0x3 - Read Status
+See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
-Non-permanent version of Define Status. The status packet returned includes the specified data, but subsequent packets use the previously defined configuration.
+**Summary**: Used to request status without executing a command.
 
-**Data**: 1 or 2 bytes (same format as Define Status)
+---
 
-**Example**:
-```python
-# Read position once without changing defined status
-status_bits = 0x0001  # bit 0: position
-send_command(addr, 0x03, [status_bits])
-```
+### 0xF - Hard Reset
+
+See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
+
+**Summary**: Performs a complete reset of the device.
 
 ---
 
