@@ -8,9 +8,7 @@
 
 ## General Introduction
 
-This document describes the diagnostic and I/O functionality of the LS-231SE servo drive in LDCN mode. The drive provides comprehensive diagnostic information through status bits, LED indicators, and I/O signals to aid in troubleshooting and system monitoring.
-
-The diagnostic system uses combinations of status byte bits, auxiliary status byte bits, and control signals to indicate specific drive conditions. LED colors and brake states provide visual and physical feedback for diagnosis.
+This document describes the diagnostic and I/O functionality of the LS-231SE servo drive in LDCN mode.
 
 ---
 
@@ -60,36 +58,62 @@ The LS-231SE operates in LDCN mode when the mode selection bits are set to `000`
 
 ## LDCN Mode State and Diagnostics Table
 
-The following table shows the relationship between status bits and drive conditions in LDCN mode (MODEbit[C,B,A] = 000).
+The following tables show the relationship between status bits and drive conditions in LDCN mode (MODEbit[C,B,A] = 000).
 
 **Legend**:
 - `1` = Bit set (HIGH)
 - `0` = Bit clear (LOW)
 - `X` = Don't care (either state)
 
-| Condition | Status Bits ||||||| Auxiliary || Stop | Pic_ae | LED Colors || FAULT | BRAKE |
-|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| | **Bit 6**<br>Limit2 | **Bit 5**<br>Home | **Bit 4**<br>Pos_err | **Bit 3**<br>Power | **Bit 0**<br>Move_done | **Bit 2**<br>Servo | **Bit 0**<br>Index | **Bit 0** | **≡DE** | **Orange** | **Green** | **Red** | **Relay** | **(OUTbit0)** |
-| **No Motor Power after LDCN Init** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | ON | ON | OFF | OFF | Released |
-| **AxisOFF** | 1 | 1 | 1 | 1 | 0 | 0 | X | 0 | 0 | OFF | ON | ON | OFF | Closed (CN8pin9 High) |
-| **ServoON** | 0 | 0 | 0 | 1 | X | 1 | X | 1 | 1 | ON | ON | ON | OFF | Closed (CN8pin9 High) |
-| **ServoOFF** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 | OFF | Alternate | ON | OFF | Released |
-| **ErrHALL** | X | X | 1 | 0 | 1 | 0 | 1 | 0 | 0 | Blink | Blink | Fast Blink | Closed | Closed |
-| **ErrEEPROM** | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | Blink | Blink | ON | Closed | Closed |
-| **No Motor Power** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | Alternate | OFF | Blink | Closed | Closed |
-| **Overheat** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | Alternate | Blink | Blink | Closed | Closed |
-| **Disabled** | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | ON | Blink | Blink | Closed | Closed |
-| **Master EncoderERROR** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 1 | OFF | Blink | Blink | Closed | Closed |
-| **Brake or Output Short** | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | ON | ON | Blink | Closed | Closed |
-| **Stopped** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 | Blink | Alternate | Blink | Closed | Closed |
-| **MotorShort** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | Blink | Blink | ON | Closed | Closed |
-| **Motor PowerDROP** | 0 | 0 | 1 | 0 | X | 0 | 1 | 1 | 1 | ON | OFF | Blink | Closed | Closed |
-| **OverLOAD** | 1 | 0 | 1 | 0 | X | 0 | 0 | 1 | 1 | Blink | ON | Blink | Closed | Closed |
-| **EncoderERR (Reset required)** | X | X | 1 | 1 | 1 | 0 | X | 0 | 0 | Blink | OFF | OFF | Closed | Closed |
-| **PositionERROR** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | ON | Blink | ON | Closed | Closed |
-| **Limit2** | 1 | X | 1 | 1 | 0 | 0 | X | 0 | 1 | Blink | Blink | ON | Closed | Closed |
-| **Home Source** | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | OFF | ON | Blink | Closed | Released |
-| **Encoder** | X | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 1 | OFF | Blink | Blink | Closed | Released |
+### Part 1: Status and Control Bits
+
+| Condition | Limit2<br>(Bit 6) | Home<br>(Bit 5) | Pos_err<br>(Bit 4) | Power<br>(Bit 3) | Move_done<br>(Bit 0) | Servo<br>(Aux Bit 2) | Index<br>(Aux Bit 0) | Stop Cmd | Pic_ae<br>(DE) |
+|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **No Motor Power after LDCN Init** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **AxisOFF** | 1 | 1 | 1 | 1 | 0 | 0 | X | 0 | 0 |
+| **ServoON** | 0 | 0 | 0 | 1 | X | 1 | X | 1 | 1 |
+| **ServoOFF** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
+| **ErrHALL** | X | X | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **ErrEEPROM** | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **No Motor Power** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Overheat** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Disabled** | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Master EncoderERROR** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 1 |
+| **Brake or Output Short** | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Stopped** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
+| **MotorShort** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Motor PowerDROP** | 0 | 0 | 1 | 0 | X | 0 | 1 | 1 | 1 |
+| **OverLOAD** | 1 | 0 | 1 | 0 | X | 0 | 0 | 1 | 1 |
+| **EncoderERR (Reset required)** | X | X | 1 | 1 | 1 | 0 | X | 0 | 0 |
+| **PositionERROR** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Limit2** | 1 | X | 1 | 1 | 0 | 0 | X | 0 | 1 |
+| **Home Source** | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
+| **Encoder** | X | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 1 |
+
+### Part 2: LED Indicators and Physical Outputs
+
+| Condition | Orange LED | Green LED | Red LED | FAULT Relay | BRAKE Output |
+|-----------|:----------:|:---------:|:-------:|:-----------:|:------------:|
+| **No Motor Power after LDCN Init** | ON | ON | OFF | OFF | Released |
+| **AxisOFF** | OFF | ON | ON | OFF | Closed (CN8pin9 High) |
+| **ServoON** | ON | ON | ON | OFF | Closed (CN8pin9 High) |
+| **ServoOFF** | OFF | Alternate | ON | OFF | Released |
+| **ErrHALL** | Blink | Blink | Fast Blink | Closed | Closed |
+| **ErrEEPROM** | Blink | Blink | ON | Closed | Closed |
+| **No Motor Power** | Alternate | OFF | Blink | Closed | Closed |
+| **Overheat** | Alternate | Blink | Blink | Closed | Closed |
+| **Disabled** | ON | Blink | Blink | Closed | Closed |
+| **Master EncoderERROR** | OFF | Blink | Blink | Closed | Closed |
+| **Brake or Output Short** | ON | ON | Blink | Closed | Closed |
+| **Stopped** | Blink | Alternate | Blink | Closed | Closed |
+| **MotorShort** | Blink | Blink | ON | Closed | Closed |
+| **Motor PowerDROP** | ON | OFF | Blink | Closed | Closed |
+| **OverLOAD** | Blink | ON | Blink | Closed | Closed |
+| **EncoderERR (Reset required)** | Blink | OFF | OFF | Closed | Closed |
+| **PositionERROR** | ON | Blink | ON | Closed | Closed |
+| **Limit2** | Blink | Blink | ON | Closed | Closed |
+| **Home Source** | OFF | ON | Blink | Closed | Released |
+| **Encoder** | OFF | Blink | Blink | Closed | Released |
 
 ---
 
