@@ -1,6 +1,6 @@
 # LS-231SE Servo Drive Commands
 
-This document describes commands for the **LS-231SE servo drives** (and likely other Logosol servo drives).
+This document describes commands for the LS-231SE servo drives (and likely other Logosol servo drives).
 
 For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 
@@ -45,22 +45,31 @@ For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 
 ## Command Descriptions
 
-### 0x0 - Reset Position
+### Reset Position
+
+**Command:** `0x00` (CMD_RESET_POS)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Resets the 32-bit encoder counter to zero.
-
-**Data**: None
 
 **Example**:
 ```
 AA 01 00 01  # Reset position on device 1
 ```
 
-**Use Case**: Zeroing the machine coordinate system at a known position.
+**Notes**:
+- The position encoder is different from the home position
+- Do not issue this command during a trapezoidal move
+
 
 ---
 
-### 0x1 - Set Address
+### Set Address
+
+**Command:** `0x01` (CMD_SET_ADDR)<br>
+**Data bytes:** 2 bytes<br>
+**Returns:** Yes - Standard status packet
 
 See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
@@ -68,11 +77,13 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
 ---
 
-### 0x2 - Define Status
+### Define Status
+
+**Command:** `0x02` (CMD_DEFINE_STATUS)<br>
+**Data bytes:** 1 or 2 bytes<br>
+**Returns:** Yes - Status packet with defined status items
 
 Defines what additional data will be sent in status packets along with the status byte.
-
-**Data**: 1 or 2 bytes (16-bit little-endian status configuration)
 
 **Default**: `0x0000` (no additional status data)
 
@@ -105,15 +116,17 @@ send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 **Notes**:
 - Status data is always sent in bit order (0, 1, 2, 3, ...)
 - Setting bits causes corresponding data to be appended after status byte
-- Power-up default includes only status byte + checksum
+- Power-up or `hard reset` resets to return only status byte + checksum
 
 ---
 
-### 0x3 - Read Status
+### Read Status
+
+**Command:** `0x03` (CMD_READ_STATUS)<br>
+**Data bytes:** 1 or 2 bytes<br>
+**Returns:** Yes - Status packet with requested status items (one time only)
 
 Non-permanent version of Define Status. The status packet returned includes the specified data, but subsequent packets use the previously defined configuration.
-
-**Data**: 1 or 2 bytes (same format as Define Status)
 
 **Example**:
 ```python
@@ -124,11 +137,15 @@ send_command(addr, 0x03, [status_bits])
 
 ---
 
-### 0x4 - Load Trajectory
+### Load Trajectory
+
+**Command:** `0x04` (CMD_LOAD_TRAJ)<br>
+**Data bytes:** 1 to 15 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Loads a motion trajectory into the servo drive's path planner.
 
-**Data** (variable length, 1-15 bytes):
+**Data**:
 - Byte 0: Trajectory control flags
 - Optional bytes based on control flags set:
   - If bit 0 set: Bytes 1-4: Position (int32, little-endian, encoder counts)
@@ -181,11 +198,13 @@ send_command(addr, 0x04, [traj_ctrl])
 
 ---
 
-### 0x5 - Start Motion
+### Start Motion
+
+**Command:** `0x05` (CMD_START_MOVE)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Starts previously loaded motion trajectory.
-
-**Data**: None
 
 **Example**:
 ```
@@ -196,7 +215,11 @@ AA 01 05 06  # Start motion on device 1
 
 ---
 
-### 0x6 - Load Gains
+### Load Gains
+
+**Command:** `0x06` (CMD_LOAD_GAIN)<br>
+**Data bytes:** 14 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Sets PID control loop gains for the servo drive.
 
@@ -237,12 +260,17 @@ send_command(addr, 0x06, list(gain_data))
 
 ---
 
-### 0x7 - Stop Motor
+### Stop Motor
+
+**Command:** `0x07` (CMD_STOP_MOTOR)<br>
+**Data bytes:** 1 or 5 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Stops servo motor and controls amplifier enable state.
 
 **Data**:
 - Byte 0: Stop control flags
+- Bytes 1-4: Stop position (optional, only if bit 4 set)
 
 **Stop Control Flags**:
 | Bit | Function |
@@ -277,11 +305,15 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 
 ---
 
-### 0x8 - I/O Control
+### I/O Control
+
+**Command:** `0x08` (CMD_IO_CTRL)<br>
+**Data bytes:** 1 or 3 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Controls brake output and configures path point buffer timing.
 
-**Data**: 1 or 3 bytes
+**Data**:
 - Byte 0: Control byte
 - Bytes 1-2: Path point buffer counter (optional, only if bit 6 set)
 
@@ -325,7 +357,11 @@ send_command(addr, 0x08, [control])
 
 ---
 
-### 0x9 - Set Home Mode
+### Set Homing Mode
+
+**Command:** `0x09` (CMD_SET_HOMING)<br>
+**Data bytes:** 1 byte<br>
+**Returns:** Yes - Standard status packet
 
 Configures homing mode to capture home position on specified conditions.
 
@@ -394,7 +430,11 @@ AA 01 05 06        # Start motion
 
 ---
 
-### 0xA - Set Baud Rate
+### Set Baud Rate
+
+**Command:** `0x0A` (CMD_SET_BAUD)<br>
+**Data bytes:** 1 byte<br>
+**Returns:** Yes - Standard status packet
 
 See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
@@ -402,11 +442,13 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
 ---
 
-### 0xB - Clear Bits
+### Clear Bits
+
+**Command:** `0x0B` (CMD_CLEAR_BITS)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Clears "sticky" status bits that latch on fault conditions.
-
-**Data**: None
 
 **Example**:
 ```
@@ -417,57 +459,44 @@ AA 01 0B 0C  # Clear sticky bits on device 1
 - Checksum error (bit 1)
 - Current limit (bit 2)
 - Position error (bit 4)
+- Position wrap (auxiliary status bit 1)
+- Servo overrun (auxiliary status bit 5)
 
 **Use Case**: After recovering from a fault, clear the fault flags before resuming operation.
 
 ---
 
-### 0xC - Save Current Position as Home
+### Save Current Position as Home
 
-Saves the current encoder position as the home position for later retrieval.
+**Command:** `0x0C` (CMD_SAVE_AS_HOME)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Standard status packet
 
-**Data**: None
+Saves the current encoder position as the home position.
 
 **Example**:
 ```
 AA 01 0C 0D  # Save current position as home on device 1
 ```
 
-**Use Case**: Synchronous home position capture across multiple axes
-
-This command is typically issued to a **group** of controllers to cause their current positions to be stored synchronously. This ensures that all axes capture their home positions at exactly the same moment, which is critical for multi-axis systems that need to establish a common coordinate reference.
-
-**Workflow**:
-```python
-# Example: Synchronous home capture for 3-axis system
-# Assume axes are at group address 0xF0
-
-# 1. Move all axes to desired home position (zero position, alignment fixture, etc.)
-# ... motion commands ...
-
-# 2. Capture current positions synchronously as home
-send_command(addr=0xF0, cmd=0x0C, data=[])  # Group command - all axes capture simultaneously
-
-# 3. Later, read the stored home positions individually
-home_x = send_command(addr=1, cmd=0x03, data=[0x10, 0x00])  # Read home position (bit 4)
-home_y = send_command(addr=2, cmd=0x03, data=[0x10, 0x00])
-home_z = send_command(addr=3, cmd=0x03, data=[0x10, 0x00])
-```
+**Use Case**: Synchronous home position capture across multiple axes. This command can be issued to a group of controllers to set their current positions as home synchronously.
 
 **Notes**:
-- Home position is separate from current position
 - Stored home position can be read via Define Status/Read Status (bit 4)
 - Does not move the motor - only stores the current position value
-- Particularly useful when combined with group addressing for multi-axis synchronization
-- Home position is a 32-bit signed integer (same format as position)
+- Home position is a 32-bit signed integer
 
 ---
 
-### 0xD - Add Path Points
+### Add Path Points
+
+**Command:** `0x0D` (CMD_ADD_PATHPOINT)<br>
+**Data bytes:** 0, 2, 4, 6, 8, 10, 12, or 14 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Adds incremental path points to the 256-entry path buffer for continuous motion trajectories.
 
-**Data**: 0, 2, 4, 6, 8, 10, 12, or 14 bytes
+**Data**:
 - 0 bytes: Start path execution
 - 2 bytes: Add 1 path point
 - 4 bytes: Add 2 path points
@@ -566,7 +595,11 @@ send_command(addr, 0x0D, [])
 
 ---
 
-### 0xE - No Operation (NOP)
+### No Operation (NOP)
+
+**Command:** `0x0E` (CMD_NOP)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Status packet according to Define Status configuration
 
 See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
@@ -585,6 +618,11 @@ Advanced features accessed via command 0xE with sub-command codes.
   - Bytes 1-n: Sub-command specific data
 
 #### Sub-command 0x00: Stop on Limit Switches
+
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x00`<br>
+**Data bytes:** 3 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Configures automatic stop behavior when limit switches are triggered.
 
@@ -624,6 +662,11 @@ send_command(addr, 0x0E, [3, 0x00, 0x00, 0x00])
 
 #### Sub-command 0x01: Read Hall Sensors and Initialize Angle
 
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x01`<br>
+**Data bytes:** 1 byte<br>
+**Returns:** Yes - Standard status packet
+
 Reads hall sensor state and calculates initial motor angle for brushless motors.
 
 **Data**:
@@ -645,6 +688,11 @@ send_command(addr, 0x0E, [1, 0x01])
 
 #### Sub-command 0x02: Repeat Last Answer
 
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x02`<br>
+**Data bytes:** 1 byte<br>
+**Returns:** Yes - Repeats last status packet sent
+
 Requests the drive to resend its last status response.
 
 **Data**:
@@ -664,6 +712,11 @@ send_command(addr, 0x0E, [1, 0x02])
 ---
 
 #### Sub-command 0x04: Enable/Disable Hardware Synchronization Mode
+
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x04`<br>
+**Data bytes:** 2 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Synchronizes servo ticks across multiple drives via hardware sync lines.
 
@@ -697,6 +750,11 @@ for addr in [1, 2, 3]:
 ---
 
 #### Sub-command 0x05: Set Watchdog Mode
+
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x05`<br>
+**Data bytes:** 3 bytes<br>
+**Returns:** Yes - Standard status packet
 
 Configures watchdog timer for communication fault detection.
 
@@ -757,6 +815,11 @@ else:
 
 #### Sub-command 0x10: Set Motor Error Limit
 
+**Command:** `0x0E` (CMD_EXTENDED)<br>
+**Sub-command:** `0x10`<br>
+**Data bytes:** 3 bytes<br>
+**Returns:** Yes - Standard status packet
+
 Sets the motor position error limit for dual-loop control systems.
 
 **Data**:
@@ -780,7 +843,11 @@ send_command(addr, 0x0E, list(data))
 
 ---
 
-### 0xF - Hard Reset
+### Hard Reset
+
+**Command:** `0x0F` (CMD_HARD_RESET)<br>
+**Data bytes:** 1 byte<br>
+**Returns:** No - Device resets immediately
 
 See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
