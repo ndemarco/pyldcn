@@ -27,8 +27,19 @@ For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 | 0xC | Save Current Position as Home | 0 | 0x0C | Store current position as home position |
 | 0xD | Add Path Points | 0-14 | 0x0D-0xED | Add points to path buffer (up to 7 points per command) |
 | 0xE | No Operation (NOP) | 0 | 0x0E | See [ldcn_protocol.md](ldcn_protocol.md) |
-| 0xE | Extended Commands | 1-n | 0x1E-0xnE | Sub-commands for advanced features |
+| 0xE | Extended Commands | 1-n | 0x1E-0xnE | Sub-commands for advanced features (see table below) |
 | 0xF | Hard Reset | 0 | 0x0F | See [ldcn_protocol.md](ldcn_protocol.md) |
+
+### Extended Commands (0xE Sub-commands)
+
+| Sub-Cmd | Name | Data Bytes | Description |
+|---------|------|------------|-------------|
+| 0x00 | Stop on Limit Switches | 3 | Configure automatic stop behavior when limits triggered |
+| 0x01 | Read Hall Sensors | 1 | Initialize brushless motor angle from hall sensors |
+| 0x02 | Repeat Last Answer | 1 | Resend last status packet (error recovery) |
+| 0x04 | Hardware Sync Mode | 2 | Enable/disable multi-drive servo tick synchronization |
+| 0x05 | Set Watchdog Mode | 3 | Configure communication watchdog timer (safety) |
+| 0x10 | Set Motor Error Limit | 3 | Set motor position error limit (dual-loop systems) |
 
 ---
 
