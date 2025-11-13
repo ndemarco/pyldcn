@@ -12,9 +12,10 @@ import time
 import struct
 from typing import Optional, Dict, List
 
-# Import from parent package
-from pyldcn.network import (
-    LDCNDevice, LDCNNetwork,
+# Import from parent package (modular architecture)
+from pyldcn.device import LDCNDevice
+from pyldcn.network import LDCNNetwork
+from pyldcn.constants import (
     CMD_READ_STATUS,  # Shared command used by all devices
     STATUS_POWER_ON,  # Shared status flag used by all devices
 )

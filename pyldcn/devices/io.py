@@ -11,9 +11,10 @@ License: GPL v2 or later
 import time
 from typing import Optional, Dict, Any
 
-# Import from parent package
-from pyldcn.network import (
-    LDCNDevice, LDCNNetwork,
+# Import from parent package (modular architecture)
+from pyldcn.device import LDCNDevice
+from pyldcn.network import LDCNNetwork
+from pyldcn.constants import (
     CMD_READ_STATUS,
     STATUS_POWER_ON,
 )
