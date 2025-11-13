@@ -62,6 +62,18 @@ STATUS_LIMIT2 = 0x40
 STATUS_HOME_IN_PROG = 0x80
 
 # =============================================================================
+# Auxiliary Status Byte Flags
+# =============================================================================
+
+AUX_INDEX = 0x01           # Bit 0: Complement of index input or diagnostic bit
+AUX_POS_WRAP = 0x02        # Bit 1: 32-bit position counter wrapped (sticky)
+AUX_SERVO_ON = 0x04        # Bit 2: Position servo loop enabled
+AUX_ACCEL_DONE = 0x08      # Bit 3: Acceleration phase complete
+AUX_SLEW_DONE = 0x10       # Bit 4: Constant velocity phase complete
+AUX_SERVO_OVERRUN = 0x20   # Bit 5: Servo calculation exceeded tick time (sticky)
+AUX_PATH_MODE = 0x40       # Bit 6: Currently executing path
+
+# =============================================================================
 # Motor Control Flags (STOP_MOTOR command)
 # =============================================================================
 
@@ -85,7 +97,32 @@ class LS231SE(LDCNDevice):
         status_byte: Last status byte
         aux_status: Last auxiliary status
         pos_error: Last position error
-        kp, kd, ki: PID gains
+
+        Status byte flags:
+            move_done: Trapezoidal move complete or velocity stable
+            cksum_error: Checksum error in last command
+            current_limit: Current limiting exceeded (sticky)
+            power_on: Amplifier power enabled
+            pos_error_flag: Position error exceeded limit (sticky)
+            home_source: Home switch input state
+            limit2: Forward limit switch state
+            home_in_progress: Searching for home position
+
+        Auxiliary status byte flags:
+            index: Complement of index input
+            pos_wrap: Position counter wrapped (sticky)
+            servo_on: Position servo loop enabled
+            accel_done: Acceleration phase complete
+            slew_done: Constant velocity phase complete
+            servo_overrun: Servo calculation exceeded tick time (sticky)
+            path_mode: Currently executing path
+
+        Control signals:
+            stop_cmd: Stop motor command bit
+            pic_ae: Power driver enable (Pic_ae≡DE)
+
+        PID gains:
+            kp, kd, ki: Proportional, derivative, integral gains
     """
 
     def __init__(self, network: LDCNNetwork, address: int):
@@ -95,6 +132,9 @@ class LS231SE(LDCNDevice):
         Args:
             network: Parent LDCNNetwork object
             address: Device address (1-127)
+
+        Default property values reflect the "No Motor Power after LDCN Init"
+        condition from the diagnostic table (power-up/reset state).
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
@@ -107,6 +147,29 @@ class LS231SE(LDCNDevice):
         self.status_byte: Optional[int] = None
         self.aux_status: Optional[int] = None
         self.pos_error: Optional[int] = None
+
+        # Status byte flags (defaults: "No Motor Power after LDCN Init" condition)
+        self.move_done: bool = True          # Bit 0: 1
+        self.cksum_error: bool = False       # Bit 1: 0
+        self.current_limit: bool = False     # Bit 2: 0
+        self.power_on: bool = False          # Bit 3: 0 (power driver disabled)
+        self.pos_error_flag: bool = True     # Bit 4: 1
+        self.home_source: bool = True        # Bit 5: 1
+        self.limit2: bool = False            # Bit 6: 0
+        self.home_in_progress: bool = False  # Bit 7: 0
+
+        # Auxiliary status byte flags (defaults: "No Motor Power after LDCN Init")
+        self.index: bool = True              # Aux Bit 0: 1
+        self.pos_wrap: bool = False          # Aux Bit 1: 0 (sticky)
+        self.servo_on: bool = False          # Aux Bit 2: 0
+        self.accel_done: bool = False        # Aux Bit 3: 0
+        self.slew_done: bool = False         # Aux Bit 4: 0
+        self.servo_overrun: bool = False     # Aux Bit 5: 0 (sticky)
+        self.path_mode: bool = False         # Aux Bit 6: 0
+
+        # Control signals (defaults: "No Motor Power after LDCN Init")
+        self.stop_cmd: bool = False          # Stop command bit: 0
+        self.pic_ae: bool = False            # Drive enable (Pic_ae≡DE): 0
 
         # PID gains
         self.kp: Optional[int] = None
@@ -264,6 +327,17 @@ class LS231SE(LDCNDevice):
         status_byte = response[0]
         data = response[1:-1]  # Everything except first byte and checksum
 
+        # Update status byte flag properties
+        self.status_byte = status_byte
+        self.move_done = bool(status_byte & STATUS_MOVE_DONE)
+        self.cksum_error = bool(status_byte & STATUS_CKSUM_ERROR)
+        self.current_limit = bool(status_byte & STATUS_CURRENT_LIMIT)
+        self.power_on = bool(status_byte & STATUS_POWER_ON)
+        self.pos_error_flag = bool(status_byte & STATUS_POS_ERROR)
+        self.home_source = bool(status_byte & STATUS_HOME_SOURCE)
+        self.limit2 = bool(status_byte & STATUS_LIMIT2)
+        self.home_in_progress = bool(status_byte & STATUS_HOME_IN_PROG)
+
         result = {
             'status': status_byte,
             'flags': self.decode_status_flags(status_byte)
@@ -292,9 +366,21 @@ class LS231SE(LDCNDevice):
         if status_bits & 0x0008 and len(data) >= idx + 1:
             aux = data[idx]
             result['aux_status'] = aux
-            result['servo_on'] = bool(aux & 0x04)
-            result['servo_overrun'] = bool(aux & 0x20)
+
+            # Update auxiliary status flag properties
             self.aux_status = aux
+            self.index = bool(aux & AUX_INDEX)
+            self.pos_wrap = bool(aux & AUX_POS_WRAP)
+            self.servo_on = bool(aux & AUX_SERVO_ON)
+            self.accel_done = bool(aux & AUX_ACCEL_DONE)
+            self.slew_done = bool(aux & AUX_SLEW_DONE)
+            self.servo_overrun = bool(aux & AUX_SERVO_OVERRUN)
+            self.path_mode = bool(aux & AUX_PATH_MODE)
+
+            # Also add to result dict for backwards compatibility
+            result['servo_on'] = self.servo_on
+            result['servo_overrun'] = self.servo_overrun
+            result['path_mode'] = self.path_mode
             idx += 1
 
         # Position error (2 bytes, bit 6)
