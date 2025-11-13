@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-ldcn_network.py - LDCN Network Communication Module
+LDCN Network Manager
 
-This module provides object-oriented Python classes for communicating with
-Logosol LDCN (Logosol Distributed Control Network) devices including servo
-drives and I/O controllers.
+High-level network orchestration for Logosol LDCN (Logosol Distributed Control
+Network) devices. Coordinates protocol layer, device discovery, and device
+management.
 
-Architecture:
-    LDCNNetwork - Top-level network manager (serial port, protocol)
-    LDCNDevice - Abstract base class for all devices
-    LS231SE - Servo drive specific implementation
-    SK2310g2 - I/O controller specific implementation
+Modular Architecture:
+    - protocol.py: Low-level serial communication and LDCN protocol
+    - discovery.py: Device discovery, addressing, and verification
+    - device.py: Base device classes (LDCNDevice, UnknownDevice)
+    - devices/: Device-specific implementations (LS231SE, SK2310g2)
+    - network.py: High-level orchestration (this file)
 
 Usage Example:
+    from pyldcn import LDCNNetwork, InitMode
+
     with LDCNNetwork('/dev/ttyUSB0') as network:
         num_devices, device_info = network.initialize()
         network.set_baud_rate(125000)
@@ -26,233 +29,83 @@ License: GPL v2 or later
 Date: 2025-10-29
 """
 
-import serial
 import time
 from typing import Optional, List, Dict, Tuple
-from abc import ABC, abstractmethod
-from enum import Enum
-from pyldcn import util
 
+from .protocol import LDCNProtocol
+from .discovery import DeviceDiscovery
+from .device import LDCNDevice, UnknownDevice
+from .exceptions import (
+    LDCNError,
+    LDCNTimeoutError,
+    LDCNChecksumError,
+    LDCNDetectionError,
+    LDCNInitializationError,
+)
+from .constants import (
+    InitMode,
+    HEADER,
+    ADDRESS_GROUP,
+    CMD_HARD_RESET,
+    DEFAULT_BAUD,
+    DELAY_AFTER_RESET,
+)
+from . import util
 
-# =============================================================================
-# Exception Classes
-# =============================================================================
-
-class LDCNError(Exception):
-    """Base exception for LDCN errors."""
-    pass
-
-
-class LDCNTimeoutError(LDCNError):
-    """No response from device (timeout)."""
-    pass
-
-
-class LDCNChecksumError(LDCNError):
-    """Response checksum mismatch."""
-    pass
-
-
-class LDCNDetectionError(LDCNError):
-    """Auto-detection failed."""
-    pass
-
-
-class LDCNInitializationError(LDCNError):
-    """Device initialization failed."""
-    pass
-
-
-# =============================================================================
-# Initialization Modes
-# =============================================================================
-
-class InitMode(Enum):
-    """
-    Initialization modes in order of invasiveness.
-
-    Each mode represents a different level of network initialization,
-    from simple validation to full hard reset.
-    """
-
-    VALIDATE = 0
-    """
-    Validation only
-    - Verify existing device objects respond at current baud rate
-    - Check device IDs match expected types
-    - No state changes, no reset, no re-addressing
-    - Use when: Reconnecting to a known healthy network
-    """
-
-    SOFT = 1
-    """
-    Soft recovery (~500ms)
-    - Auto-detect current baud rate
-    - Discover devices at current addresses
-    - Create/update device objects
-    - No reset or re-addressing
-    - Preserves: Device state, positions, gains, configurations
-    - Use when: Network may have changed, but devices are at correct addresses
-    """
-
-    READDRESS = 2
-    """
-    Re-addressing (~1s, node quantity dependent)
-    - Detect current baud rate
-    - Hard reset at detected baud only
-    - Re-address devices sequentially (1, 2, 3, ...)
-    - Full discovery
-    - Loses: Device state, positions, gains
-    - Use when: Addressing is corrupted but baud rate is known
-    """
-
-    FULL = 3
-    """
-    Full reset (~2s+, node quantity dependent)
-    - Reset at ALL baud rates (230400, 125000, 57600, 38400, 19200, 9600)
-    - Re-address devices from scratch
-    - Full discovery
-    - Loses: Everything (state, positions, gains)
-    - Use when: Network state is completely unknown or corrupted
-    - Default: Backwards compatible with existing behavior
-    """
-
-    AUTO = 4
-    """
-    Level 4: Automatic mode selection (adaptive)
-    - Tries progressively more invasive approaches:
-      1. VALIDATE (if expected_devices provided)
-      2. SOFT (if baud can be detected)
-      3. READDRESS (if soft discovery fails)
-      4. FULL (last resort fallback)
-    - Use when: Want intelligent recovery with minimal disruption
-    """
-
-
-# =============================================================================
-# Protocol Constants
-# =============================================================================
-
-# Protocol header
-HEADER = 0xAA
-ADDRESS_UNADDRESSED = 0x00
-ADDRESS_GROUP = 0xFF
-
-# Generic LDCN commands (supported by all device types)
-CMD_RESET_POS = 0x00
-CMD_SET_ADDRESS = 0x01
-CMD_DEFINE_STATUS = 0x02
-CMD_READ_STATUS = 0x03
-CMD_SET_BAUD = 0x0A
-CMD_NOP = 0x0E
-CMD_HARD_RESET = 0x0F
-
-# Baud rate divisor (BRD) values
-BAUD_RATES = {
-    9600: 0x81,
-    19200: 0x3F,
-    57600: 0x14,
-    115200: 0x0A,
-    125000: 0x27,
-    312500: 0x0F,
-    625000: 0x07,
-    1250000: 0x03
-}
-
-# Default baud rate after reset
-DEFAULT_BAUD = 19200
-
-# Common baud rates for auto-detection (in order of likelihood)
-# 125000 first - typical operating speed after initialization
-COMMON_BAUDS = [125000, 19200, 115200, 57600, 9600]
-
-# Timing constants (seconds)
-DELAY_AFTER_COMMAND = 0.001  # 1ms - devices respond within microseconds
-DELAY_AFTER_RESET = 2.0
-DELAY_AFTER_ADDRESS = 0.05   # Reduced from 0.3s
-DELAY_AFTER_BAUD_CHANGE = 0.1  # Reduced from 0.5s
-
-# Status bits for device discovery (16-bit, little-endian)
-STATUS_BIT_POSITION = 0x0001      # Bit 0: Position (4 bytes)
-STATUS_BIT_AD_VALUE = 0x0002      # Bit 1: A/D value (1 byte)
-STATUS_BIT_VELOCITY = 0x0004      # Bit 2: Velocity (2 bytes)
-STATUS_BIT_AUX = 0x0008           # Bit 3: Auxiliary status byte (1 byte)
-STATUS_BIT_HOME = 0x0010          # Bit 4: Home position (4 bytes)
-STATUS_BIT_DEVICE_ID = 0x0020     # Bit 5: Device ID and version (2 bytes)
-STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
-STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
-STATUS_BIT_DIGITAL_IN = 0x0100    # Bit 8: Digital inputs (2 bytes)
-STATUS_BIT_ANALOG_IN = 0x0200     # Bit 9: Analog inputs (2 bytes)
-STATUS_BIT_WATCHDOG = 0x1000      # Bit 12: Watchdog status (2 bytes)
-STATUS_BIT_MOTOR_POS = 0x2000     # Bit 13: Motor position and error (6 bytes)
-
-# Map status bits to their byte sizes for response calculation
-STATUS_BIT_SIZES = {
-    STATUS_BIT_POSITION: 4,
-    STATUS_BIT_AD_VALUE: 1,
-    STATUS_BIT_VELOCITY: 2,
-    STATUS_BIT_AUX: 1,
-    STATUS_BIT_HOME: 4,
-    STATUS_BIT_DEVICE_ID: 2,
-    STATUS_BIT_POS_ERROR: 2,
-    STATUS_BIT_PATH_COUNT: 1,
-    STATUS_BIT_DIGITAL_IN: 2,
-    STATUS_BIT_ANALOG_IN: 2,
-    STATUS_BIT_WATCHDOG: 2,
-    STATUS_BIT_MOTOR_POS: 6,
-}
-
-# Status byte flags (common to all LDCN devices)
-STATUS_POWER_ON = 0x08            # Bit 3: Power button state
-
-# Device IDs (hardware-reported, TBD - verify from real hardware)
-DEVICE_ID_UNKNOWN = 0xFF          # Placeholder for truly unknown devices
-DEVICE_ID_LS231SE = 0x00          # ✅ VERIFIED on hardware: Version 0x15
-DEVICE_ID_SK2310G2 = 0x02         # ✅ VERIFIED on hardware: Version 0x34
-
-
-# =============================================================================
-# LDCNNetwork - Network Manager
-# =============================================================================
 
 class LDCNNetwork:
     """
     LDCN Network Manager
 
-    Manages serial communication and network-level LDCN protocol operations.
-    Provides device discovery and management.
+    High-level network orchestration that coordinates protocol layer and
+    device discovery. Manages device list and provides initialization modes.
 
     The network always initializes at 19200 baud (LDCN default). Use
     set_baud_rate() after initialization to upgrade to higher speeds.
 
     Attributes:
         port: Serial port path (e.g., '/dev/ttyUSB0')
-        baud_rate: Current baud rate
-        serial: PySerial Serial object
+        baud_rate: Current baud rate (delegated to protocol)
         devices: List of discovered LDCNDevice objects
-        timeout: Serial read timeout in seconds
+        protocol: LDCNProtocol instance for low-level communication
+        discovery: DeviceDiscovery instance for device operations
     """
 
     def __init__(self, port: str, timeout: float = 0.015):
         """
         Initialize LDCN network manager.
 
-        The network will be opened at 19200 baud (default LDCN reset state).
-        Upgrade to higher speeds with set_baud_rate().
+        Creates protocol and discovery layers. The network will be opened
+        at 19200 baud (default LDCN reset state). Upgrade to higher speeds
+        with set_baud_rate().
 
         Args:
             port: Serial port path (e.g., '/dev/ttyUSB0')
-            timeout: Serial read timeout in seconds (default 0.05s/50ms)
+            timeout: Serial read timeout in seconds (default 0.015s/15ms)
         """
+        # Create protocol and discovery layers
+        self.protocol = LDCNProtocol(port, timeout)
+        self.discovery = DeviceDiscovery(self.protocol)
+
+        # Device management
+        self.devices: List[LDCNDevice] = []
+
+        # Expose commonly used attributes for convenience
         self.port = port
-        self.baud_rate = DEFAULT_BAUD
-        self.serial: Optional[serial.Serial] = None
-        self.devices: List['LDCNDevice'] = []
         self.timeout = timeout
-        self._last_addressed_count = 0
+
+    @property
+    def baud_rate(self) -> int:
+        """Current baud rate (from protocol layer)."""
+        return self.protocol.baud_rate
+
+    @property
+    def serial(self):
+        """Serial port object (from protocol layer)."""
+        return self.protocol.serial
 
     # -------------------------------------------------------------------------
-    # Connection Management
+    # Connection Management (delegate to protocol)
     # -------------------------------------------------------------------------
 
     def open(self) -> None:
@@ -262,88 +115,21 @@ class LDCNNetwork:
         All LDCN networks start at 19200 baud after reset.
         Use set_baud_rate() after initialization to upgrade speed.
         """
-        self._open_port(DEFAULT_BAUD)
+        self.protocol.open(DEFAULT_BAUD)
 
     def close(self) -> None:
-        """
-        Close serial port and cleanup resources.
-        """
-        if self.serial and self.serial.is_open:
-            self.serial.close()
-        self.serial = None
-
-    def _open_port(self, baud: int) -> None:
-        """
-        Internal: Open serial port at specific baud rate.
-
-        Args:
-            baud: Baud rate (must be in BAUD_RATES dict)
-
-        Raises:
-            ValueError: If baud rate not supported
-        """
-        if baud not in BAUD_RATES:
-            raise ValueError(f"Unsupported baud rate: {baud}")
-
-        # Close existing connection
-        if self.serial and self.serial.is_open:
-            self.serial.close()
-            time.sleep(0.05)  # Brief delay for port cleanup
-
-        # Open at specified baud rate
-        self.serial = serial.Serial(
-            port=self.port,
-            baudrate=baud,
-            timeout=self.timeout,
-            write_timeout=self.timeout,
-            inter_byte_timeout=0.01  # 10ms max gap between bytes
-        )
-        self.baud_rate = baud
-        time.sleep(0.05)  # Brief delay for port to stabilize
+        """Close serial port and cleanup resources."""
+        self.protocol.close()
 
     # -------------------------------------------------------------------------
-    # Core Protocol
+    # Core Protocol (delegate to protocol)
     # -------------------------------------------------------------------------
-
-    def _calculate_response_size(self, command: int, data: Optional[List[int]]) -> int:
-        """
-        Calculate expected response size based on command and data.
-
-        Args:
-            command: LDCN command (0x00-0x0F)
-            data: Data bytes sent with command
-
-        Returns:
-            Expected response size in bytes
-        """
-        # Base response: status byte + checksum
-        size = 2
-
-        # For Read Status (0x3) or Define Status (0x2) with status bit request
-        if command in [CMD_READ_STATUS, CMD_DEFINE_STATUS] and data and len(data) >= 2:
-            # Parse 16-bit status bits (little-endian)
-            status_bits = data[0] | (data[1] << 8)
-
-            # Add bytes for each requested status bit
-            for bit, byte_count in STATUS_BIT_SIZES.items():
-                if status_bits & bit:
-                    size += byte_count
-
-        return size
 
     def send_command(self, address: int, command: int, data: Optional[List[int]] = None) -> bytes:
         """
         Send LDCN command packet and return response.
 
-        This is the only route for LDCN communication .
-        All other send_command() methods delegate to this.
-
-        Packet format:
-            [HEADER] [ADDRESS] [CMD_BYTE] [DATA...] [CHECKSUM]
-
-        Where:
-            CMD_BYTE = (len(data) << 4) | (command & 0x0F)
-            CHECKSUM = (address + cmd_byte + sum(data)) & 0xFF
+        Delegates to protocol layer for low-level communication.
 
         Args:
             address: Device address (1-127) or group (128-255)
@@ -351,109 +137,41 @@ class LDCNNetwork:
             data: Data bytes (0-16 bytes)
 
         Returns:
-            Response bytes from device (status + data + checksum)
+            Response bytes from device
 
         Raises:
             LDCNTimeoutError: No response received
             LDCNChecksumError: Response checksum mismatch
         """
-        if data is None:
-            data = []
-
-        if not self.serial or not self.serial.is_open:
-            raise LDCNError("Serial port not open")
-
-        # Build packet
-        header = HEADER
-        num_data = len(data)
-        cmd_byte = (num_data << 4) | (command & 0x0F)
-        checksum = (address + cmd_byte + sum(data)) & 0xFF
-        packet = bytes([header, address, cmd_byte] + data + [checksum])
-
-        # Flush input buffer to discard any stale data
-        self.serial.reset_input_buffer()
-
-        # Send packet
-        self.serial.write(packet)
-        self.serial.flush()
-
-        # Calculate expected response size
-        expected_size = self._calculate_response_size(command, data)
-
-        # Read exact response size
-        # With inter_byte_timeout=10ms, read() will:
-        # - Wait up to timeout (50ms) for first byte
-        # - Wait up to inter_byte_timeout (10ms) between subsequent bytes
-        # - Return when expected_size bytes received or timeout expires
-        # At 125kbaud: 22 bytes = 1.76ms transmission, well under 10ms inter-byte timeout
-        response = self.serial.read(expected_size)
-
-        if len(response) < 2:
-            # Some commands (like SET_BAUD to group address) don't return responses
-            if address == ADDRESS_GROUP or command == CMD_HARD_RESET:
-                return b''
-            raise LDCNTimeoutError(f"No response from address {address}")
-
-        # Verify checksum
-        if not self._verify_checksum(response):
-            raise LDCNChecksumError(f"Checksum mismatch in response from address {address}")
-
-        return response
-
-    def _verify_checksum(self, response: bytes) -> bool:
-        """
-        Verify checksum of response packet.
-
-        Args:
-            response: Response bytes
-
-        Returns:
-            True if checksum valid
-        """
-        if len(response) < 2:
-            return False
-
-        expected = sum(response[:-1]) & 0xFF
-        actual = response[-1]
-        return expected == actual
+        return self.protocol.send_command(address, command, data)
 
     # -------------------------------------------------------------------------
-    # Baud Rate Management
+    # Baud Rate Management (delegate to protocol)
     # -------------------------------------------------------------------------
 
-    def _try_baud(self, baud: int) -> bool:
+    def set_baud_rate(self, baud: int) -> None:
         """
-        Test if devices respond at specific baud rate.
+        Upgrade network baud rate for all devices.
 
-        Tries to communicate with common addresses (1, 2, 3, 6) using NOP.
+        Called AFTER initialize() to upgrade from 19200 to higher speed.
 
         Args:
-            baud: Baud rate to test
+            baud: Target baud rate (must be in BAUD_RATES dict)
 
-        Returns:
-            True if any device responds
+        Raises:
+            ValueError: If baud rate not supported
+
+        Example:
+            network.initialize()  # At 19200 baud
+            network.set_baud_rate(125000)  # Upgrade to 125kbps
         """
-        try:
-            self._open_port(baud)
-
-            # Try common addresses
-            for addr in [1, 2, 3, 6]:
-                try:
-                    response = self.send_command(addr, CMD_NOP)
-                    if len(response) >= 2:
-                        return True
-                except (LDCNTimeoutError, LDCNChecksumError):
-                    continue
-
-            return False
-        except Exception:
-            return False
+        self.protocol.set_baud_rate(baud)
 
     def auto_detect_baud(self, baud_list: Optional[List[int]] = None) -> int:
         """
         Auto-detect current network baud rate.
 
-        Tries common baud rates in order of likelihood until a device responds.
+        Tries common baud rates until a device responds.
 
         Args:
             baud_list: List of baud rates to try (default: COMMON_BAUDS)
@@ -464,362 +182,115 @@ class LDCNNetwork:
         Raises:
             LDCNDetectionError: No response at any baud rate
         """
-        if baud_list is None:
-            baud_list = COMMON_BAUDS
-
-        for baud in baud_list:
-            if self._try_baud(baud):
-                return baud
-
-        # No devices responding at any baud rate
-        raise LDCNDetectionError("No devices responding at any baud rate")
-
-    def set_baud_rate(self, baud: int) -> None:
-        """
-        Upgrade network baud rate for all devices.
-
-        This is called AFTER initialize() to upgrade from 19200 to a higher speed.
-
-        Steps:
-        1. Send SET_BAUD command to group address 0xFF
-        2. Close serial port
-        3. Wait 500ms
-        4. Reopen serial port at new baud rate
-
-        Args:
-            baud: Target baud rate (must be in BAUD_RATES dict)
-
-        Raises:
-            ValueError: If baud rate not supported
-            LDCNError: If upgrade fails
-
-        Example:
-            network.initialize()  # At 19200 baud
-            network.set_baud_rate(125000)  # Upgrade to 125kbps
-        """
-        if baud not in BAUD_RATES:
-            raise ValueError(f"Unsupported baud rate: {baud}. Supported: {list(BAUD_RATES.keys())}")
-
-        # Send SET_BAUD to group address
-        brd_value = BAUD_RATES[baud]
-        packet = bytes([HEADER, ADDRESS_GROUP, 0x1A, brd_value, (ADDRESS_GROUP + 0x1A + brd_value) & 0xFF])
-
-        if self.serial and self.serial.is_open:
-            self.serial.write(packet)
-            self.serial.flush()
-
-        # Close port, wait, reopen at new baud
-        time.sleep(DELAY_AFTER_BAUD_CHANGE)
-        self._open_port(baud)
+        return self.protocol.auto_detect_baud(baud_list)
 
     # -------------------------------------------------------------------------
-    # Network Initialization
+    # Device Discovery (delegate to discovery)
     # -------------------------------------------------------------------------
 
     def reset(self) -> None:
         """
         Send hard reset to all devices at all possible baud rates.
 
-        Tries sending the reset command at every known baud rate to ensure
-        devices are reset regardless of their current baud rate.
-        After reset, devices return to address 0x00 and 19200 baud.
-        Waits 2 seconds after final reset for devices to initialize.
+        Tries sending reset at every known baud rate to ensure devices
+        are reset regardless of their current baud rate. After reset,
+        devices return to address 0x00 and 19200 baud.
         """
-        # Reset packet
-        packet = bytes([HEADER, ADDRESS_GROUP, 0x0F, 0x0E])
-
-        # Try sending reset at all known baud rates
-        # This ensures we reset devices no matter what baud they're currently at
-        for baud in [230400, 125000, 57600, 38400, 19200, 9600]:
-            try:
-                self._open_port(baud)
-                assert self.serial is not None  # Type checker: serial is open
-                self.serial.write(packet)
-                self.serial.flush()
-                time.sleep(0.05)  # Brief delay between attempts
-            except Exception:
-                continue
-
-        # Wait for devices to complete reset
-        time.sleep(DELAY_AFTER_RESET)
-
-        # Devices are now at 19200 baud - reopen port
-        self._open_port(DEFAULT_BAUD)
-        self.baud_rate = DEFAULT_BAUD
-
-        # Flush input buffer
-        assert self.serial is not None  # Type checker: serial is open
-        self.serial.reset_input_buffer()
+        self.discovery.reset()
 
     def address_devices(self, max_devices: int = 127) -> int:
         """
         Sequentially address devices on network.
 
         Sends SET_ADDRESS to address 0x00 repeatedly until no response.
-        Each successful command enables the next device in the daisy chain
-        and assigns it the next sequential address (1, 2, 3, ...).
+        Each successful command assigns the next sequential address.
 
         Args:
-            max_devices: Maximum address to try (default 127, safety limit)
+            max_devices: Maximum address to try (default 127)
 
         Returns:
             Number of devices successfully addressed
-
-        Example:
-            num_found = network.address_devices()
-            # Devices are now at addresses 1, 2, 3, ..., num_found
         """
-        addressed = 0
+        return self.discovery.address_devices(max_devices)
 
-        for addr in range(1, max_devices + 1):
-            try:
-                # Send SET_ADDRESS to unaddressed device
-                response = self.send_command(ADDRESS_UNADDRESSED, CMD_SET_ADDRESS, [addr, ADDRESS_GROUP])
-
-                if len(response) >= 2:
-                    addressed += 1
-                    time.sleep(DELAY_AFTER_ADDRESS)
-                else:
-                    # No more devices
-                    break
-
-            except (LDCNTimeoutError, LDCNChecksumError):
-                # No more devices responding
-                break
-
-        self._last_addressed_count = addressed
-        return addressed
-
-    def discover_devices(self, start_address: int = 1, end_address: Optional[int] = None,
-                        early_exit_threshold: int = 3) -> List[Dict]:
+    def discover_devices(
+        self,
+        start_address: int = 1,
+        end_address: Optional[int] = None,
+        early_exit_threshold: int = 3
+    ) -> List[Dict]:
         """
         Discover device types and versions on the network.
 
-        Queries each address using READ_STATUS (0x3) with status bit 5 (device ID).
-        Returns device information without creating device objects.
+        Queries each address using READ_STATUS with device ID bit set.
 
         Args:
             start_address: First address to query (default: 1)
-            end_address: Last address to query (default: last addressed device, or 127 if specified)
-            early_exit_threshold: Stop scanning after this many consecutive non-responding
-                                addresses (default: 3). Set to 0 to disable early exit.
+            end_address: Last address to query (default: last addressed, or 127)
+            early_exit_threshold: Stop after N consecutive non-responding addresses
 
         Returns:
-            List of device info dictionaries:
-            [
-                {
-                    'address': int,
-                    'device_id': int,      # Device type ID from hardware
-                    'version': int,        # Firmware version
-                    'responding': bool     # True if device responded
-                },
-                ...
-            ]
-
-        Example:
-            devices = network.discover_devices()
-            # [{'address': 1, 'device_id': 0x17, 'version': 0x23, 'responding': True},
-            #  {'address': 2, 'device_id': 0x17, 'version': 0x23, 'responding': True},
-            #  ...]
-
-        🔴 UNVERIFIED - Not yet tested on hardware
+            List of device info dictionaries
         """
-        if end_address is None:
-            end_address = self._last_addressed_count if self._last_addressed_count > 0 else 127
-
-        device_list = []
-        consecutive_non_responding = 0
-
-        for addr in range(start_address, end_address + 1):
-            device_info = {
-                'address': addr,
-                'device_id': DEVICE_ID_UNKNOWN,
-                'version': 0,
-                'responding': False
-            }
-
-            try:
-                # Query with device ID bit set
-                response = self.send_command(addr, CMD_READ_STATUS, [0x20, 0x00])
-
-                if len(response) >= 4:  # status + 2 bytes device ID + checksum
-                    device_info['responding'] = True
-                    device_info['device_id'] = response[1]
-                    device_info['version'] = response[2]
-                    consecutive_non_responding = 0  # Reset counter on successful response
-
-            except (LDCNTimeoutError, LDCNChecksumError):
-                # Device not responding
-                consecutive_non_responding += 1
-
-            device_list.append(device_info)
-
-            # Early exit if too many consecutive non-responding addresses
-            if early_exit_threshold > 0 and consecutive_non_responding >= early_exit_threshold:
-                break
-
-        return device_list
+        return self.discovery.discover_devices(start_address, end_address, early_exit_threshold)
 
     def validate_devices(self, expected_devices: Optional[List[Dict]] = None) -> bool:
         """
         Validate existing device objects respond correctly (InitMode.VALIDATE).
 
         Fast validation that checks if cached device objects still respond
-        at the current baud rate without making any state changes. Optionally
-        verifies device IDs match expected types.
+        at the current baud rate without making any state changes.
 
         Args:
-            expected_devices: Optional list of expected device info dicts:
-                [{'address': 1, 'device_id': 0x17}, ...]
-                If None, validates against self.devices only
+            expected_devices: Optional list of expected device info dicts
 
         Returns:
-            True if all devices respond correctly, False otherwise
-
-        Example:
-            # Validate existing connection
-            if network.validate_devices():
-                print("Network healthy!")
-            else:
-                print("Need to re-initialize")
-
-        🔴 UNVERIFIED - Not yet tested on hardware
+            True if all devices respond correctly
         """
-        # If no devices exist and none expected, validation fails
-        if not self.devices and not expected_devices:
-            return False
-
-        # If devices expected but none cached, validation fails
-        if expected_devices and not self.devices:
-            return False
-
-        try:
-            # Validate each cached device responds
-            for device in self.devices:
-                # Send NOP command to verify communication
-                response = self.send_command(device.address, CMD_NOP)
-                if len(response) < 2:
-                    return False
-
-                # If expected devices provided, verify device ID matches
-                if expected_devices:
-                    expected = next(
-                        (d for d in expected_devices if d['address'] == device.address),
-                        None
-                    )
-                    if expected:
-                        # Query device ID to verify type
-                        id_response = self.send_command(
-                            device.address,
-                            CMD_READ_STATUS,
-                            [STATUS_BIT_DEVICE_ID & 0xFF, (STATUS_BIT_DEVICE_ID >> 8) & 0xFF]
-                        )
-                        if len(id_response) >= 7:
-                            device_id = id_response[5]  # Device ID byte
-                            if device_id != expected['device_id']:
-                                return False
-
-            # All validations passed
-            return True
-
-        except (LDCNTimeoutError, LDCNChecksumError):
-            return False
+        return self.discovery.validate_devices(self.devices, expected_devices)
 
     def verify_devices(self, device_list: List[Dict]) -> List[int]:
         """
         Verify devices are still responding.
 
-        Sends NOP command to each device in the list to confirm communication.
+        Sends NOP command to each device to confirm communication.
 
         Args:
             device_list: List of device info dicts from discover_devices()
 
         Returns:
             List of addresses that responded successfully
-
-        Example:
-            devices = network.discover_devices()
-            responding = network.verify_devices(devices)
-            print(f"Responding addresses: {responding}")
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        responding = []
+        return self.discovery.verify_devices(device_list)
 
-        for device_info in device_list:
-            addr = device_info['address']
-            try:
-                response = self.send_command(addr, CMD_NOP)
-                if len(response) >= 2:
-                    responding.append(addr)
-            except (LDCNTimeoutError, LDCNChecksumError):
-                pass
-
-        return responding
-
-    def create_device_objects(self, device_list: List[Dict]) -> List['LDCNDevice']:
+    def create_device_objects(self, device_list: List[Dict]) -> List[LDCNDevice]:
         """
         Create device objects from device info list.
 
-        Maps device IDs to appropriate classes (LS231SE, SK2310g2, etc.)
-        and populates self.devices list.
+        Maps device IDs to appropriate classes and populates self.devices list.
 
         Args:
             device_list: List of device info dicts from discover_devices()
 
         Returns:
             List of LDCNDevice objects
-
-        Example:
-            device_info = network.discover_devices()
-            network.create_device_objects(device_info)
-            # Now network.devices is populated
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        # Import device classes here to avoid circular import
-        from pyldcn.devices import LS231SE, SK2310g2
-
-        self.devices = []
-
-        for device_info in device_list:
-            if not device_info['responding']:
-                continue
-
-            addr = device_info['address']
-            device_id = device_info['device_id']
-
-            # Map device ID to class
-            if device_id == DEVICE_ID_LS231SE:
-                device = LS231SE(self, addr)
-            elif device_id == DEVICE_ID_SK2310G2:
-                device = SK2310g2(self, addr)
-            else:
-                # Unknown device type - create fallback device
-                device = UnknownDevice(self, addr)
-
-            device.model_id = device_id
-            device.version = device_info['version']
-            self.devices.append(device)
-
+        self.devices = self.discovery.create_device_objects(device_list, self)
         return self.devices
+
+    # -------------------------------------------------------------------------
+    # Device List Management
+    # -------------------------------------------------------------------------
 
     def save_device_list(self, filename: str) -> None:
         """
         Save discovered device list to JSON file.
 
-        This saves hardware facts from network discovery only.
-        Does not include axis configuration (tuning, homing, limits).
+        Saves hardware facts from network discovery only.
+        Does not include axis configuration.
 
         Args:
             filename: Path to save file (e.g., 'device_list.json')
-
-        Example:
-            network.initialize()
-            network.set_baud_rate(125000)
-            network.save_device_list('device_list.json')
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         util.save_device_list(self.devices, self.port, self.baud_rate, filename)
 
@@ -838,18 +309,18 @@ class LDCNNetwork:
 
         Raises:
             LDCNError: If file format invalid or unsupported version
-
-        Example:
-            network = LDCNNetwork('/dev/ttyUSB0')
-            device_list = network.load_device_list('device_list.json')
-            print(f"Loaded {len(device_list)} devices")
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return util.load_device_list(filename)
 
-    def soft_initialize(self, create_objects: bool = True,
-                        baud_list: Optional[List[int]] = None) -> Tuple[int, List[Dict]]:
+    # -------------------------------------------------------------------------
+    # High-Level Initialization
+    # -------------------------------------------------------------------------
+
+    def soft_initialize(
+        self,
+        create_objects: bool = True,
+        baud_list: Optional[List[int]] = None
+    ) -> Tuple[int, List[Dict]]:
         """
         Soft initialization without reset (InitMode.SOFT).
 
@@ -861,7 +332,7 @@ class LDCNNetwork:
 
         Steps:
         1. Auto-detect current baud rate
-        2. Scan addresses 1-127 for responding devices
+        2. Scan addresses for responding devices
         3. Query device types and versions
         4. Verify communication
         5. Optionally create device objects
@@ -872,27 +343,15 @@ class LDCNNetwork:
 
         Returns:
             Tuple of (num_devices, device_info_list)
-            - num_devices: Number of devices discovered
-            - device_info_list: List of device info dicts
 
         Raises:
             LDCNInitializationError: If no devices found or baud detection fails
-
-        Example:
-            # Discover devices without reset (preserves state)
-            network = LDCNNetwork('/dev/ttyUSB0')
-            network.open()
-            num_devices, device_info = network.soft_initialize()
-            # Servo positions and gains are preserved
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         try:
-            # Step 1: Auto-detect baud rate
+            # Auto-detect baud rate
             detected_baud = self.auto_detect_baud(baud_list)
 
-            # Step 2: Discover devices at current addresses (no reset)
-            # Uses early exit after 3 consecutive non-responding addresses
+            # Discover devices at current addresses (no reset)
             device_info = self.discover_devices(start_address=1)
 
             # Filter to only responding devices
@@ -901,7 +360,7 @@ class LDCNNetwork:
             if len(responding_devices) == 0:
                 raise LDCNInitializationError("No devices found during soft discovery")
 
-            # Step 3: Create device objects if requested
+            # Create device objects if requested
             if create_objects:
                 self.create_device_objects(responding_devices)
 
@@ -912,10 +371,12 @@ class LDCNNetwork:
         except Exception as e:
             raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
 
-    def initialize(self,
-                   mode: InitMode = InitMode.FULL,
-                   create_objects: bool = True,
-                   expected_devices: Optional[List[Dict]] = None) -> Tuple[int, List[Dict]]:
+    def initialize(
+        self,
+        mode: InitMode = InitMode.FULL,
+        create_objects: bool = True,
+        expected_devices: Optional[List[Dict]] = None
+    ) -> Tuple[int, List[Dict]]:
         """
         Adaptive network initialization with multiple modes.
 
@@ -932,13 +393,10 @@ class LDCNNetwork:
         Args:
             mode: Initialization mode (default: InitMode.FULL)
             create_objects: If True, create device objects and populate self.devices
-            expected_devices: Optional list for VALIDATE/AUTO modes:
-                [{'address': 1, 'device_id': 0x17}, ...]
+            expected_devices: Optional list for VALIDATE/AUTO modes
 
         Returns:
             Tuple of (num_devices, device_info_list)
-            - num_devices: Number of devices found
-            - device_info_list: List of device info dicts
 
         Raises:
             LDCNInitializationError: If initialization fails
@@ -955,8 +413,6 @@ class LDCNNetwork:
 
             # Automatic adaptive initialization
             network.initialize(mode=InitMode.AUTO)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         # Handle AUTO mode - try progressively more invasive approaches
         if mode == InitMode.AUTO:
@@ -965,7 +421,6 @@ class LDCNNetwork:
                 if self.validate_devices(expected_devices):
                     # Validation successful - network is healthy
                     num_devices = len(self.devices)
-                    # Build device_info from existing devices
                     device_info = [
                         {
                             'address': dev.address,
@@ -986,17 +441,18 @@ class LDCNNetwork:
             # Level 2: Try READDRESS (reset at detected baud only)
             try:
                 detected_baud = self.auto_detect_baud()
-                self._open_port(detected_baud)
+                self.protocol._open_port(detected_baud)
+
                 # Reset at detected baud only
                 packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
                                CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
-                assert self.serial is not None
-                self.serial.write(packet)
-                self.serial.flush()
+                assert self.protocol.serial is not None
+                self.protocol.serial.write(packet)
+                self.protocol.serial.flush()
                 time.sleep(DELAY_AFTER_RESET)
 
                 # Re-address and discover
-                self._open_port(DEFAULT_BAUD)
+                self.protocol._open_port(DEFAULT_BAUD)
                 num_devices = self.address_devices()
                 if num_devices > 0:
                     device_info = self.discover_devices()
@@ -1033,18 +489,18 @@ class LDCNNetwork:
             # Detect baud, reset at that baud, re-address
             try:
                 detected_baud = self.auto_detect_baud()
-                self._open_port(detected_baud)
+                self.protocol._open_port(detected_baud)
 
                 # Reset at detected baud only
                 packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
                                CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
-                assert self.serial is not None
-                self.serial.write(packet)
-                self.serial.flush()
+                assert self.protocol.serial is not None
+                self.protocol.serial.write(packet)
+                self.protocol.serial.flush()
                 time.sleep(DELAY_AFTER_RESET)
 
                 # Re-address and discover at default baud
-                self._open_port(DEFAULT_BAUD)
+                self.protocol._open_port(DEFAULT_BAUD)
                 num_devices = self.address_devices()
                 if num_devices == 0:
                     raise LDCNInitializationError("No devices found during re-addressing")
@@ -1107,187 +563,9 @@ class LDCNNetwork:
         self.close()
 
 
-# =============================================================================
-# LDCNDevice - Base Device Class
-# =============================================================================
-
-class LDCNDevice(ABC):
-    """
-    Abstract base class for all LDCN devices.
-
-    Provides common functionality for device communication and status reading.
-    Device-specific operations are implemented in subclasses.
-
-    Attributes:
-        network: Reference to parent LDCNNetwork
-        address: Device address (1-127)
-        device_type: Device type string (e.g., "LS-231SE", "SK-2310g2")
-        model_id: Device model ID from hardware (if known)
-        version: Firmware version from hardware (if known)
-    """
-
-    def __init__(self, network: LDCNNetwork, address: int):
-        """
-        Initialize base device.
-
-        Args:
-            network: Parent LDCNNetwork object
-            address: Device address (1-127)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
-        """
-        self.network = network
-        self.address = address
-        self.device_type = "Unknown"
-        self.model_id: Optional[int] = None
-        self.version: Optional[int] = None
-
-    def send_command(self, command: int, data: Optional[List[int]] = None) -> bytes:
-        """
-        Send command to this device.
-
-        Delegates to network.send_command() with this device's address.
-
-        Args:
-            command: LDCN command code
-            data: Data bytes
-
-        Returns:
-            Response bytes from device
-
-        🔴 UNVERIFIED - Not yet tested on hardware
-        """
-        return self.network.send_command(self.address, command, data)
-
-    def nop(self) -> bytes:
-        """
-        Send NOP command, return status.
-
-        Returns:
-            Raw status response bytes
-
-        🔴 UNVERIFIED - Not yet tested on hardware
-        """
-        return self.send_command(CMD_NOP)
-
-    def define_status(self, status_bits: int) -> None:
-        """
-        Configure status reporting (permanent).
-
-        Args:
-            status_bits: 16-bit status configuration
-
-        🔴 UNVERIFIED - Not yet tested on hardware
-        """
-        self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-
-    @abstractmethod
-    def read_status(self) -> Dict:
-        """
-        Read device status (abstract - implemented by subclasses).
-
-        Returns:
-            Device-specific status dictionary
-        """
-        pass
-
-    def reset_position(self) -> None:
-        """
-        Reset position counter to zero (if supported).
-
-        🔴 UNVERIFIED - Not yet tested on hardware
-        """
-        self.send_command(CMD_RESET_POS)
-
-    def __repr__(self) -> str:
-        """Return string representation."""
-        model = self.model_id if self.model_id is not None else 0
-        return f"{self.device_type}(address={self.address}, model_id=0x{model:02X})"
-
-
-# =============================================================================
-# UnknownDevice - Fallback for unrecognized devices
-# =============================================================================
-
-class UnknownDevice(LDCNDevice):
-    """
-    Fallback device class for unrecognized LDCN devices.
-
-    This class provides basic functionality for devices whose type
-    is not yet implemented or recognized.
-    """
-
-    def __init__(self, network: LDCNNetwork, address: int):
-        """Initialize unknown device."""
-        super().__init__(network, address)
-        self.device_type = "Unknown"
-
-    def read_status(self) -> Dict:
-        """
-        Read basic status from unknown device.
-
-        Returns:
-            Dictionary with raw status byte
-        """
-        response = self.nop()
-        if len(response) >= 1:
-            return {'status': response[0], 'raw': response}
-        return {'status': 0, 'raw': response}
-
-
-# =============================================================================
-# LS231SE - Servo Drive
-# =============================================================================
-
-
-# =============================================================================
-# Module Test / Example
-# =============================================================================
-
-if __name__ == '__main__':
-    """
-    Simple test/example of module usage.
-    Run with: python3 ldcn_network.py
-    """
-    import sys
-
-    print("="*70)
-    print("LDCN Network Module Test")
-    print("="*70)
-    print()
-
-    PORT = '/dev/ttyUSB0'
-
-    try:
-        # Initialize network
-        with LDCNNetwork(PORT) as network:
-            print(f"Opening {PORT} at 19200 baud...")
-
-            # Initialize
-            print("\nInitializing network...")
-            num_devices, device_info = network.initialize()
-
-            print(f"\n✓ Found {num_devices} devices:")
-            for dev in device_info:
-                print(f"  Address {dev['address']}: ID=0x{dev['device_id']:02X}, Version=0x{dev['version']:02X}, Responding={dev['responding']}")
-
-            # Upgrade baud rate
-            print("\nUpgrading to 125000 baud...")
-            network.set_baud_rate(125000)
-            print("✓ Baud rate upgraded")
-
-            # Show device objects
-            print(f"\n✓ Created {len(network.devices)} device objects:")
-            for device in network.devices:
-                print(f"  {device}")
-
-            print("\n✓ Network ready!")
-
-    except Exception as e:
-        print(f"\n✗ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-    print("\n✓ Test complete!")
-    sys.exit(0)
+# Re-export device classes for backwards compatibility
+__all__ = [
+    'LDCNNetwork',
+    'LDCNDevice',
+    'UnknownDevice',
+]
