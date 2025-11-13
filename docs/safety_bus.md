@@ -1,6 +1,6 @@
-# LDCN Safety Bus
+# Logosol Safety Bus
 
-This document describes the **Safety Bus** interface specification used across Logosol LDCN devices for implementing safety interlocks in CNC machine control applications.
+This document describes the **Safety Bus** interface specification used across Logosol devices for implementing safety interlocks in CNC machine control applications.
 
 **Primary Source:** Multi-Axis CNC Servo Controller Doc # 714000001 / Rev. F, 03/25/2011
 
@@ -8,7 +8,7 @@ This document describes the **Safety Bus** interface specification used across L
 
 ## Overview
 
-The Safety Bus is a **daisy-chain safety interlock system** that connects multiple LDCN devices to create a coordinated safety chain. All devices in the chain must report safe conditions for the system to operate.
+The Safety Bus is a **daisy-chain safety interlock system** that connects multiple Logosol devices to create a coordinated safety chain. All devices in the chain must report safe conditions for the system to operate. It complements the Logisol Device Control Network (LDCN), delivering a reliable, fail-secure connection between safety critical devices. The Safety Bus reacts immediately but simply to a safety event. LDCN can later deliver richer information about the event.
 
 **Key Safety Features:**
 - 100% relay contact-based implementation
@@ -21,7 +21,7 @@ The Safety Bus is a **daisy-chain safety interlock system** that connects multip
 - **SK-2310g2** - Supervisor I/O Controller (typically safety master)
 - **LS-231SE** - Servo Drive (safety chain participant)
 - **LS-2315** - Spindle Drive (safety interface)
-- **Other I/O Controllers** - Can participate in safety chain
+- **Others** - Any device with compatible signals can participate in safety chain
 
 ---
 
@@ -39,7 +39,7 @@ The Safety Bus provides:
 
 ### Limitations
 
-1. **Not a Communication Bus** - Safety Bus is relay-based only. LDCN carries the data
+1. **Not a Communication Bus** - Safety Bus is relay-based only. LDCN carries richer data
 1. **No Fault Localization** - Fault localization requires diagnosis over LDCN via status requests
 1. **Propagation Delay** - Relay switching time affects response (typically <50ms per device)
 1. **Master Device Required** - One device must generate Safety Link OUT based on system conditions
