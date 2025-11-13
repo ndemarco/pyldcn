@@ -569,6 +569,214 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
 ---
 
+### Extended Commands (0xE with sub-commands)
+
+Advanced features accessed via command 0xE with sub-command codes.
+
+**Command Structure**:
+- **Command**: 0xE
+- **Data**: 1 to n bytes
+  - Byte 0: Sub-command code (0x00, 0x01, 0x02, 0x04, 0x05, 0x10)
+  - Bytes 1-n: Sub-command specific data
+
+**Command Byte**: `0x1E` to `0xnE` (based on total data byte count)
+
+#### Sub-command 0x00: Stop on Limit Switches
+
+Configures automatic stop behavior when limit switches are triggered.
+
+**Data**:
+- Byte 0: Sub-command code (0x00)
+- Byte 1: Control byte for Limit 1 (Reverse)
+- Byte 2: Control byte for Limit 2 (Forward)
+
+**Limit Control Byte Bits**:
+| Bit | Function |
+|-----|----------|
+| 0 | Servo in one direction only (allow motion away from limit) |
+| 1 | Turn motor off (disable servo, PWM = 0) |
+| 2 | Stop abruptly (servo to current position) |
+| 3 | Stop smoothly (decelerate to zero velocity) |
+| 4-7 | Not used (must be 0) |
+
+**Behavior**:
+- **Bit 0 set**: Position servo enabled only in direction away from limit
+- **Bit 1 set**: Position servo disabled, PWM = 0 (bits 2-3 ignored)
+- **Bit 2 set**: Motor servos to current position (abrupt stop)
+- **Bit 3 set**: Motor decelerates smoothly to zero velocity
+- **All bits 0-3 clear**: Stop on limits function disabled (default)
+
+**Example**:
+```python
+# Enable smooth stop on both limits
+limit1_ctrl = 0x08  # Bit 3: stop smoothly on reverse limit
+limit2_ctrl = 0x08  # Bit 3: stop smoothly on forward limit
+send_command(addr, 0x0E, [3, 0x00, limit1_ctrl, limit2_ctrl])
+
+# Disable stop on limits
+send_command(addr, 0x0E, [3, 0x00, 0x00, 0x00])
+```
+
+---
+
+#### Sub-command 0x01: Read Hall Sensors and Initialize Angle
+
+Reads hall sensor state and calculates initial motor angle for brushless motors.
+
+**Data**:
+- Byte 0: Sub-command code (0x01)
+
+**Description**:
+- Reads current hall sensor inputs
+- Calculates initial rotor angle
+- Angle will be overwritten when first index pulse arrives
+
+**Example**:
+```python
+send_command(addr, 0x0E, [1, 0x01])
+```
+
+**Use Case**: Brushless motor commutation initialization
+
+---
+
+#### Sub-command 0x02: Repeat Last Answer
+
+Requests the drive to resend its last status response.
+
+**Data**:
+- Byte 0: Sub-command code (0x02)
+
+**Description**:
+- Drive resends the most recent status packet
+- Useful for recovering from communication errors without re-executing command
+
+**Example**:
+```python
+send_command(addr, 0x0E, [1, 0x02])
+```
+
+**Use Case**: Communication error recovery, status verification
+
+---
+
+#### Sub-command 0x04: Enable/Disable Hardware Synchronization Mode
+
+Synchronizes servo ticks across multiple drives via hardware sync lines.
+
+**Data**:
+- Byte 0: Sub-command code (0x04)
+- Byte 1: Mode (0 = disable, 1 = enable)
+
+**Description**:
+- Eliminates velocity differences caused by oscillator drift
+- Multiple LS-231SE drives connected via hardware sync lines
+- All drives run servo ticks in perfect synchronization
+- Reduces timing errors in coordinated multi-axis motion
+
+**Timing Error Reduction**:
+- Without hardware sync: ~10 ppm oscillator drift accumulates over time
+- With hardware sync: Only ±25 µs start time variation remains
+
+**Example**:
+```python
+# Enable hardware sync on all drives in system
+for addr in [1, 2, 3]:
+    send_command(addr, 0x0E, [2, 0x04, 0x01])
+```
+
+**Hardware Requirements**:
+- Physical sync connections between drives
+- See datasheet for sync line wiring
+
+**Use Case**: Precision multi-axis coordinated motion (CNC, robotics)
+
+---
+
+#### Sub-command 0x05: Set Watchdog Mode
+
+Configures watchdog timer for communication fault detection.
+
+**Data**:
+- Byte 0: Sub-command code (0x05)
+- Byte 1: Mode
+  - 0 = Watchdog off
+  - 1 = Disable amplifier on timeout
+  - 2 = Stop smoothly and disable amplifier
+  - 3 = Stop smoothly (keep amplifier enabled)
+- Byte 2: Timeout (in multiples of 8192 µs = 8.192 ms)
+
+**Description**:
+- Watchdog refreshed by any command sent to drive
+- Upon timeout, executes configured action
+- Drive stops executing motion commands after timeout
+- Send this command again to reset watchdog
+
+**Watchdog Status** (via Define Status bit 12):
+- `0xFFFF` (65535): Watchdog not activated
+- `0x0000` (0): Watchdog expired
+- Other value: Remaining time in multiples of 8192 µs
+
+**Timeout Calculation**:
+- Timeout = byte_2 × 8.192 ms
+- Example: byte_2 = 122 → ~1000 ms (1 second)
+
+**Examples**:
+```python
+# Example 1: Enable watchdog with 1 second timeout, disable amp on timeout
+timeout_ms = 1000
+timeout_count = int(timeout_ms / 8.192)  # ≈ 122
+send_command(addr, 0x0E, [3, 0x05, 0x01, timeout_count])
+
+# Example 2: Enable watchdog with 500 ms timeout, stop smoothly
+timeout_count = int(500 / 8.192)  # ≈ 61
+send_command(addr, 0x0E, [3, 0x05, 0x03, timeout_count])
+
+# Example 3: Disable watchdog
+send_command(addr, 0x0E, [3, 0x05, 0x00, 0x00])
+
+# Example 4: Monitor watchdog status
+status_bits = 0x1000  # Bit 12: watchdog status
+response = send_command(addr, 0x03, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+watchdog_status = int.from_bytes(response[2:4], 'little')
+if watchdog_status == 0xFFFF:
+    print("Watchdog disabled")
+elif watchdog_status == 0:
+    print("Watchdog expired!")
+else:
+    remaining_ms = watchdog_status * 8.192
+    print(f"Watchdog active: {remaining_ms:.1f} ms remaining")
+```
+
+**Use Case**: Safety interlock, detect lost communication
+
+---
+
+#### Sub-command 0x10: Set Motor Error Limit
+
+Sets the motor position error limit for dual-loop control systems.
+
+**Data**:
+- Byte 0: Sub-command code (0x10)
+- Bytes 1-2: Motor error limit (16-bit, little-endian)
+
+**Description**:
+- Used in dual-loop mode (encoder on load + encoder on motor)
+- After power-up: motor error limit = master error limit
+- Set Gain command also resets motor error limit to master error limit
+- This command independently sets motor error limit
+
+**Example**:
+```python
+motor_error_limit = 500  # encoder counts
+data = struct.pack('<BH', 0x10, motor_error_limit)
+send_command(addr, 0x0E, list(data))
+```
+
+**Use Case**: Dual-loop servo systems with separate motor and load encoders
+
+---
+
 ### 0xF - Hard Reset
 
 See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
