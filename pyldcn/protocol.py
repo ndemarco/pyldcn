@@ -18,18 +18,50 @@ from .exceptions import (
     LDCNChecksumError,
     LDCNDetectionError,
 )
-from .constants import (
-    HEADER,
-    ADDRESS_GROUP,
-    CMD_NOP,
-    CMD_READ_STATUS,
-    CMD_DEFINE_STATUS,
-    BAUD_RATES,
-    DEFAULT_BAUD,
-    COMMON_BAUDS,
-    DELAY_AFTER_BAUD_CHANGE,
-    STATUS_BIT_SIZES,
-)
+
+
+# =============================================================================
+# Protocol Constants
+# =============================================================================
+
+# Protocol framing
+HEADER = 0xAA
+ADDRESS_UNADDRESSED = 0x00
+ADDRESS_GROUP = 0xFF
+
+# Generic LDCN commands (supported by all device types)
+CMD_RESET_POS = 0x00
+CMD_SET_ADDRESS = 0x01
+CMD_DEFINE_STATUS = 0x02
+CMD_READ_STATUS = 0x03
+CMD_SET_BAUD = 0x0A
+CMD_NOP = 0x0E
+CMD_HARD_RESET = 0x0F
+
+# Baud rate divisor (BRD) values
+BAUD_RATES = {
+    9600: 0x81,
+    19200: 0x3F,
+    57600: 0x14,
+    115200: 0x0A,
+    125000: 0x27,
+    312500: 0x0F,
+    625000: 0x07,
+    1250000: 0x03
+}
+
+# Default baud rate after reset
+DEFAULT_BAUD = 19200
+
+# Common baud rates for auto-detection (in order of likelihood)
+# 125000 first - typical operating speed after initialization
+COMMON_BAUDS = [125000, 19200, 115200, 57600, 9600]
+
+# Timing constants (seconds)
+DELAY_AFTER_COMMAND = 0.001  # 1ms - devices respond within microseconds
+DELAY_AFTER_RESET = 2.0
+DELAY_AFTER_ADDRESS = 0.05   # Reduced from 0.3s
+DELAY_AFTER_BAUD_CHANGE = 0.1  # Reduced from 0.5s
 
 
 class LDCNProtocol:
@@ -159,11 +191,9 @@ class LDCNProtocol:
         self.serial.write(packet)
         self.serial.flush()
 
-        # Calculate expected response size
-        expected_size = self._calculate_response_size(command, data)
-
-        # Read exact response size
-        response = self.serial.read(expected_size)
+        # Read response with generous buffer (max LDCN response ~64 bytes)
+        # Serial timeout will stop reading when no more data arrives
+        response = self.serial.read(64)
 
         if len(response) < 2:
             # Some commands (like SET_BAUD to group address) don't return responses
@@ -176,32 +206,6 @@ class LDCNProtocol:
             raise LDCNChecksumError(f"Checksum mismatch in response from address {address}")
 
         return response
-
-    def _calculate_response_size(self, command: int, data: Optional[List[int]]) -> int:
-        """
-        Calculate expected response size based on command and data.
-
-        Args:
-            command: LDCN command (0x00-0x0F)
-            data: Data bytes sent with command
-
-        Returns:
-            Expected response size in bytes
-        """
-        # Base response: status byte + checksum
-        size = 2
-
-        # For Read Status (0x3) or Define Status (0x2) with status bit request
-        if command in [CMD_READ_STATUS, CMD_DEFINE_STATUS] and data and len(data) >= 2:
-            # Parse 16-bit status bits (little-endian)
-            status_bits = data[0] | (data[1] << 8)
-
-            # Add bytes for each requested status bit
-            for bit, byte_count in STATUS_BIT_SIZES.items():
-                if status_bits & bit:
-                    size += byte_count
-
-        return size
 
     def _verify_checksum(self, response: bytes) -> bool:
         """
