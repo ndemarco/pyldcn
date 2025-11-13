@@ -130,7 +130,7 @@ Digital outputs are sent as a 16-bit word split into two bytes:
 ```
 Outputs = Byte1:Byte0 (MSB:LSB)
           ↓    ↓
-       [15:8][7:0]
+        [15:8] [7:0]
 ```
 
 **Writing Outputs:**
@@ -152,32 +152,26 @@ Outputs use dry contact relays:
 
 | Specification | Value | Notes |
 |---------------|-------|-------|
-| **Max Voltage** | 40VDC | Dry contact relay outputs |
-| **Max Current** | 0.5A | Per output |
+| **V_max** | 40VDC | Dry contact relay outputs |
+| **I_max** | 0.5A | Per output |
+$H_2O$
 
 ### Byte0 - Application Outputs (Bits 0-7)
 
 | Bit | Name | Connector | Function | Notes |
 |-----|------|-----------|----------|-------|
-| **0** | Output 0 | CN14 | Program Running Lamp | Non-dedicated (can be general purpose) |
-| **1** | Output 1 | CN14 | Program Stopped Lamp | Non-dedicated (can be general purpose) |
+| **0** | Output 0 | CN14 | Program Running Lamp | |
+| **1** | Output 1 | CN14 | Program Stopped Lamp | |
 | **2** | Output 2 | CN6 | Spindle ON | See Note 3 (safety constraint), Note 4 (jumpers) |
-| **3** | Output 3 | CN6 | Spindle Direction | 0=CW, 1=CCW (can be general purpose) |
-| **4** | Output 4 | CN6 | Spindle DC-brake | DC brake/speed control (can be general purpose) |
-| **5** | Output 5 | CN7 | Tool Clamp | Solenoid control (can be general purpose) |
-| **6** | Output 6 | CN7 | Spindle Motor Cooling | Coolant control (can be general purpose) |
-| **7** | Output 7 | CN7 | Tool Cooling | Solenoid control (can be general purpose) |
+| **3** | Output 3 | CN6 | Spindle Direction | 0=CW, 1=CCW |
+| **4** | Output 4 | CN6 | Spindle DC-brake | DC brake/speed control |
+| **5** | Output 5 | CN7 | Tool Clamp | Solenoid control |
+| **6** | Output 6 | CN7 | Spindle Motor Cooling | Coolant control |
+| **7** | Output 7 | CN7 | Tool Cooling | Solenoid control  |
 
 **Note 3: CRITICAL SAFETY CONSTRAINT**
 
-**Spindle ON (Bit 2)** and **Safety Link Bridge (Bit 12)** CANNOT be used simultaneously.
-
-Requirements:
-- If one is set to 1, the other MUST be 0
-- To activate either output, the other MUST be turned off first
-- The firmware will THROW AN ERROR if both are set to 1 simultaneously
-
-This is a **hardware safety requirement** enforced by the controller.
+**Spindle ON (Bit 2)** and **Safety Link Bridge (Bit 12)** must not be set simultaneously. This is a hardware safety requirement enforced by the controller.
 
 **Note 4: Spindle Control Configuration**
 
@@ -187,14 +181,14 @@ See "Sample application – Spindle Option 1" and "Sample application – Spindl
 
 | Bit | Name | Connector | Function | Notes |
 |-----|------|-----------|----------|-------|
-| **8** | Output 8 | CN7 | Tool Changer Unlock | Can be general purpose |
-| **9** | Output 9 | CN9, CN10 | Guard Lock | 1=locked, 0=unlocked |
+| **8** | Output 8 | CN7 | Tool Changer Unlock | 
+| **9**| Output 9 | CN9, CN10 | Guard Lock | 1=locked, 0=unlocked |
 | **10** | Output 10 | Internal | Home Enable | Automation mode dependent |
-| **11** | Output 11 | Internal | Test Mode Inhibit | 1=prevent manual override |
-| **12** | Output 12 | CN3 Safety Bus | Safety Link Bridge | See Note 3 (safety constraint) |
+| **11** | Output 11 | Internal | Manual Mode Inhibit | 1=prevent manual override |
+| **12** | Output 12 | CN3 | Safety Link Bridge | See Note 3 (safety constraint) |
 | **13** | Output 13 | CN7 | Inverted Output | Logic HIGH when bit=0 |
 | **14** | Output 14 | Internal | Reserved (set to 0) | Guards Lock/Unlock if J10-2 and J19 shorted (Note 5) |
-| **15** | Output 15 | Internal | System Lock | Power ON/OFF if J21 shorted (Note 6) |
+| **15** | Output 15 | Internal | Software power | Controls power ON/OFF if J21 shorted (Note 6) |
 
 **Note 5: Guards Lock/Unlock (Output 14)**
 
@@ -202,7 +196,7 @@ J10-2 and J19 must both be shorted to enable automatic guard unlocking in Zero S
 
 **Note 6: Power ON/OFF (Output 15)**
 
-J21 must be shorted to enable software power control. With J21 open (default), power can ONLY be controlled via physical button.
+J21 must be shorted to enable software power control. With J21 open (default), power can only be controlled via physical button.
 
 ---
 
@@ -212,11 +206,11 @@ J21 must be shorted to enable software power control. With J21 open (default), p
 
 Analog inputs are returned in status response when configured. See [sk-2310g2_status_reporting.md](sk-2310g2_status_reporting.md) for configuration details.
 
-| Channel | Physical Connector | Range | Function | Application |
-|---------|-------------------|-------|----------|-------------|
-| **0** | CN6.10 | 0-10V | **Spindle Load** | Spindle current/load feedback from LS2315 drive |
-| **1** | CN17.3 | 0-5V | **ADC2** | General purpose analog input |
-| **2** | CN17.2 | 0-5V | **ADC3** | General purpose analog input |
+| Channel | Connector | Resolution | Range | Function | Notes |
+|---------|-------------------|------|-------|----------|-------------|
+| **0** | CN6.10 | 8-bit | 0-10V | **Spindle Load** | Spindle current/load feedback from LS2315 drive |
+| **1** | CN17.3 | 8-bit | 0-5V | **ADC2** | General purpose analog input |
+| **2** | CN17.2 | 8-bit | 0-5V | **ADC3** | General purpose analog input |
 
 **Reading Analog Inputs:**
 ```python
@@ -228,42 +222,29 @@ response = send_command(CMD_READ_STATUS, [0xFF, 0xFF])
 ain0 = response[3]  # Analog 0 (0-255 for 0-10V)
 ain1 = response[4]  # Analog 1 (0-255 for 0-5V)
 ain2 = response[5]  # Analog 2 (0-255 for 0-5V)
-
-# Scale to voltage
-voltage_ain0 = (ain0 / 255.0) * 10.0  # 0-10V
-voltage_ain1 = (ain1 / 255.0) * 5.0   # 0-5V
 ```
 
-**Note:** LS-773 returns 8-bit analog values (0-255), not 10-bit (0-1023).
-
----
 
 ## Analog Output (1 channel)
 
-| Channel | Physical Connector | Range | Function | Application |
-|---------|-------------------|-------|----------|-------------|
-| **0** | CN6.11 | 0-10V | **Spindle Speed Command** | Speed command to LS2315 spindle drive |
+| Channel | Connector | Resolution | Range | Function |
+|---------|-------------------|-----|-------|----------|
+| **0** | CN6.11 | 8-bit | 0-10V | Spindle speed |
 
 ### Writing Analog Output
 
-**Command:** TBD - requires hardware verification (likely `CMD_SET_PWM_IO` or DAC command)
+**Command:** `CMD_SET_PWM_IO` (0x04) - data format requires hardware verification
 
 ```python
 # Set spindle speed as percentage
 speed_percent = 75  # 75% of max RPM
 dac_value = int((speed_percent / 100.0) * 255)
 
-# Send to DAC (command format TBD)
-send_command(CMD_SET_DAC, [channel, dac_value])
+# Send to PWM/DAC (data format TBD - likely [channel, value])
+send_command(CMD_SET_PWM_IO, [channel, dac_value])
 ```
 
-**LS2315 Spindle Drive Scaling:**
-- 0V = stopped
-- 10V = maximum RPM (50K/60K/100K depending on DIP switches)
-
----
-
-## Connector-to-I/O Quick Reference
+## I/O Connector Reference
 
 ### CN3 - Safety Bus Connector
 
@@ -282,8 +263,6 @@ send_command(CMD_SET_DAC, [channel, dac_value])
 | 13-14 | E-stop B | Input | (Hardware) | Emergency stop channel B (series chain) |
 | Other | LDCN Bus | - | - | LDCN network communication pins |
 
-**Note:** CN4 serves dual purpose - LDCN slave communication and E-stop chain pass-through.
-
 ### CN6 - Spindle Interface Connector
 
 | Pin | Signal | Type | Bit Assignment | Notes |
@@ -297,7 +276,7 @@ send_command(CMD_SET_DAC, [channel, dac_value])
 | 10 | Spindle LOAD | Analog In | Analog Input 0 (0-10V) | Load feedback from LS2315 |
 | 11 | Spindle SPEED | Analog Out | Analog Output 0 (0-10V) | Speed command to LS2315 |
 
-**Note:** CN6 connects pin-for-pin to LS2315 CN7 (spindle drive connector).
+**Note:** CN6 connects pin-for-pin to LS2315 CN7 spindle drive connector.
 
 ### CN7 - General I/O Connector
 
