@@ -522,6 +522,7 @@ When testing on hardware, verify these I/O assignments:
 
 ## Related Documentation
 
+- [sk-2310g2_status_reporting.md](sk-2310g2_status_reporting.md) - LS-773 status protocol and Define Status command
 - [SK-2310g2_supervisor.md](SK-2310g2_supervisor.md) - Safety system, diagnostic codes, jumper configuration
 - [pyldcn/devices/io.py](../pyldcn/devices/io.py) - SK2310g2 class implementation
 - [pyldcn/devices/sk2310g2.py](../pyldcn/devices/sk2310g2.py) - LS-773 status parsing utilities
