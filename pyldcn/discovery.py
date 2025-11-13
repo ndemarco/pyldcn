@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, TYPE_CHECKING
 
 from .protocol import (
     LDCNProtocol,
+    HEADER,
     ADDRESS_UNADDRESSED,
     ADDRESS_GROUP,
     CMD_SET_ADDRESS,
@@ -144,8 +145,9 @@ class DeviceDiscovery:
         After reset, devices return to address 0x00 and 19200 baud.
         Waits 2 seconds after final reset for devices to initialize.
         """
-        # Reset packet
-        packet = bytes([HEADER, ADDRESS_GROUP, 0x0F, 0x0E])
+        # Reset packet: HEADER, address, command, checksum
+        checksum = (ADDRESS_GROUP + CMD_HARD_RESET) & 0xFF
+        packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET, checksum])
 
         # Try sending reset at all known baud rates
         for baud in [230400, 125000, 57600, 38400, 19200, 9600]:
