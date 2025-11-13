@@ -57,6 +57,8 @@ byte0 = response[1]  # Application inputs (bits 0-7)
 byte1 = response[2]  # System status + diagnostic (bits 8-15 and diagnostic code)
 ```
 
+**Important:** The LS-773 response includes Position, Velocity, and Home fields from the standard LDCN motion controller protocol. These fields are **vestigial** for the SK-2310g2 I/O controller and should be **ignored**. The SK-2310g2 has no motors or motion control capabilities. Use `byte0` and `byte1` for actual I/O state.
+
 ### Byte0 - Application Inputs (Bits 0-7)
 
 | Bit | Name | Connector | Function | Notes |

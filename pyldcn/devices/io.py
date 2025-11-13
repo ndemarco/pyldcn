@@ -241,24 +241,20 @@ class SK2310g2(LDCNDevice):
         """
         Read complete I/O controller status.
 
-        Returns complete status including all LDCN status data plus SK-2310g2 specific
-        digital inputs (Byte0/Byte1 from supervisory controller documentation).
+        Returns complete status including SK-2310g2 specific digital inputs
+        and system state (Byte0/Byte1 from supervisory controller documentation).
+
+        Note: The LS-773 protocol includes position/velocity/home fields, but these
+        are vestigial for the SK-2310g2 I/O controller and should be ignored.
 
         Returns:
             {
                 'status': status_byte,
-                'position': int,
-                'ad_value': int,
-                'velocity': int,
-                'auxiliary': int,
-                'home': int,
                 'device_id': int,
                 'version': int,
-                'position_error': int,
-                'path_buffer': int,
                 'byte0': int,              # SK-2310g2 digital inputs
                 'byte1': int,              # SK-2310g2 internal status
-                'analog_inputs': int,
+                'analog_inputs': int,      # Raw analog input data
                 'diagnostic': int,         # Extracted from byte1 bits [7:3]
                 'power_state': bool,
                 # Decoded Byte0 fields:
