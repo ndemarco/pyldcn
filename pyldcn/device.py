@@ -86,9 +86,19 @@ class LDCNDevice(ABC):
         Configure status reporting (permanent).
 
         Args:
-            status_bits: 16-bit status configuration
+            status_bits: 8-bit or 16-bit status configuration
+
+        Notes:
+            - If status_bits <= 0xFF: Sends 1 byte (command byte 0x12)
+            - If status_bits > 0xFF: Sends 2 bytes (command byte 0x22)
+            - Per LS-231SE datasheet: "Number of data bytes: 1 or 2"
         """
-        self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+        if status_bits <= 0xFF:
+            # 1 byte sufficient for bits 0-7 (I/O devices, simple servo configs)
+            self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF])
+        else:
+            # 2 bytes needed for bits 8-15 (servo extended status)
+            self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 
     @abstractmethod
     def read_status(self) -> Dict:

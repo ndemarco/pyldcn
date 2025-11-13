@@ -135,6 +135,10 @@ Thumbs.db
 # Vendor documentation (proprietary)
 docs/logosol/
 
+# Temporary vendor datasheets (downloaded for reference)
+LS-*.pdf
+LS-*.txt
+
 # Generated configuration files (examples are in examples/)
 /device_list.json
 /axis_config.json

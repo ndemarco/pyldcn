@@ -265,29 +265,95 @@ AA 01 0B 0C  # Clear sticky bits on device 1
 
 ---
 
+## Define Status & Read Status Commands
+
+These commands configure what additional data is returned in status packets. They are part of the base LDCN protocol but device-specific status items vary.
+
+### 0x2 - Define Status
+
+Defines what additional data will be sent in status packets along with the status byte.
+
+**Data**: 1 or 2 bytes (16-bit little-endian status configuration)
+
+**Command Byte**:
+- `0x12`: 1 data byte (for status bits 0-7)
+- `0x22`: 2 data bytes (for status bits 0-15)
+
+**Default**: `0x0000` (no additional status data)
+
+**Status Configuration Bits** (Servo Devices):
+
+| Bit | Data Item | Size | Description |
+|-----|-----------|------|-------------|
+| 0 | position | 4 bytes | Current encoder position (int32, little-endian) |
+| 1 | ad_value | 1 byte | Analog-to-digital converter value (0-255) |
+| 2 | velocity | 2 bytes | Actual velocity (int16, no fractional component) |
+| 3 | auxiliary | 1 byte | Auxiliary status byte (see below) |
+| 4 | home | 4 bytes | Captured home position (int32) |
+| 5 | device_id | 2 bytes | Device ID (0) + Version (20-29 decimal) |
+| 6 | pos_error | 2 bytes | Current position following error (int16) |
+| 7 | path_count | 1 byte | Number of points in path buffer (0-255) |
+| 8 | digital_in | 2 bytes | Digital input states |
+| 9 | analog_in | 2 bytes | Analog input values |
+| 10-11 | (reserved) | - | Clear to 0 |
+| 12 | watchdog | 2 bytes | Watchdog status (0xFFFF=disabled, 0x0000=expired) |
+| 13 | motor_pos | 6 bytes | Motor position and position error |
+| 14-15 | (reserved) | - | Clear to 0 |
+
+**Example**:
+```python
+# Request position, velocity, aux status, and position error
+status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # bits 0, 2, 3, 6
+send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+```
+
+**Notes**:
+- Status data is always sent in bit order (0, 1, 2, 3, ...)
+- Setting bits causes corresponding data to be appended after status byte
+- Power-up default includes only status byte + checksum
+
+### 0x3 - Read Status
+
+Non-permanent version of Define Status. The status packet returned includes the specified data, but subsequent packets use the previously defined configuration.
+
+**Data**: 1 or 2 bytes (same format as Define Status)
+
+**Example**:
+```python
+# Read position once without changing defined status
+status_bits = 0x0001  # bit 0: position
+send_command(addr, 0x03, [status_bits])
+```
+
+---
+
 ## Servo Status Byte
 
 The status byte returned by servo drives has the following bit definitions:
 
 | Bit | Name | Description |
 |-----|------|-------------|
-| 0   | move_done | Clear during motion, set when motion complete |
+| 0   | move_done | Clear during trapezoidal move or velocity acceleration, set otherwise (including when servo disabled) |
 | 1   | cksum_error | Checksum error in received command packet |
-| 2   | current_limit | Current limiting active (motor overload) |
-| **3** | **power_on** | **Amplifier power enabled** |
-| 4   | pos_error | Position error exceeded limit (following error) |
-| 5   | home_source | Home switch input state or diagnostic bit |
-| 6   | limit2 | Forward limit switch or diagnostic bit |
-| 7   | home_in_progress | Currently searching for home position |
+| 2   | current_limit | Current limiting exceeded (sticky - clear with Clear Bits command) |
+| **3** | **power_on/diag** | **Amplifier power enabled or diagnostic bit** |
+| 4   | pos_error | Position error exceeded limit (sticky - clear with Clear Bits command). Also set when servo disabled (power_on=0) |
+| 5   | home_source/diag | Home switch input state or diagnostic bit |
+| 6   | limit2/diag | Forward limit switch or diagnostic bit |
+| 7   | home_in_progress | Set while searching for home position, cleared when home captured |
 
-**Fault Conditions** (bits that indicate problems):
+**Fault Conditions** (sticky bits - must be cleared with Clear Bits command):
 - Bit 1: Checksum error - resend command
-- Bit 2: Current limit - reduce load or check motor
-- Bit 4: Position error - motor stalled or load too high
+- Bit 2: Current limit - reduce load or check motor, then clear
+- Bit 4: Position error - motor stalled or load too high, resolve issue then clear
 
 **Power Detection**:
 - Bit 3 = 1: Amplifier power is ON
 - Bit 3 = 0: Amplifier power is OFF
+
+**Notes**:
+- Sticky bits remain set until explicitly cleared with Clear Bits (0x0B) command
+- Bits 3, 5, 6 may function as diagnostic bits (see LS-231SE Diagnostic and I/O section)
 
 ---
 
@@ -297,13 +363,19 @@ When configured via Define Status (bit 3), an auxiliary status byte is returned:
 
 | Bit | Name | Description |
 |-----|------|-------------|
-| 0   | index | Complement of index input |
-| 1   | pos_wrap | 32-bit position counter wrapped |
+| 0   | index/diag | Complement of index input or diagnostic bit |
+| 1   | pos_wrap | 32-bit position counter wrapped (sticky - clear with Clear Bits command) |
 | 2   | servo_on | Position servo loop enabled |
-| 3   | accel_done | Acceleration phase complete |
-| 4   | slew_done | Constant velocity phase complete |
-| 5   | servo_overrun | Servo calculation exceeded time budget |
-| 6   | path_mode | Executing path trajectory |
+| 3   | accel_done | Acceleration phase of trapezoidal move complete, cleared on next move |
+| 4   | slew_done | Constant velocity phase of trapezoidal move complete, cleared on next move |
+| 5   | servo_overrun | Servo calculation exceeded 51.2µs (sticky - clear with Clear Bits command) |
+| 6   | path_mode | Currently executing a path (cleared when buffer empty or Load Trajectory/Stop Motor sent) |
+| 7   | (unused) | Not defined in datasheet |
+
+**Notes**:
+- Bit 0 may function as diagnostic bit (see LS-231SE Diagnostic and I/O section)
+- Sticky bits (1, 5) remain set until cleared with Clear Bits (0x0B) command
+- On power-up/reset: pos_wrap, servo_on, accel_done, slew_done, servo_overrun all clear to 0
 
 ---
 
