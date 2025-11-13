@@ -20,14 +20,11 @@ License: GPL v2 or later
 Version: 0.1.0
 """
 
-from .network import (
-    # Main classes
-    LDCNNetwork,
-    LDCNDevice,
-    UnknownDevice,
-    InitMode,
-
-    # Exceptions
+# Import from modular architecture
+from .network import LDCNNetwork
+from .device import LDCNDevice, UnknownDevice
+from .constants import InitMode
+from .exceptions import (
     LDCNError,
     LDCNTimeoutError,
     LDCNChecksumError,
