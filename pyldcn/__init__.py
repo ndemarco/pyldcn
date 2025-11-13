@@ -23,7 +23,7 @@ Version: 0.1.0
 # Import from modular architecture
 from .network import LDCNNetwork
 from .device import LDCNDevice, UnknownDevice
-from .constants import InitMode
+from .discovery import InitMode
 from .exceptions import (
     LDCNError,
     LDCNTimeoutError,

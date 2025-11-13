@@ -42,14 +42,13 @@ from .exceptions import (
     LDCNDetectionError,
     LDCNInitializationError,
 )
-from .constants import (
-    InitMode,
-    HEADER,
+from .protocol import (
     ADDRESS_GROUP,
     CMD_HARD_RESET,
     DEFAULT_BAUD,
     DELAY_AFTER_RESET,
 )
+from .discovery import InitMode
 from . import util
 
 

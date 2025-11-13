@@ -12,12 +12,9 @@ import time
 from typing import Optional, Dict, Any
 
 # Import from parent package (modular architecture)
-from pyldcn.device import LDCNDevice
+from pyldcn.device import LDCNDevice, STATUS_POWER_ON
 from pyldcn.network import LDCNNetwork
-from pyldcn.constants import (
-    CMD_READ_STATUS,
-    STATUS_POWER_ON,
-)
+from pyldcn.protocol import CMD_READ_STATUS
 
 # Import SK-2310g2 specific parsing
 from . import sk2310g2
@@ -227,11 +224,14 @@ class SK2310g2(LDCNDevice):
         """
         Configure I/O controller for full status reporting.
 
-        Sends DEFINE_STATUS with 0xFFFF (all status data).
+        Sends DEFINE_STATUS with 0xFF (all 8 status items).
+        See sk2310g2.SK2310G2_STATUS_ITEMS for item definitions.
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        self.define_status(0xFFFF)
+        # Request all status items: digital_inputs, analog_in_0-2, counter_timer,
+        # device_id, sync_inputs, sync_counter (bits 0-7, i.e., 0xFF)
+        self.define_status(0xFF)
         time.sleep(1.0)
 
     # -------------------------------------------------------------------------
@@ -273,8 +273,9 @@ class SK2310g2(LDCNDevice):
                 'servo_fault': bool,
             }
         """
-        # Request all status bits (0xFFFF)
-        response = self.send_command(CMD_READ_STATUS, [0xFF, 0xFF])
+        # Request all status items (0xFF = bits 0-7)
+        # See sk2310g2.SK2310G2_STATUS_ITEMS for item definitions
+        response = self.send_command(CMD_READ_STATUS, [0xFF, 0x00])
 
         # Use SK-2310g2 specific LS-773 format parser
         status = sk2310g2.parse_ls773_status(response)
