@@ -67,28 +67,28 @@ The following tables show the relationship between status bits and drive conditi
 
 ### Part 1: Status and Control Bits
 
-| Condition | Limit2<br>(Bit 6) | Home<br>(Bit 5) | Pos_err<br>(Bit 4) | Power<br>(Bit 3) | Move_done<br>(Bit 0) | Servo<br>(Aux Bit 2) | Index<br>(Aux Bit 0) | Stop Cmd | Pic_ae<br>(DE) |
-|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **No Motor Power after LDCN Init** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **AxisOFF** | 1 | 1 | 1 | 1 | 0 | 0 | X | 0 | 0 |
-| **ServoON** | 0 | 0 | 0 | 1 | X | 1 | X | 1 | 1 |
-| **ServoOFF** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
-| **ErrHALL** | X | X | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **ErrEEPROM** | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **No Motor Power** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
-| **Overheat** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **Disabled** | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **Master EncoderERROR** | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 1 |
-| **Brake or Output Short** | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
-| **Stopped** | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
-| **MotorShort** | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
-| **Motor PowerDROP** | 0 | 0 | 1 | 0 | X | 0 | 1 | 1 | 1 |
-| **OverLOAD** | 1 | 0 | 1 | 0 | X | 0 | 0 | 1 | 1 |
-| **EncoderERR (Reset required)** | X | X | 1 | 1 | 1 | 0 | X | 0 | 0 |
-| **PositionERROR** | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
-| **Limit2** | 1 | X | 1 | 1 | 0 | 0 | X | 0 | 1 |
-| **Home Source** | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
-| **Encoder** | X | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 1 |
+| Condition | Description | Limit2<br>(Bit 6) | Home<br>(Bit 5) | Pos_err<br>(Bit 4) | Power<br>(Bit 3) | Move_done<br>(Bit 0) | Servo<br>(Aux Bit 2) | Index<br>(Aux Bit 0) | Stop Cmd | Pic_ae<br>(DE) |
+|-----------|-------------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **No Motor Power after LDCN Init** | Initial state after LDCN initialization, motor power not enabled | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **AxisOFF** | Axis disabled, amplifier off | 1 | 1 | 1 | 1 | 0 | 0 | X | 0 | 0 |
+| **ServoON** | Normal operation, servo loop active | 0 | 0 | 0 | 1 | X | 1 | X | 1 | 1 |
+| **ServoOFF** | Servo loop disabled, motor holding position | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
+| **ErrHALL** | Hall sensor error detected on brushless motor | X | X | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **ErrEEPROM** | EEPROM checksum error on power-up | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **No Motor Power** | Motor power supply missing or insufficient | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Overheat** | Drive temperature exceeded safe limit | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Disabled** | Drive disabled by command or external signal | 1 | 0 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Master EncoderERROR** | Master encoder signal lost or invalid | 0 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 1 |
+| **Brake or Output Short** | Brake output or other output shorted to power | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Stopped** | Motor stopped by stop command | 0 | 0 | 0 | 1 | 1 | 0 | X | 1 | 1 |
+| **MotorShort** | Motor windings shorted together or to ground | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 |
+| **Motor PowerDROP** | Motor power voltage dropped below threshold | 0 | 0 | 1 | 0 | X | 0 | 1 | 1 | 1 |
+| **OverLOAD** | Current limit exceeded, excessive mechanical load | 1 | 0 | 1 | 0 | X | 0 | 0 | 1 | 1 |
+| **EncoderERR (Reset required)** | Load encoder error, requires hard reset | X | X | 1 | 1 | 1 | 0 | X | 0 | 0 |
+| **PositionERROR** | Position following error exceeded limit | 0 | 1 | 1 | 0 | 1 | 0 | 1 | 0 | 0 |
+| **Limit2** | Forward limit switch triggered | 1 | X | 1 | 1 | 0 | 0 | X | 0 | 1 |
+| **Home Source** | Home switch triggered during homing | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
+| **Encoder** | Encoder-related status condition | X | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 1 |
 
 ### Part 2: LED Indicators and Physical Outputs
 
