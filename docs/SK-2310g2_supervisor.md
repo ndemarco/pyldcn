@@ -228,10 +228,17 @@ To enter manual override, all of the following conditions must be met:
 ## Power Control and Monitoring
 The integrated power supply delivers 24Vdc control power continuously. A separate, switched 80Vdc or 120Vdc power supply provides motive power to the drives and spindle. This supply must be enabled.
 
+**Power State Determination**
+Power state is indicated by the diagnostic code, NOT the status byte bit 3:
+- **Power OFF**: Diagnostic codes 0x00-0x13 (power not available, except 0x05/0x0E special cases)
+- **Ready to Power** (OFF): 0x14-0x17 (conditions met but not powered)
+- **Power ON**: 0x13 (motor power supply under-voltage but ON), 0x18-0x1F (normal power-on states)
+- **Special cases maintaining prior state**:
+  - 0x05: Home/Test switch malfunction from guard switch fault (manual override fault causes power OFF)
+  - 0x0E: Guard contact fault - maintains prior state
+
 **Drive Power Supply Enable**
-Drive power will be enabled when:
-- the A & B control inputs are grounded
-- t
+Drive power will be enabled when safety conditions are met and power button is pressed or software enables power (if J21 shorted).
 
 **Drive Power Supply Monitoring**
 When enabled, the power supply connects `loop source` to `loop input`. This loop is monitored by the SK-2310g2.

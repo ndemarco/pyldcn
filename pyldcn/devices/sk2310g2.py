@@ -188,9 +188,11 @@ def parse_ls773_status(response: bytes) -> Dict[str, Any]:
     servo_fault = bool(byte1 & 0x04)
     # Bits [7:3] are diagnostic code (already extracted)
 
-    # Power state from status byte (bit 3)
-    STATUS_POWER_ON = 0x08
-    power_state = bool(status_byte & STATUS_POWER_ON)
+    # Power state from diagnostic code (NOT status byte bit 3)
+    # Power ON: 0x13 (under-voltage but ON), 0x18-0x1F (normal operation)
+    # Power OFF: 0x00-0x12 (except 0x05/0x0E maintain prior), 0x14-0x17 (ready but off)
+    # Note: 0x05 and 0x0E maintain prior state - cannot determine without history
+    power_state = (diagnostic == 0x13) or (0x18 <= diagnostic <= 0x1F)
 
     return {
         # Raw bytes
@@ -256,7 +258,7 @@ def format_led_pattern(diagnostic: int) -> str:
 
 def format_status(status: Dict[str, Any]) -> str:
     """
-    Format SK-2310g2 status dictionary for readable display (compact).
+    Format SK-2310g2 status dictionary for readable display.
 
     Args:
         status: Status dictionary from parse_ls773_status()
@@ -265,51 +267,70 @@ def format_status(status: Dict[str, Any]) -> str:
         Multi-line formatted string with all status information
     """
     lines = []
+    lines.append("=" * 60)
+    lines.append("SK-2310g2 SUPERVISORY CONTROLLER STATUS")
+    lines.append("=" * 60)
 
-    # Header line
+    # Device info
+    lines.append(f"\nDevice:")
+    lines.append(f"  Device ID:      {status.get('device_id', 0)}")
+    lines.append(f"  Version:        {status.get('version', 0)}")
+
+    # Diagnostic code with LED display
     diagnostic = status.get('diagnostic', 0)
     led_pattern = format_led_pattern(diagnostic)
     condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
-    pwr = "ON" if status.get('power_state') else "OFF"
-    lines.append(f"SK-2310g2 Status | Pwr:{pwr} | Diag:0x{diagnostic:02X} {led_pattern} {condition}")
 
-    # Raw bytes
-    byte0 = status.get('byte0', 0)
-    byte1_val = status.get('byte1', 0)
-    status_byte = status.get('status', 0)
-    lines.append(f"Raw: Status=0x{status_byte:02X} Byte0=0x{byte0:02X} Byte1=0x{byte1_val:02X}")
+    lines.append(f"\nDiagnostic Code:")
+    lines.append(f"  Code:           0x{diagnostic:02X} ({diagnostic:05b}b)")
+    lines.append(f"  LED Display:    {led_pattern}  (5-4-3-2-1)")
+    lines.append(f"  Condition:      {condition}")
+
+    # Raw values
+    lines.append(f"\nRaw Status:")
+    lines.append(f"  Status byte:    0x{status.get('status', 0):02X}")
+    lines.append(f"  Byte0:          0x{status.get('byte0', 0):02X}")
+    lines.append(f"  Byte1:          0x{status.get('byte1', 0):02X}")
 
     # Digital inputs - Byte0 (bits 0-7)
-    lines.append("Byte0 Inputs:")
+    byte0 = status.get('byte0', 0)
+    lines.append(f"\nDigital Inputs (Byte0):")
     for bit in range(8):
         value = (byte0 >> bit) & 1
-        state = "1" if value else "0"
+        state = "HIGH" if value else "LOW "
         _, _, function = DIGITAL_INPUT_LABELS.get(bit, ("", "", "Unknown"))
-        lines.append(f"  {bit}:{state} {function}")
+        lines.append(f"  Input {bit}:       {state}  - {function}")
 
     # Digital inputs - Byte1 (bits 8-15)
-    lines.append("Byte1 Inputs:")
+    byte1_val = status.get('byte1', 0)
+    lines.append(f"\nDigital Inputs (Byte1):")
     for bit in range(8, 16):
         value = (byte1_val >> (bit - 8)) & 1
-        state = "1" if value else "0"
+        state = "HIGH" if value else "LOW "
         _, _, function = DIGITAL_INPUT_LABELS.get(bit, ("", "", "Unknown"))
-        lines.append(f"  {bit}:{state} {function}")
+        lines.append(f"  Input {bit}:      {state}  - {function}")
 
-    # Analog inputs
+    # Analog inputs - using corrected 8-bit byte-based decoding
     analog_raw = status.get('analog_inputs', 0)
     ad_value = status.get('ad_value', 0)
-    # Byte-based decoding: 2 channels in analog_inputs (16-bit), 1 in ad_value (8-bit)
-    ch0_raw = analog_raw & 0xFF  # Low byte (8-bit)
-    ch1_raw = (analog_raw >> 8) & 0xFF  # High byte (8-bit)
-    ch2_raw = ad_value & 0xFF  # ad_value field (8-bit)
-    ch0_pct = (ch0_raw / 255.0) * 100.0  # 8-bit scale
-    ch1_pct = (ch1_raw / 255.0) * 100.0  # 8-bit scale
-    ch2_pct = (ch2_raw / 255.0) * 100.0  # 8-bit scale
-    lines.append("Analog Inputs:")
-    lines.append(f"  Raw=0x{analog_raw:04X} AD=0x{ad_value:02X}")
-    lines.append(f"  0: {ch0_raw:4d} (0x{ch0_raw:02X}) {ch0_pct:5.1f}% - Spindle Load")
-    lines.append(f"  1: {ch1_raw:4d} (0x{ch1_raw:02X}) {ch1_pct:5.1f}% - ADC2 (GP)")
-    lines.append(f"  2: {ch2_raw:4d} (0x{ch2_raw:02X}) {ch2_pct:5.1f}% - ADC3 (GP)")
+    lines.append(f"\nAnalog Inputs:")
+    lines.append(f"  Raw:            analog=0x{analog_raw:04X} ad_value=0x{ad_value:02X}")
+    # Channel 0: Low byte (8-bit, 0-255)
+    ch0_raw = analog_raw & 0xFF
+    ch0_percent = (ch0_raw / 255.0) * 100.0
+    lines.append(f"  Channel 0:      {ch0_raw:4d} (0x{ch0_raw:02X}) = {ch0_percent:5.1f}% - Spindle Load")
+    # Channel 1: High byte (8-bit, 0-255)
+    ch1_raw = (analog_raw >> 8) & 0xFF
+    ch1_percent = (ch1_raw / 255.0) * 100.0
+    lines.append(f"  Channel 1:      {ch1_raw:4d} (0x{ch1_raw:02X}) = {ch1_percent:5.1f}% - ADC2 (GP)")
+    # Channel 2: ad_value field (8-bit, 0-255)
+    ch2_raw = ad_value & 0xFF
+    ch2_percent = (ch2_raw / 255.0) * 100.0
+    lines.append(f"  Channel 2:      {ch2_raw:4d} (0x{ch2_raw:02X}) = {ch2_percent:5.1f}% - ADC3 (GP)")
+
+    # Power state
+    lines.append(f"\nPower:")
+    lines.append(f"  Power state:    {'ON' if status.get('power_state') else 'OFF'}")
 
     return "\n".join(lines)
 
