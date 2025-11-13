@@ -13,12 +13,9 @@ import struct
 from typing import Optional, Dict, List
 
 # Import from parent package (modular architecture)
-from pyldcn.device import LDCNDevice
+from pyldcn.device import LDCNDevice, STATUS_POWER_ON
 from pyldcn.network import LDCNNetwork
-from pyldcn.constants import (
-    CMD_READ_STATUS,  # Shared command used by all devices
-    STATUS_POWER_ON,  # Shared status flag used by all devices
-)
+from pyldcn.protocol import CMD_READ_STATUS
 
 
 
@@ -34,16 +31,22 @@ CMD_SET_HOME_MODE = 0x09
 CMD_CLEAR_BITS = 0x0B
 
 # =============================================================================
-# Servo Status Bits (for DEFINE_STATUS command)
+# LS-231SE Status Items (for DEFINE_STATUS command)
 # =============================================================================
 
-STATUS_BIT_POSITION = 0x0001      # Bit 0: Position (4 bytes)
-STATUS_BIT_AD_VALUE = 0x0002      # Bit 1: A/D value (1 byte)
-STATUS_BIT_VELOCITY = 0x0004      # Bit 2: Velocity (2 bytes)
-STATUS_BIT_AUX = 0x0008           # Bit 3: Auxiliary status byte
-STATUS_BIT_HOME = 0x0010          # Bit 4: Home position (4 bytes)
-STATUS_BIT_POS_ERROR = 0x0040     # Bit 6: Position error (2 bytes)
-STATUS_BIT_PATH_COUNT = 0x0080    # Bit 7: Path buffer count (1 byte)
+# Format: [(bit_mask, name, byte_size, description), ...]
+LS231SE_STATUS_ITEMS = [
+    (0x0001, 'position', 4, 'Current position in encoder counts'),
+    (0x0002, 'ad_value', 1, 'Analog-to-digital converter value (0-255)'),
+    (0x0004, 'velocity', 2, 'Current velocity in counts per servo tick'),
+    (0x0008, 'aux', 1, 'Auxiliary status byte (servo on, overrun flags)'),
+    (0x0010, 'home', 4, 'Captured home position in encoder counts'),
+    (0x0020, 'device_id', 2, 'Device ID and firmware version'),
+    (0x0040, 'pos_error', 2, 'Position following error in encoder counts'),
+    (0x0080, 'path_count', 1, 'Path buffer count (motion queue depth)'),
+    (0x1000, 'watchdog', 2, 'Watchdog timer status'),
+    (0x2000, 'motor_pos', 6, 'Motor position and error (6 bytes)'),
+]
 
 # =============================================================================
 # Servo Status Byte Flags
@@ -146,7 +149,8 @@ class LS231SE(LDCNDevice):
         """
         try:
             # Step 1: Define status reporting
-            status_bits = STATUS_BIT_POSITION | STATUS_BIT_VELOCITY | STATUS_BIT_AUX | STATUS_BIT_POS_ERROR
+            # Request: position, velocity, aux, pos_error
+            status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040
             self.define_status(status_bits)
             time.sleep(0.1)
 
@@ -212,7 +216,8 @@ class LS231SE(LDCNDevice):
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        status_bits = STATUS_BIT_POSITION | STATUS_BIT_VELOCITY | STATUS_BIT_AUX | STATUS_BIT_POS_ERROR
+        # Request: position, velocity, aux, pos_error
+        status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040
         response = self.send_command(CMD_READ_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 
         return self._parse_status(response, status_bits)
@@ -226,7 +231,8 @@ class LS231SE(LDCNDevice):
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
-        response = self.send_command(CMD_READ_STATUS, [STATUS_BIT_POSITION & 0xFF, 0x00])
+        # Request only position (bit 0)
+        response = self.send_command(CMD_READ_STATUS, [0x01, 0x00])
 
         if len(response) < 6:  # status + 4 bytes position + checksum
             return {'position': None, 'status': None}
@@ -265,25 +271,25 @@ class LS231SE(LDCNDevice):
 
         idx = 0
 
-        # Position (4 bytes)
-        if status_bits & STATUS_BIT_POSITION and len(data) >= idx + 4:
+        # Position (4 bytes, bit 0)
+        if status_bits & 0x0001 and len(data) >= idx + 4:
             result['position'] = struct.unpack('<i', bytes(data[idx:idx+4]))[0]
             self.position = result['position']
             idx += 4
 
-        # A/D value (1 byte)
-        if status_bits & STATUS_BIT_AD_VALUE and len(data) >= idx + 1:
+        # A/D value (1 byte, bit 1)
+        if status_bits & 0x0002 and len(data) >= idx + 1:
             result['ad_value'] = data[idx]
             idx += 1
 
-        # Velocity (2 bytes)
-        if status_bits & STATUS_BIT_VELOCITY and len(data) >= idx + 2:
+        # Velocity (2 bytes, bit 2)
+        if status_bits & 0x0004 and len(data) >= idx + 2:
             result['velocity'] = struct.unpack('<h', bytes(data[idx:idx+2]))[0]
             self.velocity = result['velocity']
             idx += 2
 
-        # Auxiliary status (1 byte)
-        if status_bits & STATUS_BIT_AUX and len(data) >= idx + 1:
+        # Auxiliary status (1 byte, bit 3)
+        if status_bits & 0x0008 and len(data) >= idx + 1:
             aux = data[idx]
             result['aux_status'] = aux
             result['servo_on'] = bool(aux & 0x04)
@@ -291,8 +297,8 @@ class LS231SE(LDCNDevice):
             self.aux_status = aux
             idx += 1
 
-        # Position error (2 bytes)
-        if status_bits & STATUS_BIT_POS_ERROR and len(data) >= idx + 2:
+        # Position error (2 bytes, bit 6)
+        if status_bits & 0x0040 and len(data) >= idx + 2:
             result['pos_error'] = struct.unpack('<h', bytes(data[idx:idx+2]))[0]
             self.pos_error = result['pos_error']
             idx += 2

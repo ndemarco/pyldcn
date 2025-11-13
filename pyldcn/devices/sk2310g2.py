@@ -78,6 +78,23 @@ ANALOG_OUTPUT_LABELS = {
 
 
 # =============================================================================
+# SK-2310g2 Status Items (LS-773 Protocol)
+# =============================================================================
+
+# Format: [(bit_mask, name, byte_size, description), ...]
+SK2310G2_STATUS_ITEMS = [
+    (0x01, 'digital_inputs', 2, '16-bit digital input state (Byte 0 + Byte 1)'),
+    (0x02, 'analog_in_0', 1, 'Analog input channel 0 (0-255, typically spindle load)'),
+    (0x04, 'analog_in_1', 1, 'Analog input channel 1 (0-255, general purpose)'),
+    (0x08, 'analog_in_2', 1, 'Analog input channel 2 (0-255, general purpose)'),
+    (0x10, 'counter_timer', 4, 'Counter/timer value (32-bit, LSB first)'),
+    (0x20, 'device_id', 2, 'Device ID and firmware version'),
+    (0x40, 'sync_inputs', 2, 'Digital inputs captured with Sync Input command'),
+    (0x80, 'sync_counter', 4, 'Counter/timer captured with Sync Input command'),
+]
+
+
+# =============================================================================
 # Diagnostic Code Descriptions
 # =============================================================================
 
