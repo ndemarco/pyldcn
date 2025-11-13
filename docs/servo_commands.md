@@ -272,11 +272,49 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 
 ### 0x8 - I/O Control
 
-**Data**: Variable (n bytes)
+Controls brake output and configures path point buffer timing.
 
-**Description**: Controls brake output and sets path point buffer timing.
+**Data**: 1 or 3 bytes
+- Byte 0: Control byte
+- Bytes 1-2: Path point buffer counter (optional, only if bit 6 set)
 
-**TODO**: Add complete documentation from LS-231SE datasheet.
+**Control Byte**:
+| Bit | Function |
+|-----|----------|
+| 0 | Brake output mode: 0 = automatic (status-controlled), 1 = manual (bit 1 control) |
+| 1 | Brake output control (only if bit 0 = 1): 0 = brake off, 1 = brake on |
+| 2-5 | Not used (must be 0) |
+| 6 | Set path point buffer counter: 0 = no change, 1 = set to bytes 1-2 value |
+| 7 | Not used (must be 0) |
+
+**Path Point Buffer Counter**:
+- Range: 0x0000 to 0x7FFF
+- Purpose: Sets time interval between path points
+- Calculation: `time_between_points = counter × 51.2 µs`
+- Example: counter = 100 → 5.12 ms between points
+
+**Examples**:
+```python
+# Example 1: Set path point timing to 5.12 ms (100 × 51.2 µs)
+control = 0x40  # Bit 6 set: load path point counter
+counter = 100
+data = struct.pack('<BH', control, counter)
+send_command(addr, 0x08, list(data))
+
+# Example 2: Manually enable brake output
+control = 0x03  # Bit 0 and 1 set: manual mode, brake on
+send_command(addr, 0x08, [control])
+
+# Example 3: Return brake to automatic control
+control = 0x00  # Bit 0 clear: automatic mode
+send_command(addr, 0x08, [control])
+```
+
+**Notes**:
+- Brake output is typically controlled automatically based on drive status
+- Manual brake control useful for testing or special applications
+- Path point timing must be set before executing path mode
+- See "Status bits and LEDs" section in datasheet for automatic brake behavior
 
 ---
 
@@ -379,21 +417,147 @@ AA 01 0B 0C  # Clear sticky bits on device 1
 
 ### 0xC - Save Current Position as Home
 
+Saves the current encoder position as the home position for later retrieval.
+
 **Data**: None
 
-**Description**: Stores the current encoder position as the home position.
+**Example**:
+```
+AA 01 0C 0D  # Save current position as home on device 1
+```
 
-**TODO**: Add complete documentation from LS-231SE datasheet.
+**Use Case**: Synchronous home position capture across multiple axes
+
+This command is typically issued to a **group** of controllers to cause their current positions to be stored synchronously. This ensures that all axes capture their home positions at exactly the same moment, which is critical for multi-axis systems that need to establish a common coordinate reference.
+
+**Workflow**:
+```python
+# Example: Synchronous home capture for 3-axis system
+# Assume axes are at group address 0xF0
+
+# 1. Move all axes to desired home position (zero position, alignment fixture, etc.)
+# ... motion commands ...
+
+# 2. Capture current positions synchronously as home
+send_command(addr=0xF0, cmd=0x0C, data=[])  # Group command - all axes capture simultaneously
+
+# 3. Later, read the stored home positions individually
+home_x = send_command(addr=1, cmd=0x03, data=[0x10, 0x00])  # Read home position (bit 4)
+home_y = send_command(addr=2, cmd=0x03, data=[0x10, 0x00])
+home_z = send_command(addr=3, cmd=0x03, data=[0x10, 0x00])
+```
+
+**Notes**:
+- Home position is separate from current position
+- Stored home position can be read via Define Status/Read Status (bit 4)
+- Does not move the motor - only stores the current position value
+- Particularly useful when combined with group addressing for multi-axis synchronization
+- Home position is a 32-bit signed integer (same format as position)
 
 ---
 
 ### 0xD - Add Path Points
 
-**Data**: Variable (0-14 bytes)
+Adds incremental path points to the 256-entry path buffer for continuous motion trajectories.
 
-**Description**: Adds up to 7 path points to the path buffer for continuous motion.
+**Data**: 0, 2, 4, 6, 8, 10, 12, or 14 bytes
 
-**TODO**: Add complete documentation from LS-231SE datasheet.
+**Command Byte**:
+- `0x0D`: Start path execution (0 data bytes)
+- `0x2D`: Add 1 path point (2 data bytes)
+- `0x4D`: Add 2 path points (4 data bytes)
+- `0x6D`: Add 3 path points (6 data bytes)
+- `0x8D`: Add 4 path points (8 data bytes)
+- `0xAD`: Add 5 path points (10 data bytes)
+- `0xCD`: Add 6 path points (12 data bytes)
+- `0xED`: Add 7 path points (14 data bytes)
+
+**Data Format** (per path point, 2 bytes):
+- **Format**: 16-bit signed integer (int8.frac8)
+- **Byte 0**: Fractional part (1/256 of encoder count)
+- **Byte 1**: Integer part (encoder counts)
+- **Interpretation**: Incremental velocity applied for each path segment
+- **Little-endian**: LSB first, MSB second
+
+**Path Point Mechanics**:
+1. Each 2-byte value is added to the desired position every servo tick
+2. The value is applied **Path Point Buffer Counter** times (set via 0x8 command)
+3. This creates a linear segment from current position to next path point
+4. Multiple points create a continuous trajectory
+
+**Buffer Capacity**: 256 path points maximum
+
+**Timing**:
+- Time per point = Path Point Buffer Counter × 51.2 µs
+- Example: Counter = 100 → 5.12 ms per point
+- Must be set via I/O Control (0x8) command before path execution
+
+**Examples**:
+```python
+# Example 1: Configure path timing and add points
+# Step 1: Set path point timing to 10 ms (195.3 × 51.2 µs ≈ 10 ms)
+counter = 195
+send_command(addr, 0x08, [0x40, counter & 0xFF, (counter >> 8) & 0xFF])
+
+# Step 2: Add path points (incremental velocities)
+# Each point is int8.frac8 format: (integer_part << 8) | fractional_part
+point1 = 0x0280  # 2.5 counts/tick (2 << 8 | 128)
+point2 = 0x0300  # 3.0 counts/tick
+point3 = 0x0200  # 2.0 counts/tick
+
+# Add 3 points at once
+data = struct.pack('<hhh', point1, point2, point3)
+send_command(addr, 0x0D, [6] + list(data))  # Command 0x6D
+
+# Step 3: Start path execution
+send_command(addr, 0x0D, [])  # Command 0x0D (0 bytes)
+```
+
+```python
+# Example 2: Circular motion using path points
+import math
+
+radius = 1000  # encoder counts
+num_points = 64
+path_timing = 100  # 5.12 ms per point
+
+# Configure timing
+send_command(addr, 0x08, [0x40, path_timing & 0xFF, (path_timing >> 8) & 0xFF])
+
+# Generate circular path points
+for i in range(0, num_points, 7):  # Add 7 points at a time
+    points = []
+    for j in range(min(7, num_points - i)):
+        angle = 2 * math.pi * (i + j) / num_points
+        # Incremental position for this segment
+        dx = radius * math.cos(angle) / path_timing
+        dy = radius * math.sin(angle) / path_timing
+
+        # Convert to int8.frac8 format
+        point = int(dx * 256)  # dx is the velocity for this axis
+        points.append(point & 0xFFFF)
+
+    # Add points to buffer
+    data = struct.pack(f'<{len(points)}h', *points)
+    send_command(addr, 0x0D, [len(points) * 2] + list(data))
+
+# Start path execution
+send_command(addr, 0x0D, [])
+```
+
+**Status Monitoring**:
+- Use Status bit 7 (path_count) to monitor buffer usage
+- Use Auxiliary Status bit 6 (path_mode) to check if path is executing
+- Buffer refill when path_count drops below threshold
+
+**Notes**:
+- Path buffer holds 256 points total
+- Points are consumed at the rate set by Path Point Buffer Counter
+- Servo must be enabled before starting path execution
+- Path mode stops when buffer empties or Stop Motor/Load Trajectory command sent
+- Each point defines an incremental velocity, not absolute position
+- Fractional component (1/256 count) allows smooth motion at slow speeds
+- For multi-axis coordination, use group commands to start paths simultaneously
 
 ---
 
