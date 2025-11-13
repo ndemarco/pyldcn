@@ -1,4 +1,4 @@
-# LS-773 Network I/O Node Commands
+# Logosol Network I/O Node commands
 
 **Author:** NickyDoes
 **Source:** LS-773 Network I/O Node Datasheet (Doc# 712773001, Rev. B) and CNC-SK-2310g2 Manual (Doc # 710231005 / Rev. D, 03/05/2020)
@@ -6,11 +6,14 @@
 
 ---
 
-## Device Overview
+## General Introduction
 
-The LS-773 is a LDCN network compliant I/O controller.
+This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-2310g2. The '773 is a general purpose I/O device, whereas the '2310 is a supervisory controller with I/O characteristics, plus general I/O features. The LDCN protocol and commands are substantially similar between the two.
 
-**Hardware Features**:
+In this document, the differences will be explained.
+
+
+## LS-773 Hardware Features
 - 10 general purpose digital inputs (with configurable pull-up/pull-down)
 - 6 open collector outputs (1A max each)
 - 1 solid-state relay output (0.5A max, OUTPUT 0/POWER)
@@ -19,58 +22,46 @@ The LS-773 is a LDCN network compliant I/O controller.
 - 20 KHz PWM mode for OUTPUT 1 and OUTPUT 2
 - Device ID: 2, Version: 50
 
----
 
-## Counter/Timer Overview
+## SK-2310g2 Hardware Features
+TODO: Insert hardware features here.
 
-The LS-773 includes a **32-bit counter/timer** with the following characteristics:
+## Common Features
 
-### Operating Modes
+### Counter/Timer Overview
 
-**Timer Mode** (internal clock):
+A single 32-bit counter/timer. 
+
+#### Timer Mode
 - Counts 5.0 MHz internal clock
 - Resolution: 200 ns per count
 - Maximum time: 858 seconds (14.3 minutes) at 1:1 prescaler
 
-**Counter Mode** (external input):
-- Counts high-to-low transitions on DIGITAL IN 9/COUNT
-- Prescaler divides input frequency (1:1, 2:1, 4:1, 8:1)
+#### Counter Mode
+- Counts high-to-low transitions
+  - For LS-773, on DIGITAL IN 9/COUNT
+  - For SK-2310g2, input TBD
+- Configurable prescaler divides input frequency (1:1, 2:1, 4:1, 8:1)
 
-### Overflow Behavior
+#### Overflow Behavior
 
-The counter/timer is a **free-running counter** with simple wraparound behavior:
+Upon overflow, the value simply wraps around to zero with no notification interrupt. Application must detect wrap by comparing consecutive readings.
 
-- **Maximum value**: 2^32 - 1 (4,294,967,295)
-- **On overflow**: Wraps to 0 and continues counting
-- **No interrupt**: Counter wraps silently with no status flag or notification
-- **No hardware detection**: Application must detect wraparound by comparing consecutive readings
+#### Reset
 
-### Reset Method
-
-There is **no direct counter reset command**. To reset the counter to zero:
+There is no explicit reset command. To reset the counter to zero:
 
 1. Disable the counter/timer (Set Timer Mode, bit 0 = 0)
 2. Re-enable the counter/timer (Set Timer Mode, bit 0 = 1)
 
-### Practical Use Cases
+#### Practical Uses
 
-The LS-773 is a **polled I/O controller**, not an interrupt-driven real-time controller. The counter/timer is designed for:
+The I/O nodes are polled I/O controllers, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
 
-1. **External Event Counting** - Encoder pulses, production parts, flow meter pulses
-2. **Elapsed Time Measurement** - Time intervals between polls (not precise event timing)
-3. **Synchronized Capture** - Hardware-latched position/time snapshots using Synch Input (0xC)
 
-**For high-accuracy timed events** (e.g., "trigger output when counter reaches X"), use motion controllers (like LS-370) or PLCs with hardware timer/comparator capabilities.
-
----
-
-## Status Reporting Overview
+### Status Reporting
 
 Logosol LDCN compliant I/O nodes convey their input state and other state details via status reporting. These nodes report status in response to `READ STATUS` and `NOP` commands and return a configurable set of status details.
-
----
-
-## Status Reporting Operation
 
 To return a defined status one time, request status with `Read Status`, and append the byte encoded set of desired status items.
 
@@ -82,7 +73,7 @@ It is not possible to read the state of outputs. The host must store the output 
 
 ---
 
-## Status Response
+### Status Response
 
 Every status response packet consists of three parts, in order:
 
@@ -119,7 +110,7 @@ The data to include in status responses is encoded into a byte as follows. Set a
 
 The checksum byte is the 8-bit sum of the status byte plus all data bytes.
 
-## Commands
+### I/O Specific Commands
 
 For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
 
@@ -127,20 +118,21 @@ For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.m
 |---------|------|------------|-------------|
 | [Define Status](#define-status-command) | 0x2 | 1 | Defines which data should be sent in every status packet |
 | [Read Status](#read-status-command) | 0x3 | 1 | Causes particular status data to be returned just once |
-| [Set PWM](#set-pwm-0x4) | 0x4 | 2 | Set PWM duty cycle for OUTPUT 1 and OUTPUT 2 |
-| [Synch Output](#synch-output-0x5) | 0x5 | 0 | Apply previously staged output values |
-| [Set Outputs](#set-outputs-0x6) | 0x6 | 2 | Immediately set all digital output states |
-| [Set Synch Output](#set-synch-output-0x7) | 0x7 | 4 | Stage output states and PWM values for later sync |
-| [Set Timer Mode](#set-timer-mode-0x8) | 0x8 | 1 | Configure 32-bit counter/timer operation mode |
+| [Set PWM](#set-pwm) | 0x4 | 2 | Set PWM duty cycle for OUTPUT 1 and OUTPUT 2 |
+| [Synch Output](#synch-output) | 0x5 | 0 | Apply previously staged output values |
+| [Set Outputs](#set-outputs) | 0x6 | 2 | Immediately set all digital output states |
+| [Set Synch Output](#set-synch-output) | 0x7 | 4 | Stage output states and PWM values for later sync |
+| [Set Timer Mode](#set-timer-mode) | 0x8 | 1 | Configure 32-bit counter/timer operation mode |
 | [Synch Input](#synch-input-command) | 0xC | 0 | Atomically capture input states and counter value |
 
 ---
 
-### Define Status Command
+#### Define Status Command
 
 **Command:** `0x02` (CMD_DEFINE_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
 **Default:** `0x00` (no items)
+**Returns:** Yes - Status packet with defined status items
 
 Causes subsequent `Nop` commands to return the defined status items.
 
@@ -148,16 +140,21 @@ Causes subsequent `Nop` commands to return the defined status items.
 
 ---
 
-### Read Status Command
+#### Read Status Command
 
 **Command:** `0x03` (CMD_READ_STATUS)
 **Data bytes:** 1 byte (from **status items bitmap**)
+**Returns:** Yes - Status packet with requested status items (one time only)
 
 This is a non-permanent version of the Define Status command. The status packet returned in response to this command will incorporate the data bytes specified, but subsequent status packets will include only the data bytes previously specified with the Define Status command.
 
 ---
 
-### Set PWM (0x4)
+#### Set PWM
+
+**Command:** `0x04` (CMD_SET_PWM)
+**Data bytes:** 2 bytes
+**Returns:** Yes - Standard status packet
 
 Sets the PWM duty cycle for PWM-capable outputs.
 
@@ -185,11 +182,13 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 ---
 
-### Synch Output (0x5)
+#### Synch Output
+
+**Command:** `0x05` (CMD_SYNCH_OUTPUT)
+**Data bytes:** 0 bytes
+**Returns:** Yes - Standard status packet
 
 Synchronously applies output values previously stored with `Set Synch Output` command.
-
-**Data**: None
 
 **Use Case**: Allows simultaneous state change on multiple outputs across multiple nodes.
 
@@ -197,7 +196,11 @@ First `Set Synch Output` to stage the values, then `Synch Output` to apply.
 
 ---
 
-### Set Outputs (0x6)
+#### Set Outputs
+
+**Command:** `0x06` (CMD_SET_OUTPUTS)
+**Data bytes:** 2 bytes
+**Returns:** Yes - Standard status packet
 
 Immediately sets the states of all digital output bits.
 
@@ -233,7 +236,11 @@ send_command(addr, 0x06, [outputs, 0x00])
 
 ---
 
-### Set Synch Output (0x7)
+#### Set Synch Output
+
+**Command:** `0x07` (CMD_SET_SYNCH_OUTPUT)
+**Data bytes:** 4 bytes
+**Returns:** Yes - Standard status packet
 
 Stores output states and PWM values for later synchronous application.
 
@@ -257,7 +264,11 @@ send_command(addr, 0x05, [])  # Synch Output
 
 ---
 
-### Set Timer Mode (0x8)
+#### Set Timer Mode
+
+**Command:** `0x08` (CMD_SET_TIMER_MODE)
+**Data bytes:** 1 byte
+**Returns:** Yes - Standard status packet
 
 Configures the 32-bit counter/timer operation mode.
 
@@ -371,7 +382,7 @@ When bit 4 or 7 is set, counter/timer values are included as 4 bytes (32-bit), l
 **Counter/Timer Modes:**
 - Timer mode: Counts time intervals
 - Counter mode: Counts external events on configured input
-- Synch mode (bit 7): Captures counter/timer value with Synch Input command
+- sync mode (bit 7): Captures counter/timer value with sync Input command
 
 See manual for counter/timer configuration commands.
 
@@ -385,10 +396,11 @@ When bit 5 is set, response includes:
 
 ---
 
-### Synch Input Command
+#### Synch Input Command
 
 **Command:** `0x0C` (CMD_SYNCH_INPUT)
-**Data**: None
+**Data bytes:** 0 bytes
+**Returns:** Yes - Standard status packet
 
 Captures current input states and counter/timer value atomically.
 
