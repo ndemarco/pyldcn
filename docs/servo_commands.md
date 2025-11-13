@@ -10,25 +10,25 @@ For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 
 ## Command Summary
 
-| Cmd | Name | Data Bytes | Cmd Byte | Description |
-|-----|------|------------|----------|-------------|
-| 0x0 | Reset Position | 0 | 0x00 | Reset 32-bit encoder counter to zero |
-| 0x1 | Set Address | 2 | 0x21 | See [ldcn_protocol.md](ldcn_protocol.md) |
-| 0x2 | Define Status | 1-2 | 0x12/0x22 | Configure persistent status reporting |
-| 0x3 | Read Status | 1-2 | 0x13/0x23 | Request status data (one-time) |
-| 0x4 | Load Trajectory | 1-15 | 0x14-0xF4 | Load motion parameters (position, velocity, accel, PWM) |
-| 0x5 | Start Motion | 0 | 0x05 | Execute previously loaded trajectory |
-| 0x6 | Set Gain | 14 | 0xE6 | Set PID gains and servo parameters |
-| 0x7 | Stop Motor | 1 or 5 | 0x17/0x57 | Stop motor with various modes (abrupt, smooth, etc.) |
-| 0x8 | I/O Control | n | 0x18-0xn8 | Control brake output and set path point timing |
-| 0x9 | Set Homing Mode | 1 | 0x19 | Configure homing capture conditions |
-| 0xA | Set Baud Rate | 1 | 0x1A | See [ldcn_protocol.md](ldcn_protocol.md) |
-| 0xB | Clear Sticky Bits | 0 | 0x0B | Clear latched fault status bits |
-| 0xC | Save Current Position as Home | 0 | 0x0C | Store current position as home position |
-| 0xD | Add Path Points | 0-14 | 0x0D-0xED | Add points to path buffer (up to 7 points per command) |
-| 0xE | No Operation (NOP) | 0 | 0x0E | See [ldcn_protocol.md](ldcn_protocol.md) |
-| 0xE | Extended Commands | 1-n | 0x1E-0xnE | Sub-commands for advanced features (see table below) |
-| 0xF | Hard Reset | 0 | 0x0F | See [ldcn_protocol.md](ldcn_protocol.md) |
+| Cmd | Name | Data Bytes | Description |
+|-----|------|------------|-------------|
+| 0x0 | Reset Position | 0 | Reset 32-bit encoder counter to zero |
+| 0x1 | Set Address | 2 | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0x2 | Define Status | 1-2 | Configure persistent status reporting |
+| 0x3 | Read Status | 1-2 | Request status data (one-time) |
+| 0x4 | Load Trajectory | 1-15 | Load motion parameters (position, velocity, accel, PWM) |
+| 0x5 | Start Motion | 0 | Execute previously loaded trajectory |
+| 0x6 | Set Gain | 14 | Set PID gains and servo parameters |
+| 0x7 | Stop Motor | 1 or 5 | Stop motor with various modes (abrupt, smooth, etc.) |
+| 0x8 | I/O Control | 1 or 3 | Control brake output and set path point timing |
+| 0x9 | Set Homing Mode | 1 | Configure homing capture conditions |
+| 0xA | Set Baud Rate | 1 | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0xB | Clear Sticky Bits | 0 | Clear latched fault status bits |
+| 0xC | Save Current Position as Home | 0 | Store current position as home position |
+| 0xD | Add Path Points | 0-14 | Add points to path buffer (up to 7 points per command) |
+| 0xE | No Operation (NOP) | 0 | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0xE | Extended Commands | 1-n | Sub-commands for advanced features (see table below) |
+| 0xF | Hard Reset | 0 | See [ldcn_protocol.md](ldcn_protocol.md) |
 
 ### Extended Commands (0xE Sub-commands)
 
@@ -73,10 +73,6 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 Defines what additional data will be sent in status packets along with the status byte.
 
 **Data**: 1 or 2 bytes (16-bit little-endian status configuration)
-
-**Command Byte**:
-- `0x12`: 1 data byte (for status bits 0-7)
-- `0x22`: 2 data bytes (for status bits 0-15)
 
 **Default**: `0x0000` (no additional status data)
 
@@ -472,16 +468,14 @@ home_z = send_command(addr=3, cmd=0x03, data=[0x10, 0x00])
 Adds incremental path points to the 256-entry path buffer for continuous motion trajectories.
 
 **Data**: 0, 2, 4, 6, 8, 10, 12, or 14 bytes
-
-**Command Byte**:
-- `0x0D`: Start path execution (0 data bytes)
-- `0x2D`: Add 1 path point (2 data bytes)
-- `0x4D`: Add 2 path points (4 data bytes)
-- `0x6D`: Add 3 path points (6 data bytes)
-- `0x8D`: Add 4 path points (8 data bytes)
-- `0xAD`: Add 5 path points (10 data bytes)
-- `0xCD`: Add 6 path points (12 data bytes)
-- `0xED`: Add 7 path points (14 data bytes)
+- 0 bytes: Start path execution
+- 2 bytes: Add 1 path point
+- 4 bytes: Add 2 path points
+- 6 bytes: Add 3 path points
+- 8 bytes: Add 4 path points
+- 10 bytes: Add 5 path points
+- 12 bytes: Add 6 path points
+- 14 bytes: Add 7 path points (maximum per command)
 
 **Data Format** (per path point, 2 bytes):
 - **Format**: 16-bit signed integer (int8.frac8)
@@ -589,8 +583,6 @@ Advanced features accessed via command 0xE with sub-command codes.
 - **Data**: 1 to n bytes
   - Byte 0: Sub-command code (0x00, 0x01, 0x02, 0x04, 0x05, 0x10)
   - Bytes 1-n: Sub-command specific data
-
-**Command Byte**: `0x1E` to `0xnE` (based on total data byte count)
 
 #### Sub-command 0x00: Stop on Limit Switches
 
