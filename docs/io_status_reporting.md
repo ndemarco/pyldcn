@@ -115,11 +115,11 @@ For generic LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.m
 | [Define Status](#define-status-command) | 0x2 | 1 | Defines which data should be sent in every status packet |
 | [Read Status](#read-status-command) | 0x3 | 1 | Causes particular status data to be returned just once |
 | [Set PWM](#set-pwm) | 0x4 | 2 | Set PWM duty cycle for OUTPUT 1 and OUTPUT 2 |
-| [Synch Output](#synch-output) | 0x5 | 0 | Apply previously staged output values |
+| [Sync Output](#sync-output) | 0x5 | 0 | Apply previously staged output values |
 | [Set Outputs](#set-outputs) | 0x6 | 2 | Immediately set all digital output states |
-| [Set Synch Output](#set-synch-output) | 0x7 | 4 | Stage output states and PWM values for later sync |
+| [Set Sync Output](#set-sync-output) | 0x7 | 4 | Stage output states and PWM values for later sync |
 | [Set Timer Mode](#set-timer-mode) | 0x8 | 1 | Configure 32-bit counter/timer operation mode |
-| [Synch Input](#synch-input-command) | 0xC | 0 | Atomically capture input states and counter value |
+| [Sync Input](#sync-input-command) | 0xC | 0 | Atomically capture input states and counter value |
 
 ---
 
@@ -178,17 +178,17 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 ---
 
-## Synch Output
+## Sync Output
 
-**Command:** `0x05` (CMD_SYNCH_OUTPUT)
+**Command:** `0x05` (CMD_SYNC_OUTPUT)
 **Data bytes:** 0 bytes
 **Returns:** Yes - Standard status packet
 
-Synchronously applies output values previously stored with `Set Synch Output` command.
+Synchronously applies output values previously stored with `Set Sync Output` command.
 
 **Use Case**: Allows simultaneous state change on multiple outputs across multiple nodes.
 
-First `Set Synch Output` to stage the values, then `Synch Output` to apply.
+First `Set Sync Output` to stage the values, then `Sync Output` to apply.
 
 ---
 
@@ -232,9 +232,9 @@ send_command(addr, 0x06, [outputs, 0x00])
 
 ---
 
-## Set Synch Output
+## Set Sync Output
 
-**Command:** `0x07` (CMD_SET_SYNCH_OUTPUT)
+**Command:** `0x07` (CMD_SET_SYNC_OUTPUT)
 **Data bytes:** 4 bytes
 **Returns:** Yes - Standard status packet
 
@@ -255,7 +255,7 @@ pwm2 = 255  # off
 send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
 
 # Later, simultaneously apply the staged values
-send_command(addr, 0x05, [])  # Synch Output
+send_command(addr, 0x05, [])  # Sync Output
 ```
 
 ---
@@ -360,12 +360,12 @@ send_command(CMD_DEFINE_STATUS, [0xFF])  # All bits
 #   [9]  = counter/timer MSB
 #   [10] = device ID (0x02 for LS-773)
 #   [11] = version (0x32 = 50 decimal)
-#   [12] = sync input byte 0
-#   [13] = sync input byte 1
-#   [14] = sync counter/timer LSB
-#   [15] = sync counter/timer byte 1
-#   [16] = sync counter/timer byte 2
-#   [17] = sync counter/timer MSB
+#   [12] = Sync input byte 0
+#   [13] = Sync input byte 1
+#   [14] = Sync counter/timer LSB
+#   [15] = Sync counter/timer byte 1
+#   [16] = Sync counter/timer byte 2
+#   [17] = Sync counter/timer MSB
 #   [18] = checksum
 ```
 
@@ -378,7 +378,7 @@ When bit 4 or 7 is set, counter/timer values are included as 4 bytes (32-bit), l
 **Counter/Timer Modes:**
 - Timer mode: Counts time intervals
 - Counter mode: Counts external events on configured input
-- sync mode (bit 7): Captures counter/timer value with sync Input command
+- Sync mode (bit 7): Captures counter/timer value with Sync Input command
 
 See manual for counter/timer configuration commands.
 
@@ -392,9 +392,9 @@ When bit 5 is set, response includes:
 
 ---
 
-## Synch Input Command
+## Sync Input Command
 
-**Command:** `0x0C` (CMD_SYNCH_INPUT)
+**Command:** `0x0C` (CMD_SYNC_INPUT)
 **Data bytes:** 0 bytes
 **Returns:** Yes - Standard status packet
 
@@ -407,7 +407,7 @@ Captures current input states and counter/timer value atomically.
 
 **Workflow**:
 ```python
-# 1. Send Synch Input command
+# 1. Send Sync Input command
 send_command(addr, 0x0C, [])
 
 # 2. Read captured values using Read Status bit 6 (inputs) and bit 7 (counter)
