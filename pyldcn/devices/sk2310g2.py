@@ -297,13 +297,16 @@ def format_status(status: Dict[str, Any]) -> str:
 
     # Analog inputs
     analog_raw = status.get('analog_inputs', 0)
-    ch0_raw = (analog_raw >> 0) & 0x3FF
-    ch0_pct = (ch0_raw / 1023.0) * 100.0
-    ch1_raw = ((analog_raw >> 10) & 0x1F) << 5
-    ch1_pct = (ch1_raw / 1023.0) * 100.0
+    # Try byte-swapped interpretation
+    # The raw value is 16-bit, try splitting by bytes instead of bit fields
+    ch0_raw = analog_raw & 0xFF  # Low byte (8-bit)
+    ch1_raw = (analog_raw >> 8) & 0xFF  # High byte (8-bit)
+    ch0_pct = (ch0_raw / 255.0) * 100.0  # 8-bit scale
+    ch1_pct = (ch1_raw / 255.0) * 100.0  # 8-bit scale
     lines.append("Analog Inputs:")
-    lines.append(f"  0: {ch0_raw:4d} (0x{ch0_raw:03X}) {ch0_pct:5.1f}% - Spindle Load")
-    lines.append(f"  1: {ch1_raw:4d} (0x{ch1_raw:03X}) {ch1_pct:5.1f}% - ADC2 (GP)")
+    lines.append(f"  Raw=0x{analog_raw:04X}")
+    lines.append(f"  0: {ch0_raw:4d} (0x{ch0_raw:02X}) {ch0_pct:5.1f}% - Spindle Load")
+    lines.append(f"  1: {ch1_raw:4d} (0x{ch1_raw:02X}) {ch1_pct:5.1f}% - ADC2 (GP)")
 
     return "\n".join(lines)
 
