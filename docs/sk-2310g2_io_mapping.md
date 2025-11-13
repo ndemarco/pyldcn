@@ -253,7 +253,7 @@ send_command(CMD_SET_PWM_IO, [channel, dac_value])
 | 1 | Safety Link OUT | Output | (Hardware) | Generated based on guards/e-stop/safe state |
 | 2 | Safety Link IN | Input | (Hardware) | Monitors daisy chain integrity (diagnostic 0x0A if LOW) |
 | 3 | Enable/Stop | Output | (Hardware) | HIGH when power ON |
-| 4 | ServoFAULT | Input | Input 10 (Byte1/Bit2) | Prevents power-on if HIGH |
+| 4 | ServoFAULT | Input | Byte1/Bit2 | Prevents power-on if HIGH |
 
 ### CN4 - LDCN Slave Connector (with E-stop)
 
@@ -268,11 +268,11 @@ send_command(CMD_SET_PWM_IO, [channel, dac_value])
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
 | 2 | Spindle Stopped | Input | Used in Spindle OFF computation | Required HIGH for guard unlock |
-| 3 | Spindle Fault | Input | Input 3 (Byte0/Bit3) | General fault monitoring |
-| 4 | Spindle At Speed | Input | Input 4 (Byte0/Bit4) | Speed reached confirmation |
-| 5 | Spindle ON | Output | Output 2 (Byte0/Bit2) | Enable signal to LS2315 |
-| 6 | Spindle Direction | Output | Output 3 (Byte0/Bit3) | 0=CW, 1=CCW |
-| 7 | Spindle DC-brake | Output | Output 4 (Byte0/Bit4) | DC brake control |
+| 3 | Spindle Fault | Input | Byte0/Bit3 | General fault monitoring |
+| 4 | Spindle At Speed | Input | Byte0/Bit4 | Speed reached confirmation |
+| 5 | Spindle ON | Output | Byte0/Bit2 | Enable signal to LS2315 |
+| 6 | Spindle Direction | Output | Byte0/Bit3 | 0=CW, 1=CCW |
+| 7 | Spindle DC-brake | Output | Byte0/Bit4 | DC brake control |
 | 10 | Spindle LOAD | Analog In | Analog Input 0 (0-10V) | Load feedback from LS2315 |
 | 11 | Spindle SPEED | Analog Out | Analog Output 0 (0-10V) | Speed command to LS2315 |
 
@@ -282,13 +282,13 @@ send_command(CMD_SET_PWM_IO, [channel, dac_value])
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| 1 | Input 5 | Input | Input 5 (Byte0/Bit5) | Air Pressure OK |
-| 3 | Input 6 | Input | Input 6 (Byte0/Bit6) | Tool length measurement switch |
-| 5 | Input 7 | Input | Input 7 (Byte0/Bit7) | Tool changer closed |
-| 7 | Output 5 | Output | Output 5 (Byte0/Bit5) | Tool clamp solenoid |
-| 9 | Output 6 | Output | Output 6 (Byte0/Bit6) | Spindle motor cooling |
-| 11 | Output 7 | Output | Output 7 (Byte0/Bit7) | Tool cooling |
-| 13 | Output 8 | Output | Output 8 (Byte1/Bit0) | Tool changer unlock |
+| 1 | Input 5 | Input | Byte0/Bit5 | Air Pressure OK |
+| 3 | Input 6 | Input | Byte0/Bit6 | Tool length measurement switch |
+| 5 | Input 7 | Input | Byte0/Bit7 | Tool changer closed |
+| 7 | Output 5 | Output | Byte0/Bit5 | Tool clamp solenoid |
+| 9 | Output 6 | Output | Byte0/Bit6 | Spindle motor cooling |
+| 11 | Output 7 | Output | Byte0/Bit7 | Tool cooling |
+| 13 | Output 8 | Output | Byte1/Bit0 | Tool changer unlock |
 
 ### CN8 - Safe Zone Sensor (Home Switch)
 
@@ -304,7 +304,7 @@ Result reflected in Input 8 (At Home / Safe State).
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
 | 1-2 | Guard 1 Closed (A) | Input | (Hardware) | Redundant monitored safety contact A |
-| 3-4 | Guard 1 Lock Release | Output | Output 9 (Byte1/Bit1) | Solenoid unlock control |
+| 3-4 | Guard 1 Lock Release | Output | Byte1/Bit1 | Solenoid unlock control |
 | 5-6 | Guard 1 Closed (B) | Input | (Hardware) | Redundant monitored safety contact B |
 
 ### CN10 - Guard Zone 2
@@ -312,7 +312,7 @@ Result reflected in Input 8 (At Home / Safe State).
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
 | 1-2 | Guard 2 Closed (A) | Input | (Hardware) | Redundant monitored safety contact A |
-| 3-4 | Guard 2 Lock Release | Output | (Hardware) | Solenoid unlock control (shared with Output 9) |
+| 3-4 | Guard 2 Lock Release | Output | Byte1/Bit1 | Solenoid unlock control (shared with Output 9) |
 | 5-6 | Guard 2 Closed (B) | Input | (Hardware) | Redundant monitored safety contact B |
 
 **Guard System:**
@@ -320,29 +320,29 @@ Result reflected in Input 8 (At Home / Safe State).
 - Each zone has a lock release output for solenoid control
 - Guard states reflected in diagnostic codes 0x14-0x1F
 - "Guard" = safety guard/guarding (Logosol term: "Cover")
+- Lock solenoid energized state can be changed with jumpers J14 & J15 
 
-### CN11 - E-stop Chain Connector
+### CN11 - E-stop
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| 1-2 | E-stop A | Input | (Hardware) | Emergency stop channel A (series chain) |
-| 3-4 | E-stop B | Input | (Hardware) | Emergency stop channel B (series chain) |
+| 1-2 | E-stop A | Input | (Hardware) | in series with other e-stop contacts |
+| 3-4 | E-stop B | Input | (Hardware) | in series with other e-stop contacts |
 
 **E-stop System:**
 - Redundant monitored E-stop with A & B channels
 - Serially connected through 4 connectors: CN13.1-4, CN15.1-4, CN11.1-4, CN4.11-14
 - All E-stop contacts must be closed for system to enable
-- Pins 1-2 on each connector = E-stop A, pins 3-4 = E-stop B
 
-### CN13 - E-stop and Manual Control
+### CN13 - Manual Control and E-stop
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| 1-2 | E-stop A | Input | (Hardware) | Emergency stop channel A (series chain) |
-| 3-4 | E-stop B | Input | (Hardware) | Emergency stop channel B (series chain) |
-| 5-6 | Unlock Switch | Input | (Hardware) | Manual guard unlock button |
-| 7-8 | Acknowledge (ACK) Button | Input | (Hardware) | Hold-to-run enable button |
-| TBD | Test Mode Switch | Input | Input 9 (Byte1/Bit1) | Manual override keyswitch |
+| 1-2 | E-stop A | Input | (Hardware) | in series with other e-stop contacts |
+| 3-4 | E-stop B | Input | (Hardware) | in series with other e-stop contacts |
+| 5-6 | Unlock Switch | Input | (Hardware) | guard unlock button |
+| 7-8 | Operator Present Button | Input | (Hardware) | Hold-to-run enable button |
+| TBD | Manual Override Mode | Input | (Byte1/Bit1) | keyswitch |
 
 "Test Mode" = Manual override mode. "ACK" (Acknowledge) = Enable button for motion with guards open.
 
@@ -350,24 +350,28 @@ Result reflected in Input 8 (At Home / Safe State).
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| TBD | Input 0 | Input | Input 0 (Byte0/Bit0) | Program run |
-| TBD | Input 1 | Input | Input 1 (Byte0/Bit1) | Program stop |
-| TBD | Output 0 | Output | Output 0 (Byte0/Bit0) | Program running lamp |
-| TBD | Output 1 | Output | Output 1 (Byte0/Bit1) | Program stopped lamp |
+| TBD | Input 0 | Input | Byte0/Bit0 | Program run |
+| TBD | Input 1 | Input | Byte0/Bit1 | Program stop |
+| TBD | Output 0 | Output | Byte0/Bit0 | Program running lamp |
+| TBD | Output 1 | Output | Byte0/Bit1 | Program stopped lamp |
 
 ### CN15 - E-stop and Power Monitor
 
 | Pin | Signal | Type | Bit Assignment | Notes |
 |-----|--------|------|----------------|-------|
-| 1-2 | E-stop A | Input | (Hardware) | Emergency stop channel A (series chain) |
-| 3-4 | E-stop B | Input | (Hardware) | Emergency stop channel B (series chain) |
-| 5 | Power Monitor Input | Input | (Hardware) | Power-on relay monitor loop input |
-| 6 | Power Monitor Output | Output | (Hardware) | Power-on relay monitor loop output (-27V) |
+| 1-2 | E-stop A | Input | (Hardware) | in series with other e-stop contacts |
+| 3-4 | E-stop B | Input | (Hardware) | in series with other e-stop contacts |
+| 5-6 | Power Button | Input | (Hardware) |  |
+| 7 | Power Lamp | Output | (Hardware) | flashing when ready for power on, on when power on |
+| 8 | GND |
+| 9 | Manual Override Lamp | Output | (Hardware) | On when in manual override mode|
+| 10 | GND |
+11 Manual override A (normally open)
+12 | +24Vdc|
+13 | Manual override B (normally closed)
 
-**Power Monitor Loop:**
-- CN15.5 = Monitor input (series-connected contact set return)
-- CN15.6 = Monitor output (-27V source)
-- Verifies power-on relay contacts are closed properly
+Note: Manual override mode will only enable if A & B contacts transition within 100 ms, and Manual Override Inhibit (Output 11, Byte1/Bit3) is 0. 
+
 
 ### CN16 - Power Control Connector
 
@@ -381,15 +385,16 @@ Result reflected in Input 8 (At Home / Safe State).
 | 1 | Ground | - | - | Ground reference for Power Enable A |
 | 2 | Power Enable A | Input | (Hardware) | Short to pin 1 (GND) to enable power |
 | 4 | Power Enable B | Input | (Hardware) | Short to pin 9 (GND) to enable power |
+| 5 | Power Monitor Input | Input | (Hardware) | monitors power-on relay - return |
+| 6 | Power Monitor Output | Output | (Hardware) | monitors power-on relay - supply (-27V) |
 | 8 | Power Enable (UM) | Output | (Hardware) | Motor voltage contactor control |
 | 9 | Ground | - | - | Ground reference for Power Enable B |
-| 10 | Spindle Power Enable | Output | (Hardware) | Spindle power control |
+| 10 | Spindle Power Enable | Output | (Hardware) | wired to CN6.5 |
 
 **Notes:**
 - "UM" = Motor voltage (Logosol term)
 - Power enable inputs A & B are redundant - both must be shorted to ground for power-on
-- Power monitor loop is on CN15.5-6, not CN16
-
+- Power Monitor circuit is complete when power enable relays are closed
 ### CN17 - Analog Input Connector
 
 | Pin | Signal | Type | Channel | Notes |
@@ -518,8 +523,8 @@ When testing on hardware, verify these I/O assignments:
 - Connector pinouts are specified
 
 ### Needs Clarification (Hardware Testing Required)
-1. **Analog I/O command formats** - How to read/write analog values via LDCN commands
-2. **Status response format** - Exact encoding of analog values in status response
+1. **Analog output data format** - CMD_SET_PWM_IO (0x04) command identified, data format TBD (likely [channel, value])
+2. **Analog input reading** - Read via DEFINE_STATUS/READ_STATUS (bits 1-3), exact byte ordering in response TBD
 3. **Guard contact mapping** - Which input bits reflect guard door closed state (CN9.1-2, CN9.5-6)
 4. **CN14 pinout** - Specific pin assignments for Inputs 0-1 and Outputs 0-1
 5. **Counter/Timer input** - Verify if Input 9 (CN13.1-2) is the counter input for Set Timer Mode (0x8), or identify which input is used. Note: Input 9 is currently assigned to Manual Override keyswitch, which may conflict with counter mode
