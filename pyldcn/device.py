@@ -10,7 +10,7 @@ License: GPL v2 or later
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, TYPE_CHECKING
 
-from .constants import (
+from .protocol import (
     CMD_NOP,
     CMD_DEFINE_STATUS,
     CMD_RESET_POS,
@@ -18,6 +18,14 @@ from .constants import (
 
 if TYPE_CHECKING:
     from .network import LDCNNetwork
+
+
+# =============================================================================
+# Common Device Constants
+# =============================================================================
+
+# Status byte flags (common to all LDCN devices)
+STATUS_POWER_ON = 0x08  # Bit 3: Power button state
 
 
 class LDCNDevice(ABC):
