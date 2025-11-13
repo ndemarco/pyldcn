@@ -8,12 +8,11 @@ License: GPL v2 or later
 """
 
 import time
+from enum import Enum
 from typing import Optional, List, Dict, TYPE_CHECKING
 
-from .protocol import LDCNProtocol
-from .exceptions import LDCNTimeoutError, LDCNChecksumError
-from .constants import (
-    HEADER,
+from .protocol import (
+    LDCNProtocol,
     ADDRESS_UNADDRESSED,
     ADDRESS_GROUP,
     CMD_SET_ADDRESS,
@@ -23,15 +22,91 @@ from .constants import (
     DEFAULT_BAUD,
     DELAY_AFTER_RESET,
     DELAY_AFTER_ADDRESS,
-    DEVICE_ID_UNKNOWN,
-    DEVICE_ID_LS231SE,
-    DEVICE_ID_SK2310G2,
-    STATUS_BIT_DEVICE_ID,
 )
+from .exceptions import LDCNTimeoutError, LDCNChecksumError
 
 if TYPE_CHECKING:
     from .device import LDCNDevice
     from .network import LDCNNetwork
+
+
+# =============================================================================
+# Initialization Modes
+# =============================================================================
+
+class InitMode(Enum):
+    """
+    Initialization modes in order of invasiveness.
+
+    Each mode represents a different level of network initialization,
+    from simple validation to full hard reset.
+    """
+
+    VALIDATE = 0
+    """
+    Validation only
+    - Verify existing device objects respond at current baud rate
+    - Check device IDs match expected types
+    - No state changes, no reset, no re-addressing
+    - Use when: Reconnecting to a known healthy network
+    """
+
+    SOFT = 1
+    """
+    Soft recovery (~500ms)
+    - Auto-detect current baud rate
+    - Discover devices at current addresses
+    - Create/update device objects
+    - No reset or re-addressing
+    - Preserves: Device state, positions, gains, configurations
+    - Use when: Network may have changed, but devices are at correct addresses
+    """
+
+    READDRESS = 2
+    """
+    Re-addressing (~1s, node quantity dependent)
+    - Detect current baud rate
+    - Hard reset at detected baud only
+    - Re-address devices sequentially (1, 2, 3, ...)
+    - Full discovery
+    - Loses: Device state, positions, gains
+    - Use when: Addressing is corrupted but baud rate is known
+    """
+
+    FULL = 3
+    """
+    Full reset (~2s+, node quantity dependent)
+    - Reset at ALL baud rates (230400, 125000, 57600, 38400, 19200, 9600)
+    - Re-address devices from scratch
+    - Full discovery
+    - Loses: Everything (state, positions, gains)
+    - Use when: Network state is completely unknown or corrupted
+    - Default: Backwards compatible with existing behavior
+    """
+
+    AUTO = 4
+    """
+    Level 4: Automatic mode selection (adaptive)
+    - Tries progressively more invasive approaches:
+      1. VALIDATE (if expected_devices provided)
+      2. SOFT (if baud can be detected)
+      3. READDRESS (if soft discovery fails)
+      4. FULL (last resort fallback)
+    - Use when: Want intelligent recovery with minimal disruption
+    """
+
+
+# =============================================================================
+# Device Discovery Constants
+# =============================================================================
+
+# Device discovery status bit - Universal across ALL LDCN devices
+STATUS_BIT_DEVICE_ID = 0x0020  # Bit 5: Device ID and version (2 bytes)
+
+# Device IDs (hardware-reported, verified from real hardware)
+DEVICE_ID_UNKNOWN = 0xFF    # Placeholder for truly unknown devices
+DEVICE_ID_LS231SE = 0x00    # ✅ VERIFIED on hardware: Version 0x15
+DEVICE_ID_SK2310G2 = 0x02   # ✅ VERIFIED on hardware: Version 0x34
 
 
 class DeviceDiscovery:
