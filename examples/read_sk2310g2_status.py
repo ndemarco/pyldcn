@@ -26,7 +26,7 @@ import os
 import argparse
 import time
 from pyldcn import LDCNNetwork, SK2310g2
-from pyldcn.devices.sk2310g2 import format_io_report
+from pyldcn.devices.sk2310g2 import format_status
 
 
 def find_sk2310g2(network: LDCNNetwork) -> SK2310g2:
@@ -71,7 +71,7 @@ def read_and_display(device: SK2310g2, show_outputs: bool = False):
             print(f"Warning: Could not read outputs: {e}")
 
     # Display formatted report
-    print(format_io_report(status))
+    print(format_status(status))
 
 
 def continuous_monitor(device: SK2310g2, interval: float, show_outputs: bool):
