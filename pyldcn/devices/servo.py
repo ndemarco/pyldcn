@@ -66,7 +66,7 @@ class LS231SE(LDCNDevice):
         state: Shared ServoState object containing all servo state
 
         Status byte flags:
-            move_done, cksum_error, current_limit, power_on,
+            move_done, cksum_error, current_limit, power,
             pos_error_flag, home_source, limit2, home_in_progress
 
         Auxiliary status byte flags:
@@ -399,9 +399,9 @@ class LS231SE(LDCNDevice):
         return self.state.current_limit
 
     @property
-    def power_on(self) -> bool:
+    def power(self) -> bool:
         """Amplifier power enabled."""
-        return self.state.power_on
+        return self.state.power
 
     @property
     def home_in_progress(self) -> bool:

@@ -20,14 +20,6 @@ if TYPE_CHECKING:
     from .network import LDCNNetwork
 
 
-# =============================================================================
-# Common Device Constants
-# =============================================================================
-
-# Status byte flags (common to all LDCN devices)
-STATUS_POWER_ON = 0x08  # Bit 3: Power button state
-
-
 class LDCNDevice(ABC):
     """
     Abstract base class for all LDCN devices.

@@ -189,7 +189,6 @@ def parse_ls773_status(response: bytes, status_mask: int = 0xFF) -> Dict[str, An
     if idx + 1 <= len(response):
         byte1 = response[idx]; idx += 1  # Internal status + diagnostic
 
-    # LDCN motion fields (vestigial - not used for I/O controller, kept for protocol compatibility)
     if idx + 4 <= len(response):
         position = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
     if idx + 1 <= len(response):

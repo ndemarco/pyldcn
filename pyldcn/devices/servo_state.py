@@ -30,7 +30,7 @@ class ServoState:
     move_done: bool = True          # Bit 0: Trapezoidal move complete
     cksum_error: bool = False       # Bit 1: Checksum error in last command
     current_limit: bool = False     # Bit 2: Current limiting exceeded (sticky)
-    power_on: bool = False          # Bit 3: Amplifier power enabled
+    power: bool = False             # Bit 3: Amplifier power enabled
     pos_error_flag: bool = True     # Bit 4: Position error exceeded limit (sticky)
     home_source: bool = True        # Bit 5: Home switch input state
     limit2: bool = False            # Bit 6: Forward limit switch state

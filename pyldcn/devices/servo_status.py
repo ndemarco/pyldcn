@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 STATUS_MOVE_DONE = 0x01
 STATUS_CKSUM_ERROR = 0x02
 STATUS_CURRENT_LIMIT = 0x04
-STATUS_POWER_ON = 0x08
+STATUS_POWER = 0x08  # Bit 3: Amplifier power enabled (Pic_ae)
 STATUS_POS_ERROR = 0x10
 STATUS_HOME_SOURCE = 0x20
 STATUS_LIMIT2 = 0x40
@@ -101,7 +101,7 @@ class Status:
                     'move_done': bool,
                     'cksum_error': bool,
                     'current_limit': bool,
-                    'power_on': bool,
+                    'power': bool,
                     'pos_error': bool,
                     ...
                 }
@@ -228,7 +228,7 @@ class Status:
         self._state.move_done = bool(status_byte & STATUS_MOVE_DONE)
         self._state.cksum_error = bool(status_byte & STATUS_CKSUM_ERROR)
         self._state.current_limit = bool(status_byte & STATUS_CURRENT_LIMIT)
-        self._state.power_on = bool(status_byte & STATUS_POWER_ON)
+        self._state.power = bool(status_byte & STATUS_POWER)
         self._state.pos_error_flag = bool(status_byte & STATUS_POS_ERROR)
         self._state.home_source = bool(status_byte & STATUS_HOME_SOURCE)
         self._state.limit2 = bool(status_byte & STATUS_LIMIT2)
@@ -263,7 +263,7 @@ class Status:
             'move_done': bool(status_byte & STATUS_MOVE_DONE),
             'cksum_error': bool(status_byte & STATUS_CKSUM_ERROR),
             'current_limit': bool(status_byte & STATUS_CURRENT_LIMIT),
-            'power_on': bool(status_byte & STATUS_POWER_ON),
+            'power': bool(status_byte & STATUS_POWER),
             'pos_error': bool(status_byte & STATUS_POS_ERROR),
             'home_source': bool(status_byte & STATUS_HOME_SOURCE),
             'limit2': bool(status_byte & STATUS_LIMIT2),
