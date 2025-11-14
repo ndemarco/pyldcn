@@ -138,7 +138,7 @@ DIAGNOSTIC_CODES = {
 # LS-773 Status Response Parsing
 # =============================================================================
 
-def parse_ls773_status(response: bytes) -> Dict[str, Any]:
+def parse_ls773_status(response: bytes, status_mask: int = 0xFF) -> Dict[str, Any]:
     """
     Parse LS-773 format status response from SK-2310g2.
 
@@ -151,42 +151,67 @@ def parse_ls773_status(response: bytes) -> Dict[str, Any]:
     protocol) and have no meaningful values. Use byte0/byte1 for I/O state.
 
     Args:
-        response: Raw response bytes from CMD_READ_STATUS with [0xFF, 0xFF]
+        response: Raw response bytes from CMD_READ_STATUS or NOP
+        status_mask: Status item bitmask (0xFF = all items)
 
     Returns:
         Dictionary containing all parsed status fields
 
-    LS-773 Response Format (22 bytes total):
+    LS-773 Response Format (when status_mask=0xFF, 22 bytes total):
         [status(1)] [byte0(1)] [byte1(1)] [position(4)] [ad(1)] [velocity(2)]
         [aux(1)] [home(4)] [dev_id(2)] [pos_err(2)] [pathbuf(1)] [analog(2)]
         [checksum(1)]
     """
-    if len(response) < 22:
+    if len(response) < 1:
         return {}
 
     idx = 0
     status_byte = response[idx]; idx += 1
 
+    # Initialize all fields with defaults
+    byte0 = 0
+    byte1 = 0
+    position = 0
+    ad_value = 0
+    velocity = 0
+    auxiliary = 0
+    home = 0
+    device_id = 0
+    version = 0
+    position_error = 0
+    path_buffer = 0
+    analog_inputs = 0
+
     # SK-2310g2 specific: Byte0 and Byte1 come FIRST (LS-773 format)
-    byte0 = response[idx]; idx += 1  # Digital inputs
-    byte1 = response[idx]; idx += 1  # Internal status + diagnostic
+    # Parse fields in LS-773 order, checking length before each read
+    if idx + 1 <= len(response):
+        byte0 = response[idx]; idx += 1  # Digital inputs
+    if idx + 1 <= len(response):
+        byte1 = response[idx]; idx += 1  # Internal status + diagnostic
 
     # LDCN motion fields (vestigial - not used for I/O controller, kept for protocol compatibility)
-    position = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
-    ad_value = response[idx]; idx += 1
-    velocity = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
-    auxiliary = response[idx]; idx += 1
-    home = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
-    device_id_raw = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
-    position_error = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
-    path_buffer = response[idx]; idx += 1
-    analog_inputs = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
+    if idx + 4 <= len(response):
+        position = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
+    if idx + 1 <= len(response):
+        ad_value = response[idx]; idx += 1
+    if idx + 2 <= len(response):
+        velocity = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
+    if idx + 1 <= len(response):
+        auxiliary = response[idx]; idx += 1
+    if idx + 4 <= len(response):
+        home = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
+    if idx + 2 <= len(response):
+        device_id_raw = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
+        device_id = device_id_raw & 0xFF
+        version = (device_id_raw >> 8) & 0xFF
+    if idx + 2 <= len(response):
+        position_error = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
+    if idx + 1 <= len(response):
+        path_buffer = response[idx]; idx += 1
+    if idx + 2 <= len(response):
+        analog_inputs = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
 
-    # Extract device ID and version
-    device_id = device_id_raw & 0xFF
-    version = (device_id_raw >> 8) & 0xFF
-
-    # Extract diagnostic code from byte1 bits [7:3]
+    # Extract diagnostic code from byte1 bits [7:3] (SK-2310g2 manual page 20)
     diagnostic = (byte1 >> 3) & 0x1F
 
     # Decode Byte0 digital inputs
@@ -205,10 +230,10 @@ def parse_ls773_status(response: bytes) -> Dict[str, Any]:
     servo_fault = bool(byte1 & 0x04)
     # Bits [7:3] are diagnostic code (already extracted)
 
-    # Power state from diagnostic code (NOT status byte bit 3)
-    # Power ON: 0x13 (under-voltage but ON), 0x18-0x1F (normal operation)
-    # Power OFF: 0x00-0x12 (except 0x05/0x0E maintain prior), 0x14-0x17 (ready but off)
-    # Note: 0x05 and 0x0E maintain prior state - cannot determine without history
+    # Power state inferred from diagnostic code patterns (SK-2310g2 manual page 20)
+    # Diagnostic code is from NOP/READ_STATUS response byte1 bits [7:3]
+    # READY_TO_POWER: 0x14-0x17 (guards in various states, power not yet enabled)
+    # POWER_ON: 0x13 (under-voltage condition), 0x18-0x1F (normal powered operation)
     power_state = (diagnostic == 0x13) or (0x18 <= diagnostic <= 0x1F)
 
     return {

@@ -12,7 +12,7 @@ import time
 from typing import Optional, Dict, Any
 
 # Import from parent package (modular architecture)
-from pyldcn.device import LDCNDevice, STATUS_POWER_ON
+from pyldcn.device import LDCNDevice
 from pyldcn.network import LDCNNetwork
 from pyldcn.protocol import CMD_READ_STATUS
 
@@ -275,10 +275,11 @@ class SK2310g2(LDCNDevice):
         """
         # Request all status items (0xFF = bits 0-7)
         # See sk2310g2.SK2310G2_STATUS_ITEMS for item definitions
-        response = self.send_command(CMD_READ_STATUS, [0xFF, 0x00])
+        status_mask = 0xFF
+        response = self.send_command(CMD_READ_STATUS, [status_mask, 0x00])
 
         # Use SK-2310g2 specific LS-773 format parser
-        status = sk2310g2.parse_ls773_status(response)
+        status = sk2310g2.parse_ls773_status(response, status_mask)
 
         if not status:
             return {}
