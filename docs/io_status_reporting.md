@@ -66,6 +66,7 @@ The SK-2310g2 is a supervisory controller with specialized hardware and I/O capa
 - **DAC** (CN6 pin 11): 0-10V (spindle speed control)
 - Control method: Device-specific firmware command (consult SK-2310g2 documentation)
 
+---
 
 ## Common Features
 
@@ -73,15 +74,13 @@ The SK-2310g2 is a supervisory controller with specialized hardware and I/O capa
 
 Logosol LDCN compliant I/O nodes convey their input state and other state details via status reporting. These nodes report status in response to `READ STATUS` and `NOP` commands and return a configurable set of status details.
 
-To return a defined status one time, request status with `Read Status`, and append the byte encoded set of desired status items.
+To return a defined status one time, request status with [Read Status](#read-status-command), and append the byte encoded set of desired [status items](#2-status-items).
 
-To define a persistent subset of status information, send the `Define Status` command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items.
+To define a persistent subset of status information, send the [Define Status](#define-status-command) command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items.
 
 By default, both methods to read status will return the full set of status information (`0x00`). The status configuration is cleared upon `Hard Reset`.
 
 It is not possible to read the state of outputs. The host must store the output state if desired.
-
----
 
 ### Status Response
 
@@ -122,6 +121,39 @@ When bit 5 is set, response includes:
 - Byte 0: Device ID = `0x02` (LS-773)
 - Byte 1: Version = `0x32` (50 decimal)
 
+### Status Response Format Examples
+
+The following examples show actual byte-by-byte status responses for different configurations:
+
+#### Example 1: Digital Inputs Only (Status Item = 0x01)
+```
+Status Item Byte: 0x01 (bit 0 set - Input Bytes)
+Response: [status_byte, input_byte0, input_byte1, checksum]
+Total: 4 bytes
+
+Example with IN0, IN2, IN8 active:
+  Byte 0: 0x00        (Status byte - no errors)
+  Byte 1: 0x05        (Input byte 0: bits 0,2 set = 0b00000101)
+  Byte 2: 0x01        (Input byte 1: bit 0 set = 0b00000001 = IN8)
+  Byte 3: 0x06        (Checksum: 0x00 + 0x05 + 0x01 = 0x06)
+```
+
+#### Example 2: Inputs + All Analog (Status Item = 0x0F)
+```
+Status Item Byte: 0x0F (bits 0-3 set)
+Response: [status_byte, input_byte0, input_byte1, ain0, ain1, ain2, checksum]
+Total: 7 bytes
+
+Example with IN0=1, ADC0=128, ADC1=64, ADC2=255:
+  Byte 0: 0x00        (Status byte)
+  Byte 1: 0x01        (Input byte 0: IN0 set)
+  Byte 2: 0x00        (Input byte 1: no high inputs active)
+  Byte 3: 0x80        (Analog 0: 128 decimal = 0x80 hex)
+  Byte 4: 0x40        (Analog 1: 64 decimal = 0x40 hex)
+  Byte 5: 0xFF        (Analog 2: 255 decimal = 0xFF hex)
+  Byte 6: 0xC0        (Checksum: 0x00+0x01+0x00+0x80+0x40+0xFF = 0x1C0, truncated to 0xC0)
+```
+
 ### Counter/Timer
 
 One 32-bit selectable counter/timer is available with simple reset-to-zero overflow behavior. Application must detect wrap by polling and comparing consecutive readings.
@@ -146,6 +178,10 @@ To reset to zero:
 1. Disable the counter/timer (Set Timer Mode, bit 0 = 0)
 2. Re-enable the counter/timer (Set Timer Mode, bit 0 = 1)
 
+See [Set Timer Mode](#set-timer-mode) command for configuration details.
+
+---
+
 ## Command Reference
 
 ### Command Summary Table
@@ -163,8 +199,6 @@ To reset to zero:
 
 For LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
 
----
-
 ### Define Status Command
 
 **Command:** `0x02` (CMD_DEFINE_STATUS)
@@ -176,7 +210,7 @@ Causes subsequent `Nop` commands to return the defined status items.
 
 `Hard Reset` or power cycle will return to `0x00`
 
----
+See [Efficient Status Configuration](#efficient-status-configuration) for usage examples.
 
 ### Read Status Command
 
@@ -186,7 +220,7 @@ Causes subsequent `Nop` commands to return the defined status items.
 
 This is a non-permanent version of the Define Status command. The status packet returned in response to this command will incorporate the data bytes specified, but subsequent status packets will include only the data bytes previously specified with the Define Status command.
 
----
+See [Reading Analog Inputs](#reading-analog-inputs) for usage examples.
 
 ### Set PWM
 
@@ -218,7 +252,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 - PWM frequency is fixed at 20 KHz
 - To use PWM outputs as digital outputs, use `Set Outputs` command or set PWM to `0` or `255`.
 
----
+See [PWM Output Configuration](#examples) for complete setup examples.
 
 ### Sync Output
 
@@ -226,13 +260,11 @@ send_command(addr, 0x04, [pwm1, pwm2])
 **Data bytes:** 0 bytes <br>
 **Returns:** Yes - Standard status packet
 
-Synchronously applies output values previously stored with `Set Sync Output` command.
+Synchronously applies output values previously stored with [Set Sync Output](#set-sync-output) command.
 
 **Use Case**: Allows simultaneous state change on multiple outputs across multiple nodes.
 
-First `Set Sync Output` to stage the values, then `Sync Output` to apply.
-
----
+First [Set Sync Output](#set-sync-output) to stage the values, then `Sync Output` to apply.
 
 ### Set Outputs
 
@@ -272,15 +304,13 @@ send_command(addr, 0x06, [outputs, 0x00])
 - All outputs are open collector, with diode protection for inductive loads
 - Each output is short circuit protected. Shorting an output to POWER(+) turns off all outputs until next Set Outputs command.
 
----
-
 ### Set Sync Output
 
 **Command:** `0x07` (CMD_SET_SYNC_OUTPUT) <br>
 **Data bytes:** 4 bytes <br>
 **Returns:** Yes - Standard status packet
 
-Stores output states and PWM values for later synchronous application using `Sync Output`
+Stores output states and PWM values for later synchronous application using [Sync Output](#sync-output)
 
 **Data**:
 - Byte 0: Output bits (bit 0-6 = OUTPUT 0-6, bit 7 unused)
@@ -299,8 +329,6 @@ send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
 # Later, simultaneously apply the staged values
 send_command(addr, 0x05, [])  # Sync Output
 ```
-
----
 
 ### Set Timer Mode
 
@@ -341,8 +369,6 @@ send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 - Counter wraps at 2^32 - 1 with no status indication or interrupt
 - See [Counter/Timer](#countertimer) for overflow behavior and use cases
 
----
-
 ### Sync Input Command
 
 **Command:** `0x0C` (CMD_SYNC_INPUT)<br>
@@ -353,7 +379,7 @@ Captures current input states and counter/timer value atomically.
 
 **Use Case**:
 - Atomic, simultaneous snapshot of all digital inputs and timer/counter value
-- Read captured values using `Read Status` with values reported on status bits 6 and 7
+- Read captured values using [Read Status](#read-status-command) with values reported on [status items](#2-status-items) bits 6 and 7
 
 **Workflow**:
 ```python
@@ -380,7 +406,7 @@ response = send_command(addr, 0x03, [status_bits])
 
 ### Efficient Status Configuration
 
-For fast I/O polling, limit responses, e.g. for inputs only, status mask bit 0:
+For fast I/O polling, limit responses using [Define Status](#define-status-command). For example, to receive inputs only, use status mask bit 0:
 
 ```python
 # Initialize once
@@ -429,15 +455,17 @@ checksum = response[6]        # Checksum
 ```python
 def initialize_io_node(addr):
     # Step 1: Define status reporting (inputs, analog, counter)
+    # See: Define Status command
     status_bits = 0x01 | 0x0E | 0x10  # inputs, all analog, counter
     send_command(addr, 0x02, [status_bits])
 
     # Step 2: Configure counter/timer if needed
-    # Enable counter mode with no prescaler
+    # See: Set Timer Mode command
     timer_config = 0b00000011  # bit 0=1 (enable), bit 1=1 (counter)
     send_command(addr, 0x08, [timer_config])
 
     # Step 3: Initialize outputs to known state
+    # See: Set Outputs command
     send_command(addr, 0x06, [0x00, 0x00])  # All outputs off
 
     # Step 4: Read and verify status
@@ -457,10 +485,12 @@ def initialize_io_node(addr):
 
 ```python
 # Step 1: Enable PWM outputs (set output bits to 1)
+# See: Set Outputs command
 outputs = 0b00000110  # bits 1 and 2 for OUTPUT 1 and OUTPUT 2
 send_command(addr, 0x06, [outputs, 0x00])
 
 # Step 2: Set PWM duty cycles
+# See: Set PWM command
 pwm1 = 128  # 50% duty cycle
 pwm2 = 64   # 75% duty cycle
 send_command(addr, 0x04, [pwm1, pwm2])
@@ -469,6 +499,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 send_command(addr, 0x06, [0x00, 0x00])
 ```
 
+---
 
 ## References
 
