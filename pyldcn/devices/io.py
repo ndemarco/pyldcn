@@ -208,6 +208,9 @@ class SK2310g2(LDCNDevice):
         super().__init__(network, address)
         self.device_type = "SK-2310g2"
 
+        # Status configuration (device default is 0x00 - no items)
+        self.status_mask: int = 0x00
+
         # Cached status values
         self.diagnostic_code: Optional[int] = None
         self.status_byte: Optional[int] = None
@@ -219,6 +222,28 @@ class SK2310g2(LDCNDevice):
     # -------------------------------------------------------------------------
     # Configuration
     # -------------------------------------------------------------------------
+
+    def define_status(self, status_mask: int) -> None:
+        """
+        Configure which status items are returned in NOP responses.
+
+        Sends DEFINE_STATUS command to configure persistent status reporting.
+        Updates the instance's stored status_mask.
+
+        Args:
+            status_mask: Bitmask of status items to include (see SK2310G2_STATUS_ITEMS)
+
+        Example:
+            device.define_status(0x01)  # Only digital inputs
+            device.define_status(0xFF)  # All status items
+        """
+        from pyldcn.protocol import CMD_DEFINE_STATUS
+
+        # Send DEFINE_STATUS command (I/O nodes use single byte mask)
+        self.send_command(CMD_DEFINE_STATUS, [status_mask])
+
+        # Update instance's stored mask
+        self.status_mask = status_mask
 
     def configure(self) -> None:
         """
@@ -233,6 +258,24 @@ class SK2310g2(LDCNDevice):
         # device_id, sync_inputs, sync_counter (bits 0-7, i.e., 0xFF)
         self.define_status(0xFF)
         time.sleep(1.0)
+
+    def hard_reset(self) -> None:
+        """
+        Send HARD_RESET command to device.
+
+        Resets device to power-on defaults:
+        - Clears DEFINE_STATUS configuration (returns to 0x00)
+        - Resets all device state
+
+        Updates instance's stored status_mask to match device default (0x00).
+        """
+        from pyldcn.protocol import CMD_HARD_RESET
+
+        # Send HARD_RESET command
+        self.send_command(CMD_HARD_RESET, [])
+
+        # Reset instance's stored mask to match device default
+        self.status_mask = 0x00
 
     # -------------------------------------------------------------------------
     # Status Reading

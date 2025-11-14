@@ -138,29 +138,25 @@ DIAGNOSTIC_CODES = {
 # LS-773 Status Response Parsing
 # =============================================================================
 
-def parse_ls773_status(response: bytes, status_mask: int = 0xFF) -> Dict[str, Any]:
+def parse_ls773_status(response: bytes, status_mask: int = 0x00) -> Dict[str, Any]:
     """
     Parse LS-773 format status response from SK-2310g2.
 
-    The SK-2310g2 uses LS-773 format which differs from standard LDCN:
-    - Byte0 and Byte1 come immediately after status byte (indices 1-2)
-    - Standard LDCN places them near the end (indices 18-19)
-
-    Note: The SK-2310g2 is an I/O controller, not a motion controller. The
-    position, velocity, and home fields are vestigial (inherited from LS-773
-    protocol) and have no meaningful values. Use byte0/byte1 for I/O state.
+    Parses only the fields corresponding to bits set in status_mask.
+    The response contains fields in the order defined by SK2310G2_STATUS_ITEMS.
 
     Args:
         response: Raw response bytes from CMD_READ_STATUS or NOP
-        status_mask: Status item bitmask (0xFF = all items)
+        status_mask: Status item bitmask indicating which fields are present
 
     Returns:
         Dictionary containing all parsed status fields
 
-    LS-773 Response Format (when status_mask=0xFF, 22 bytes total):
-        [status(1)] [byte0(1)] [byte1(1)] [position(4)] [ad(1)] [velocity(2)]
-        [aux(1)] [home(4)] [dev_id(2)] [pos_err(2)] [pathbuf(1)] [analog(2)]
-        [checksum(1)]
+    Response Format:
+        [status_byte(1)] [status_items based on mask] [checksum(1)]
+
+    Example with status_mask=0x01 (digital inputs only):
+        [status(1)] [byte0(1)] [byte1(1)] [checksum(1)] = 4 bytes
     """
     if len(response) < 1:
         return {}
@@ -171,44 +167,54 @@ def parse_ls773_status(response: bytes, status_mask: int = 0xFF) -> Dict[str, An
     # Initialize all fields with defaults
     byte0 = 0
     byte1 = 0
-    position = 0
-    ad_value = 0
-    velocity = 0
-    auxiliary = 0
-    home = 0
+    analog_in_0 = 0
+    analog_in_1 = 0
+    analog_in_2 = 0
+    counter_timer = 0
     device_id = 0
     version = 0
-    position_error = 0
-    path_buffer = 0
-    analog_inputs = 0
+    sync_byte0 = 0
+    sync_byte1 = 0
+    sync_counter = 0
 
-    # SK-2310g2 specific: Byte0 and Byte1 come FIRST (LS-773 format)
-    # Parse fields in LS-773 order, checking length before each read
-    if idx + 1 <= len(response):
-        byte0 = response[idx]; idx += 1  # Digital inputs
-    if idx + 1 <= len(response):
-        byte1 = response[idx]; idx += 1  # Internal status + diagnostic
+    # Parse fields based on status_mask
+    # Process bits in order from SK2310G2_STATUS_ITEMS
 
-    if idx + 4 <= len(response):
-        position = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
-    if idx + 1 <= len(response):
-        ad_value = response[idx]; idx += 1
-    if idx + 2 <= len(response):
-        velocity = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
-    if idx + 1 <= len(response):
-        auxiliary = response[idx]; idx += 1
-    if idx + 4 <= len(response):
-        home = int.from_bytes(response[idx:idx+4], 'little', signed=True); idx += 4
-    if idx + 2 <= len(response):
+    # Bit 0 (0x01): digital_inputs (2 bytes - byte0, byte1)
+    if status_mask & 0x01 and idx + 2 <= len(response):
+        byte0 = response[idx]; idx += 1
+        byte1 = response[idx]; idx += 1
+
+    # Bit 1 (0x02): analog_in_0 (1 byte)
+    if status_mask & 0x02 and idx + 1 <= len(response):
+        analog_in_0 = response[idx]; idx += 1
+
+    # Bit 2 (0x04): analog_in_1 (1 byte)
+    if status_mask & 0x04 and idx + 1 <= len(response):
+        analog_in_1 = response[idx]; idx += 1
+
+    # Bit 3 (0x08): analog_in_2 (1 byte)
+    if status_mask & 0x08 and idx + 1 <= len(response):
+        analog_in_2 = response[idx]; idx += 1
+
+    # Bit 4 (0x10): counter_timer (4 bytes, LSB first)
+    if status_mask & 0x10 and idx + 4 <= len(response):
+        counter_timer = int.from_bytes(response[idx:idx+4], 'little', signed=False); idx += 4
+
+    # Bit 5 (0x20): device_id (2 bytes)
+    if status_mask & 0x20 and idx + 2 <= len(response):
         device_id_raw = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
         device_id = device_id_raw & 0xFF
         version = (device_id_raw >> 8) & 0xFF
-    if idx + 2 <= len(response):
-        position_error = int.from_bytes(response[idx:idx+2], 'little', signed=True); idx += 2
-    if idx + 1 <= len(response):
-        path_buffer = response[idx]; idx += 1
-    if idx + 2 <= len(response):
-        analog_inputs = int.from_bytes(response[idx:idx+2], 'little'); idx += 2
+
+    # Bit 6 (0x40): sync_inputs (2 bytes)
+    if status_mask & 0x40 and idx + 2 <= len(response):
+        sync_byte0 = response[idx]; idx += 1
+        sync_byte1 = response[idx]; idx += 1
+
+    # Bit 7 (0x80): sync_counter (4 bytes, LSB first)
+    if status_mask & 0x80 and idx + 4 <= len(response):
+        sync_counter = int.from_bytes(response[idx:idx+4], 'little', signed=False); idx += 4
 
     # Extract diagnostic code from byte1 bits [7:3] (SK-2310g2 manual page 20)
     diagnostic = (byte1 >> 3) & 0x1F
@@ -241,17 +247,16 @@ def parse_ls773_status(response: bytes, status_mask: int = 0xFF) -> Dict[str, An
         'byte0': byte0,
         'byte1': byte1,
 
-        # LDCN motion controller fields
-        'position': position,
-        'ad_value': ad_value,
-        'velocity': velocity,
-        'auxiliary': auxiliary,
-        'home': home,
+        # Status items (mapped from status_mask bits)
+        'analog_in_0': analog_in_0,
+        'analog_in_1': analog_in_1,
+        'analog_in_2': analog_in_2,
+        'counter_timer': counter_timer,
         'device_id': device_id,
         'version': version,
-        'position_error': position_error,
-        'path_buffer': path_buffer,
-        'analog_inputs': analog_inputs,
+        'sync_byte0': sync_byte0,
+        'sync_byte1': sync_byte1,
+        'sync_counter': sync_counter,
 
         # SK-2310g2 specific fields
         'diagnostic': diagnostic,
