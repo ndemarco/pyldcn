@@ -52,8 +52,6 @@ class IO:
         Args:
             released: True to release brake, False to engage
 
-        🔴 UNVERIFIED - Not yet tested on hardware
-
         Note:
             Brake control is typically done via digital output commands.
             The exact implementation depends on how OUTbit0 is configured
@@ -74,8 +72,6 @@ class IO:
 
         Returns:
             True if limit switch active, False otherwise
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._state.limit2
 
@@ -85,7 +81,5 @@ class IO:
 
         Returns:
             True if home switch active, False otherwise
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._state.home_source

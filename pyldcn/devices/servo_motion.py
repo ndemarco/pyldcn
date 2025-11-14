@@ -71,8 +71,6 @@ class Motion:
             velocity: Velocity (physical units/sec)
             accel: Acceleration (physical units/sec²)
             scale: Counts per physical unit (e.g., 2000 counts/mm)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         position_counts = int(position * scale)
         velocity_counts = int(velocity * scale)
@@ -88,8 +86,6 @@ class Motion:
             position: Target position (encoder counts)
             velocity: Velocity (counts per servo tick)
             accel: Acceleration (counts per tick²)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         traj_ctrl = 0x80 | 0x10  # start_now=1, servo_mode=1
         traj_data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
@@ -109,8 +105,6 @@ class Motion:
             limit_switch: Which limit switch to home to (1=reverse, 2=forward, None=no limit)
             use_index: If True, capture on encoder index pulse
             stop_mode: How to stop when home is found: 'abrupt', 'smooth', or 'off'
-
-        🔴 UNVERIFIED - Not yet tested on hardware
 
         Example:
             # Home to Limit 2 (forward), stop abruptly
@@ -161,8 +155,6 @@ class Motion:
             accel: Homing acceleration in counts per tick²
             use_index: If True, perform second stage homing to index pulse
             index_velocity: Velocity for index homing (default: velocity/4)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
 
         Example:
             # Home to Limit 2, then index pulse
@@ -235,8 +227,6 @@ class Motion:
     def enable(self) -> None:
         """
         Enable amplifier (STOP_MOTOR with AMP_ENABLE flag).
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         from .servo import CMD_STOP_MOTOR
         stop_ctrl = STOP_ABRUPT | AMP_ENABLE
@@ -245,8 +235,6 @@ class Motion:
     def disable(self) -> None:
         """
         Disable amplifier and position servo.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         from .servo import CMD_STOP_MOTOR
         self._device.send_command(CMD_STOP_MOTOR, [0x00])

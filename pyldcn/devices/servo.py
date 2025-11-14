@@ -90,8 +90,6 @@ class LS231SE(LDCNDevice):
 
         Default property values reflect the "No Motor Power after LDCN Init"
         condition from the diagnostic table (power-up/reset state).
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         super().__init__(network, address)
         self.device_type = "LS-231SE"
@@ -135,8 +133,6 @@ class LS231SE(LDCNDevice):
 
         Returns:
             True if initialization successful
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         try:
             # Step 1: Define status reporting
@@ -201,8 +197,6 @@ class LS231SE(LDCNDevice):
             el: Position error limit
             sr: Servo rate divisor
             db: Deadband
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         gain_data = struct.pack('<HHHBBBHB', kp, kd, ki, il, ol, cl, el, sr)
         self.send_command(CMD_LOAD_GAINS, list(gain_data) + [db])
@@ -218,8 +212,6 @@ class LS231SE(LDCNDevice):
 
         Args:
             status_bits: 16-bit status configuration
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self.define_status(status_bits)
 
@@ -230,8 +222,6 @@ class LS231SE(LDCNDevice):
     def clear_faults(self) -> None:
         """
         Clear sticky status bits (CLEAR_BITS command).
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self.send_command(CMD_CLEAR_BITS)
 
@@ -254,8 +244,6 @@ class LS231SE(LDCNDevice):
                 'pos_error': following_error,
                 'flags': {...}
             }
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._status.read_status()
 
@@ -267,8 +255,6 @@ class LS231SE(LDCNDevice):
 
         Returns:
             {'position': position_counts, 'status': status_byte}
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._status.read_position()
 
@@ -283,8 +269,6 @@ class LS231SE(LDCNDevice):
 
         Returns:
             Dictionary of flag names to boolean values
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._status.decode_status_flags(status_byte)
 
@@ -299,8 +283,6 @@ class LS231SE(LDCNDevice):
 
         Returns:
             List of active fault names
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return self._status.check_faults(status_byte)
 
@@ -319,8 +301,6 @@ class LS231SE(LDCNDevice):
             velocity: Velocity (physical units/sec)
             accel: Acceleration (physical units/sec²)
             scale: Counts per physical unit (e.g., 2000 counts/mm)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.move_to(position, velocity, accel, scale)
 
@@ -334,8 +314,6 @@ class LS231SE(LDCNDevice):
             position: Target position (encoder counts)
             velocity: Velocity (counts per servo tick)
             accel: Acceleration (counts per tick²)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.move_to_counts(position, velocity, accel)
 
@@ -351,8 +329,6 @@ class LS231SE(LDCNDevice):
             limit_switch: Which limit switch to home to (1=reverse, 2=forward, None=no limit)
             use_index: If True, capture on encoder index pulse
             stop_mode: How to stop when home is found: 'abrupt', 'smooth', or 'off'
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.set_home_mode(limit_switch, use_index, stop_mode)
 
@@ -369,8 +345,6 @@ class LS231SE(LDCNDevice):
             accel: Homing acceleration in counts per tick²
             use_index: If True, perform second stage homing to index pulse
             index_velocity: Velocity for index homing (default: velocity/4)
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.home_to_limit(limit_switch, velocity, accel, use_index, index_velocity)
 
@@ -379,8 +353,6 @@ class LS231SE(LDCNDevice):
         Enable amplifier.
 
         Delegates to Motion subsystem.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.enable()
 
@@ -389,8 +361,6 @@ class LS231SE(LDCNDevice):
         Disable amplifier and position servo.
 
         Delegates to Motion subsystem.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         self._motion.disable()
 

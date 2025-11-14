@@ -106,8 +106,6 @@ class Status:
                     ...
                 }
             }
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         from pyldcn.protocol import CMD_READ_STATUS
 
@@ -126,8 +124,6 @@ class Status:
 
         Returns:
             {'position': position_counts, 'status': status_byte}
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         from pyldcn.protocol import CMD_READ_STATUS
 
@@ -159,8 +155,6 @@ class Status:
 
         Returns:
             Parsed status dictionary
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         if len(response) < 2:
             return {}
@@ -264,8 +258,6 @@ class Status:
 
         Returns:
             Dictionary of flag names to boolean values
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         return {
             'move_done': bool(status_byte & STATUS_MOVE_DONE),
@@ -291,8 +283,6 @@ class Status:
 
         Returns:
             List of active fault names
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         faults = []
 
