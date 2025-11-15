@@ -18,7 +18,7 @@ from pyldcn.network import LDCNNetwork
 
 # Import subsystems
 from .servo_state import ServoState
-from .servo_status import Status
+from .status import ServoStatus
 from .servo_motion import Motion, Trajectory
 from .servo_io import IO
 
@@ -45,7 +45,7 @@ class LS231SE(LDCNDevice):
     Architecture:
         This class uses a functional subsystem architecture with three
         subsystems sharing a single state object:
-        - Status: Status reading, parsing, diagnostic detection
+        - ServoStatus: Status reading, parsing, diagnostic detection
         - Motion: Position control, homing, amplifier control
         - IO: Brake control, limit/home switch monitoring
 
@@ -98,7 +98,7 @@ class LS231SE(LDCNDevice):
         self.state = ServoState()
 
         # Subsystems share state reference
-        self._status = Status(self.state, self)
+        self._status = ServoStatus(self.state, self)
         self._motion = Motion(self.state, self)
         self._io = IO(self.state, self)
 
