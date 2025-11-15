@@ -3,7 +3,6 @@
 **Author:** NickyDoes
 **Source:** LS-773 Network I/O Node Datasheet (Doc# 712773001, Rev. B) and CNC-SK-2310g2 Manual (Doc # 710231005 / Rev. D, 03/05/2020)
 **Date:** 2025-11-13
-Updated
 
 ---
 
