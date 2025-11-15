@@ -232,7 +232,7 @@ class SK2310g2(LDCNDevice):
         Delegates to status subsystem for state tracking.
 
         Args:
-            status_mask: Bitmask of status items to include (see SK2310G2_STATUS_ITEMS)
+            status_mask: Bitmask of status items to include (see SK2310g2Status.status_items)
 
         Example:
             device.define_status(0x01)  # Only digital inputs
