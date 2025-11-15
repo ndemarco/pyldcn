@@ -16,8 +16,9 @@ from pyldcn.device import LDCNDevice
 from pyldcn.network import LDCNNetwork
 from pyldcn.protocol import CMD_READ_STATUS
 
-# Import SK-2310g2 specific parsing
-from . import sk2310g2
+# Import SK-2310g2 specific status management
+from .status import SK2310g2Status
+from . import sk2310g2  # Keep for formatting utilities
 
 
 
@@ -208,8 +209,8 @@ class SK2310g2(LDCNDevice):
         super().__init__(network, address)
         self.device_type = "SK-2310g2"
 
-        # Status configuration (device default is 0x00 - no items)
-        self.status_mask: int = 0x00
+        # Status subsystem (replaces self.status_mask)
+        self._status = SK2310g2Status(self)
 
         # Cached status values
         self.diagnostic_code: Optional[int] = None
@@ -228,7 +229,7 @@ class SK2310g2(LDCNDevice):
         Configure which status items are returned in NOP responses.
 
         Sends DEFINE_STATUS command to configure persistent status reporting.
-        Updates the instance's stored status_mask.
+        Delegates to status subsystem for state tracking.
 
         Args:
             status_mask: Bitmask of status items to include (see SK2310G2_STATUS_ITEMS)
@@ -237,26 +238,20 @@ class SK2310g2(LDCNDevice):
             device.define_status(0x01)  # Only digital inputs
             device.define_status(0xFF)  # All status items
         """
-        from pyldcn.protocol import CMD_DEFINE_STATUS
-
-        # Send DEFINE_STATUS command (I/O nodes use single byte mask)
-        self.send_command(CMD_DEFINE_STATUS, [status_mask])
-
-        # Update instance's stored mask
-        self.status_mask = status_mask
+        self._status.configure(status_mask)
 
     def configure(self) -> None:
         """
         Configure I/O controller for full status reporting.
 
         Sends DEFINE_STATUS with 0xFF (all 8 status items).
-        See sk2310g2.SK2310G2_STATUS_ITEMS for item definitions.
+        See SK2310g2Status.status_items for item definitions.
 
         🔴 UNVERIFIED - Not yet tested on hardware
         """
         # Request all status items: digital_inputs, analog_in_0-2, counter_timer,
         # device_id, sync_inputs, sync_counter (bits 0-7, i.e., 0xFF)
-        self.define_status(0xFF)
+        self._status.configure(0xFF)
         time.sleep(1.0)
 
     def hard_reset(self) -> None:
@@ -267,15 +262,15 @@ class SK2310g2(LDCNDevice):
         - Clears DEFINE_STATUS configuration (returns to 0x00)
         - Resets all device state
 
-        Updates instance's stored status_mask to match device default (0x00).
+        Updates status subsystem's mask to match device default (0x00).
         """
         from pyldcn.protocol import CMD_HARD_RESET
 
         # Send HARD_RESET command
         self.send_command(CMD_HARD_RESET, [])
 
-        # Reset instance's stored mask to match device default
-        self.status_mask = 0x00
+        # Reset status subsystem's mask to match device default
+        self._status.status_mask = 0x00
 
     # -------------------------------------------------------------------------
     # Status Reading
@@ -288,9 +283,6 @@ class SK2310g2(LDCNDevice):
         Returns complete status including SK-2310g2 specific digital inputs
         and system state (Byte0/Byte1 from supervisory controller documentation).
 
-        Note: The LS-773 protocol includes position/velocity/home fields, but these
-        are vestigial for the SK-2310g2 I/O controller and should be ignored.
-
         Returns:
             {
                 'status': status_byte,
@@ -298,7 +290,7 @@ class SK2310g2(LDCNDevice):
                 'version': int,
                 'byte0': int,              # SK-2310g2 digital inputs
                 'byte1': int,              # SK-2310g2 internal status
-                'analog_inputs': int,      # Raw analog input data
+                'analog_in_0/1/2': int,    # Analog input channels
                 'diagnostic': int,         # Extracted from byte1 bits [7:3]
                 'power_state': bool,
                 # Decoded Byte0 fields:
@@ -317,12 +309,7 @@ class SK2310g2(LDCNDevice):
             }
         """
         # Request all status items (0xFF = bits 0-7)
-        # See sk2310g2.SK2310G2_STATUS_ITEMS for item definitions
-        status_mask = 0xFF
-        response = self.send_command(CMD_READ_STATUS, [status_mask, 0x00])
-
-        # Use SK-2310g2 specific LS-773 format parser
-        status = sk2310g2.parse_ls773_status(response, status_mask)
+        status = self._status.read(0xFF)
 
         if not status:
             return {}
