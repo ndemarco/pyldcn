@@ -35,7 +35,7 @@ import argparse
 import time
 from pyldcn import (
     LDCNNetwork, LS231SE, SK2310g2,
-    LDCNError, LDCNInitializationError
+    LDCNInitializationError
 )
 
 
@@ -204,11 +204,7 @@ def test_io_controller(network: LDCNNetwork):
     log("="*70, 'HEADER')
 
     # Find I/O controller
-    io_controller = None
-    for device in network.devices:
-        if isinstance(device, SK2310g2):
-            io_controller = device
-            break
+    io_controller = network.find_supervisor()
 
     if io_controller is None:
         log("✗ I/O controller (SK2310g2) not found", 'ERROR')

@@ -13,7 +13,6 @@ from typing import Optional, List, Dict, TYPE_CHECKING
 from .protocol import (
     CMD_NOP,
     CMD_DEFINE_STATUS,
-    CMD_RESET_POS,
 )
 
 if TYPE_CHECKING:
@@ -101,10 +100,6 @@ class LDCNDevice(ABC):
             Device-specific status dictionary
         """
         pass
-
-    def reset_position(self) -> None:
-        """Reset position counter to zero (if supported)."""
-        self.send_command(CMD_RESET_POS)
 
     def __repr__(self) -> str:
         """Return string representation."""

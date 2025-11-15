@@ -850,6 +850,72 @@ class SK2310g2(LDCNDevice):
     # Power and Safety Monitoring
     # -------------------------------------------------------------------------
 
+    def power_on(self, timeout: Optional[float] = None, verbose: bool = True) -> bool:
+        """
+        Turn on motor power using software control or physical button.
+
+        Attempts software power-on by toggling bit 15 (System Lock/Power ON/OFF).
+        If software control fails, prompts user to press physical power button.
+
+        Sequence:
+        1. Check if already powered on
+        2. Attempt software power-on (toggle bit 15 for 100ms)
+        3. Check if power state changed to ON (diagnostic 0x13 or 0x18-0x1F)
+        4. If not, prompt user to press physical button
+        5. Wait for power ON with timeout
+
+        Args:
+            timeout: Maximum wait time for power-on (seconds, None = infinite)
+            verbose: If True, print status updates
+
+        Returns:
+            True if power successfully turned on, False if timeout
+
+        Note:
+            Software control requires J21 shorted (pins 1-2).
+            With J21 open (default), only physical button works.
+        """
+        # Check if already powered on
+        if self.read_power_state():
+            if verbose:
+                print("✓ Power already ON")
+            return True
+
+        if verbose:
+            print("Attempting software power-on (bit 15 toggle)...")
+
+        # Attempt software power-on: toggle bit 15
+        try:
+            # Get current outputs (or start with 0 if unknown)
+            current_outputs = self.digital_outputs if self.digital_outputs is not None else 0
+
+            # Set bit 15 HIGH
+            outputs_high = current_outputs | (1 << OUTPUT_SYSTEM_LOCK)
+            self.set_outputs(outputs_high, validate_safety=False)
+            time.sleep(0.1)  # Hold for 100ms
+
+            # Set bit 15 LOW
+            outputs_low = current_outputs & ~(1 << OUTPUT_SYSTEM_LOCK)
+            self.set_outputs(outputs_low, validate_safety=False)
+            time.sleep(0.2)  # Wait for state change
+
+            # Check if power turned on
+            if self.read_power_state():
+                if verbose:
+                    print("✓ Software power-on successful!")
+                return True
+
+            if verbose:
+                print("  Software control failed (J21 may be open)")
+
+        except Exception as e:
+            if verbose:
+                print(f"  Software control failed: {e}")
+
+        # Fall back to physical button
+        self.request_power_on()
+        return self.wait_for_power_button(timeout=timeout, poll_rate=0.1, verbose=verbose)
+
     def request_power_on(self, message: str = "Please press the POWER button to continue...") -> None:
         """
         Display operator notification requesting power button press.
@@ -862,8 +928,6 @@ class SK2310g2(LDCNDevice):
 
         Note: With J21 open (default), power can ONLY be enabled via physical button.
               To enable software control, short J21 pins 1-2 on the SK2310g2.
-
-        🔴 UNVERIFIED - Not yet tested on hardware
         """
         print(f"\n{'='*60}")
         print(f"POWER REQUIRED")

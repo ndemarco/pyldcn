@@ -7,7 +7,7 @@ Author: NickyDoes
 License: GPL v2 or later
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from .servo_state import ServoState
 
@@ -43,7 +43,7 @@ class IO:
 
     def set_brake(self, released: bool) -> None:
         """
-        Control brake output (OUTbit0).
+        Control brake output (OUTbit0) via I/O Control command.
 
         The brake output is typically connected to an external motor brake.
         When released=True, the brake is released (motor can move).
@@ -53,14 +53,82 @@ class IO:
             released: True to release brake, False to engage
 
         Note:
-            Brake control is typically done via digital output commands.
-            The exact implementation depends on how OUTbit0 is configured
-            in the servo drive firmware.
+            Uses I/O Control command (CMD 0x08) to control OUTbit0.
+            BrakeMODE (OUTbit0 bit) must be set to 1 for manual control.
         """
-        # TODO: Implement brake control via digital output commands
-        # This would use SET_OUTPUT or similar command to control OUTbit0
-        # For now, this is a placeholder
-        pass
+        from .servo import CMD_IO_CTRL
+
+        # I/O Control byte format:
+        # Bit 0 (OUTbit0): Brake output
+        # Bit 1-7: Other outputs
+        # When BrakeMODE=1: Bit 0 controls brake directly
+        # Bit=0: Brake engaged, Bit=1: Brake released
+
+        io_byte = 0x01 if released else 0x00
+
+        # Send I/O control command
+        # Note: This sets OUTbit0 only. To control multiple outputs,
+        # would need to read current state and merge
+        self._device.send_command(CMD_IO_CTRL, [io_byte])
+
+    def set_output(self, output_num: int, state: bool) -> None:
+        """
+        Set digital output state via I/O Control command.
+
+        Args:
+            output_num: Output number (0-7)
+            state: True for HIGH, False for LOW
+
+        Raises:
+            ValueError: If output_num is out of range
+        """
+        from .servo import CMD_IO_CTRL
+
+        if output_num < 0 or output_num > 7:
+            raise ValueError(f"Output number {output_num} out of range (0-7)")
+
+        # Create output byte with specified bit set/cleared
+        io_byte = (1 << output_num) if state else 0
+
+        self._device.send_command(CMD_IO_CTRL, [io_byte])
+
+    def set_outputs(self, output_mask: int) -> None:
+        """
+        Set multiple digital outputs simultaneously.
+
+        Args:
+            output_mask: 8-bit mask where each bit controls one output
+                        Bit 0 = OUTbit0 (brake)
+                        Bit 1 = OUTbit1
+                        ...
+                        Bit 7 = OUTbit7
+        """
+        from .servo import CMD_IO_CTRL
+
+        self._device.send_command(CMD_IO_CTRL, [output_mask & 0xFF])
+
+    def read_inputs(self) -> Dict[str, bool]:
+        """
+        Read all digital input states.
+
+        Returns:
+            Dictionary with input names and states:
+            {
+                'home_source': bool,  # Home switch state
+                'limit2': bool,       # Forward limit state
+                'index': bool,        # Index signal state
+                ...
+            }
+
+        Note:
+            Input states are available in the status byte and aux status byte.
+            This method reads the current cached values from state.
+        """
+        return {
+            'home_source': self._state.home_source,
+            'limit2': self._state.limit2,
+            'index': self._state.index,
+        }
 
     # -------------------------------------------------------------------------
     # Limit Switch Monitoring

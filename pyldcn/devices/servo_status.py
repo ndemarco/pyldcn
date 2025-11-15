@@ -8,9 +8,10 @@ License: GPL v2 or later
 """
 
 import struct
-from typing import Dict, List, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
 from .servo_state import ServoState
+from . import servo_diagnostics as diag
 
 if TYPE_CHECKING:
     from .servo import LS231SE
@@ -294,3 +295,181 @@ class Status:
             faults.append('pos_error')
 
         return faults
+
+    # -------------------------------------------------------------------------
+    # DEFINE_STATUS Command
+    # -------------------------------------------------------------------------
+
+    def define_status(self, status_mask: int) -> None:
+        """
+        Configure which status items are returned by READ_STATUS.
+
+        Args:
+            status_mask: Bitmask of status items (see LS231SE_STATUS_ITEMS)
+                        0x0001 - position (4 bytes)
+                        0x0002 - ad_value (1 byte)
+                        0x0004 - velocity (2 bytes)
+                        0x0008 - aux_status (1 byte)
+                        0x0010 - home (4 bytes)
+                        0x0020 - device_id (2 bytes)
+                        0x0040 - pos_error (2 bytes)
+                        0x0080 - path_count (1 byte)
+                        0x1000 - watchdog (2 bytes)
+                        0x2000 - motor_pos (6 bytes)
+
+        After calling this, subsequent READ_STATUS or NOP commands will return
+        only the configured items in variable-length format.
+        """
+        from pyldcn.protocol import CMD_DEFINE_STATUS
+
+        self._device.send_command(
+            CMD_DEFINE_STATUS,
+            [status_mask & 0xFF, (status_mask >> 8) & 0xFF]
+        )
+
+    def read_status_custom(self, status_mask: int) -> Dict:
+        """
+        Read custom status items without changing DEFINE_STATUS configuration.
+
+        This is a one-time read with a specific mask. The DEFINE_STATUS
+        configuration is not changed.
+
+        Args:
+            status_mask: Bitmask of items to read
+
+        Returns:
+            Parsed status dictionary
+        """
+        from pyldcn.protocol import CMD_READ_STATUS
+
+        response = self._device.send_command(
+            CMD_READ_STATUS,
+            [status_mask & 0xFF, (status_mask >> 8) & 0xFF]
+        )
+
+        return self._parse_status(response, status_mask)
+
+    def read_full_status(self) -> Dict:
+        """
+        Read all available status items.
+
+        Reads: position, velocity, aux, pos_error, home, device_id, path_count
+
+        Returns:
+            Complete status dictionary
+        """
+        # Request all commonly used items
+        status_mask = 0x0001 | 0x0004 | 0x0008 | 0x0010 | 0x0020 | 0x0040 | 0x0080
+        return self.read_status_custom(status_mask)
+
+    # -------------------------------------------------------------------------
+    # Diagnostic Condition Integration
+    # -------------------------------------------------------------------------
+
+    def get_condition(self, mode: str = "LDCN") -> Optional[diag.DiagnosticCondition]:
+        """
+        Get current diagnostic condition from cached status bytes.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            Matched DiagnosticCondition or None if no match
+        """
+        if self._state.status_byte is None or self._state.aux_status is None:
+            return None
+
+        return diag.match_diagnostic_condition(
+            self._state.status_byte,
+            self._state.aux_status,
+            self._state.stop_cmd,
+            self._state.pic_ae,
+            mode
+        )
+
+    def get_comprehensive_state(self, mode: str = "LDCN") -> Dict[str, Any]:
+        """
+        Get comprehensive servo state (all 3 layers).
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            Dictionary with:
+            - Layer 1 (flags): All individual bit flags
+            - Layer 2 (condition): Matched diagnostic condition
+            - Layer 3 (metadata): Quick access to key states
+        """
+        if self._state.status_byte is None or self._state.aux_status is None:
+            return {
+                'status_byte': 0,
+                'aux_byte': 0,
+                'flags': {},
+                'condition': None,
+                'is_faulted': False,
+                'requires_reset': False,
+                'brake_released': False,
+                'operational': False,
+                'error_class': None,
+            }
+
+        return diag.get_servo_state(
+            self._state.status_byte,
+            self._state.aux_status,
+            self._state.stop_cmd,
+            self._state.pic_ae,
+            mode
+        )
+
+    def is_faulted(self, mode: str = "LDCN") -> bool:
+        """
+        Check if servo is in faulted state.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            True if faulted, False otherwise
+        """
+        condition = self.get_condition(mode)
+        return diag.is_faulted(condition)
+
+    def is_operational(self, mode: str = "LDCN") -> bool:
+        """
+        Check if servo is operational (ready for motion commands).
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            True if operational, False if faulted or not ready
+        """
+        condition = self.get_condition(mode)
+        return diag.is_operational(condition)
+
+    def needs_reset(self, mode: str = "LDCN") -> bool:
+        """
+        Check if servo requires hard reset.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            True if hard reset required (e.g., EncoderERR)
+        """
+        condition = self.get_condition(mode)
+        return diag.needs_reset(condition)
+
+    def format_status(self, include_leds: bool = False, mode: str = "LDCN") -> str:
+        """
+        Format human-readable status report.
+
+        Args:
+            include_leds: If True, include LED states in output
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            Multi-line formatted status string
+        """
+        state = self.get_comprehensive_state(mode)
+        return diag.format_comprehensive_status(state)

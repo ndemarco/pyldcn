@@ -22,7 +22,6 @@ Date: 2025-11-12
 """
 
 import sys
-import os
 import argparse
 import time
 from pyldcn import LDCNNetwork, SK2310g2
@@ -42,11 +41,10 @@ def find_sk2310g2(network: LDCNNetwork) -> SK2310g2:
     Raises:
         RuntimeError: If no SK-2310g2 found
     """
-    for device in network.devices:
-        if isinstance(device, SK2310g2):
-            return device
-
-    raise RuntimeError("No SK-2310g2 device found on network")
+    device = network.find_supervisor()
+    if device is None:
+        raise RuntimeError("No SK-2310g2 device found on network")
+    return device
 
 
 def read_and_display(device: SK2310g2, show_outputs: bool = False):

@@ -13,7 +13,7 @@ Author: NickyDoes
 License: GPL v2 or later
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, NamedTuple
 
 
 # =============================================================================
@@ -98,40 +98,285 @@ SK2310G2_STATUS_ITEMS = [
 # Diagnostic Code Descriptions
 # =============================================================================
 
-DIAGNOSTIC_CODES = {
-    0x00: "Power OFF delay in progress",
-    0x01: "Initializing",
-    0x02: "Control voltage shorted",
-    0x03: "Output shorted",
-    0x04: "Control voltage LOW (less than 18V)",
-    0x05: "Home/Test switch malfunction",
-    0x06: "Power UP Home error",
-    0x07: "Power UP manual override error",
-    0x08: "System LOCKED",
-    0x09: "Watchdog Stop",
-    0x0A: "Safety Link Error",
-    0x0B: "Guard Open Stop - spindle not stopped",
-    0x0C: "Guard Open Stop - not in safe zone",
-    0x0D: "Guard Open Stop - manual override w/o Enable",
-    0x0E: "Guard contact fault",
-    0x0F: "Limit Switch Stop",
-    0x10: "Emergency Stop",
-    0x11: "E-Stop contact fault or Monitor Loop Open",
-    0x12: "Busy or Power button short/Monitor Loop Open",
-    0x13: "Motor Power Supply under-voltage",
-    0x14: "Guard-1 Open; Guard-2 Open (ready to power)",
-    0x15: "Guard-1 Closed; Guard-2 Open (ready to power)",
-    0x16: "Guard-1 Open; Guard-2 Closed (ready to power)",
-    0x17: "Guard-1 Closed; Guard-2 Closed (ready to power)",
-    0x18: "Guard-1 Open; Guard-2 Open; Manual override",
-    0x19: "Guard-1 Closed; Guard-2 Open; Manual override",
-    0x1A: "Guard-1 Open; Guard-2 Closed; Manual override",
-    0x1B: "Guard-1 Closed; Guard-2 Closed; Manual override",
-    0x1C: "Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped",
-    0x1D: "Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped",
-    0x1E: "Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped",
-    0x1F: "Normal operation - All guards closed",
-}
+class DiagnosticState(NamedTuple):
+    """Individual state attributes for a diagnostic code.
+
+    Attributes:
+        code: Diagnostic code (0x00-0x1F)
+        condition: Human-readable description
+        guard_1: Guard 1 state - "OPEN", "CLOSED", or None (not applicable)
+        guard_2: Guard 2 state - "OPEN", "CLOSED", or None (not applicable)
+        safe_zone: Machine in safe zone - True, False, or None (not applicable)
+        spindle_stopped: Spindle stopped - True, False, or None (not applicable)
+        manual_override: Manual override active - True, False, or None (not applicable)
+        power_ready: Ready for power-on - "ON", "OFF", or None (maintains prior state)
+        power_enabled: Power outputs active - "ON", "OFF", or None (maintains prior state)
+        error_type: Error classification - "FAULT", "STOP", "INIT", or None
+        ready_to_power: System ready to accept power command - True, False, or None
+    """
+    code: int
+    condition: str
+    guard_1: Optional[str]
+    guard_2: Optional[str]
+    safe_zone: Optional[bool]
+    spindle_stopped: Optional[bool]
+    manual_override: Optional[bool]
+    power_ready: Optional[str]
+    power_enabled: Optional[str]
+    error_type: Optional[str]
+    ready_to_power: Optional[bool]
+
+
+# All 32 diagnostic codes with parsed attributes
+# Source: docs/SK-2310g2_supervisor.md Diagnostic Code Table
+DIAGNOSTIC_CODES = (
+    # 0x00-0x13: Error and initialization states
+    DiagnosticState(0x00, "Power OFF delay in progress", None, None, None, None, None, "OFF", "ON", "INIT", False),
+    DiagnosticState(0x01, "Initializing", None, None, None, None, None, "OFF", "OFF", "INIT", False),
+    DiagnosticState(0x02, "Control voltage shorted", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x03, "Output shorted", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x04, "Control voltage LOW (less than 18V)", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x05, "Home/Test switch malfunction (both contacts ON)", None, None, None, None, None, None, None, "FAULT", False),
+    DiagnosticState(0x06, "Power UP Home error", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x07, "Power UP manual override error", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x08, "System LOCKED", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x09, "Watchdog Stop", None, None, None, None, None, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x0A, "Safety Link Error", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x0B, "Guard Open Stop - Guards open, spindle not stopped", None, None, False, False, None, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x0C, "Guard Open Stop - Guards open, not in safe zone", None, None, False, None, None, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x0D, "Guard Open Stop - Manual override without Enable button held", None, None, None, None, True, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x0E, "Guard contact fault (one or more contacts malfunctioning)", None, None, None, None, None, None, None, "FAULT", False),
+    DiagnosticState(0x0F, "Limit Switch Stop", None, None, None, None, None, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x10, "Emergency Stop", None, None, None, None, None, "OFF", "OFF", "STOP", False),
+    DiagnosticState(0x11, "Emergency Stop contact fault or Monitor Loop Open", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x12, "Busy (≤6s) or Power button short/Monitor Loop Open (>6s)", None, None, None, None, None, "OFF", "OFF", "FAULT", False),
+    DiagnosticState(0x13, "Motor Power Supply under-voltage", None, None, None, None, None, "ON", "ON", "FAULT", False),
+
+    # 0x14-0x17: Ready to power states (guards in various positions)
+    DiagnosticState(0x14, "Guard-1 Open; Guard-2 Open (ready to power)", "OPEN", "OPEN", None, None, False, "OFF", "OFF", None, True),
+    DiagnosticState(0x15, "Guard-1 Closed; Guard-2 Open (ready to power)", "CLOSED", "OPEN", None, None, False, "OFF", "OFF", None, True),
+    DiagnosticState(0x16, "Guard-1 Open; Guard-2 Closed (ready to power)", "OPEN", "CLOSED", None, None, False, "OFF", "OFF", None, True),
+    DiagnosticState(0x17, "Guard-1 Closed; Guard-2 Closed (ready to power)", "CLOSED", "CLOSED", None, None, False, "OFF", "OFF", None, True),
+
+    # 0x18-0x1B: Manual override with power on
+    DiagnosticState(0x18, "Guard-1 Open; Guard-2 Open; Manual override", "OPEN", "OPEN", None, None, True, "ON", "ON", None, False),
+    DiagnosticState(0x19, "Guard-1 Closed; Guard-2 Open; Manual override", "CLOSED", "OPEN", None, None, True, "ON", "ON", None, False),
+    DiagnosticState(0x1A, "Guard-1 Open; Guard-2 Closed; Manual override", "OPEN", "CLOSED", None, None, True, "ON", "ON", None, False),
+    DiagnosticState(0x1B, "Guard-1 Closed; Guard-2 Closed; Manual override", "CLOSED", "CLOSED", None, None, True, "ON", "ON", None, False),
+
+    # 0x1C-0x1F: Safe zone with power on
+    DiagnosticState(0x1C, "Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped", "OPEN", "OPEN", True, True, False, "ON", "ON", None, False),
+    DiagnosticState(0x1D, "Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped", "CLOSED", "OPEN", True, True, False, "ON", "ON", None, False),
+    DiagnosticState(0x1E, "Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped", "OPEN", "CLOSED", True, True, False, "ON", "ON", None, False),
+    DiagnosticState(0x1F, "Normal operation - All guards closed", "CLOSED", "CLOSED", True, None, False, "ON", "ON", None, False),
+)
+
+# Lookup dictionary: code -> DiagnosticState
+_DIAGNOSTIC_LOOKUP = {state.code: state for state in DIAGNOSTIC_CODES}
+
+
+# =============================================================================
+# Diagnostic Code Query Functions
+# =============================================================================
+
+def get_diagnostic_state(code: int) -> Optional[DiagnosticState]:
+    """Get diagnostic state by code.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        DiagnosticState object or None if code is invalid
+    """
+    return _DIAGNOSTIC_LOOKUP.get(code)
+
+
+def is_power_ready(code: int) -> bool:
+    """Check if system is ready to accept power-on command.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        True if power_ready == "ON", False otherwise
+    """
+    state = get_diagnostic_state(code)
+    return state is not None and state.power_ready == "ON"
+
+
+def is_power_enabled(code: int) -> bool:
+    """Check if power outputs A/B are active.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        True if power_enabled == "ON", False otherwise
+    """
+    state = get_diagnostic_state(code)
+    return state is not None and state.power_enabled == "ON"
+
+
+def is_guard_open(code: int, guard_num: int) -> Optional[bool]:
+    """Check if specific guard is open.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+        guard_num: Guard number (1 or 2)
+
+    Returns:
+        True if guard is open, False if closed, None if not applicable or invalid
+    """
+    state = get_diagnostic_state(code)
+    if state is None:
+        return None
+
+    if guard_num == 1:
+        return state.guard_1 == "OPEN" if state.guard_1 is not None else None
+    elif guard_num == 2:
+        return state.guard_2 == "OPEN" if state.guard_2 is not None else None
+    else:
+        return None
+
+
+def is_guard_closed(code: int, guard_num: int) -> Optional[bool]:
+    """Check if specific guard is closed.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+        guard_num: Guard number (1 or 2)
+
+    Returns:
+        True if guard is closed, False if open, None if not applicable or invalid
+    """
+    state = get_diagnostic_state(code)
+    if state is None:
+        return None
+
+    if guard_num == 1:
+        return state.guard_1 == "CLOSED" if state.guard_1 is not None else None
+    elif guard_num == 2:
+        return state.guard_2 == "CLOSED" if state.guard_2 is not None else None
+    else:
+        return None
+
+
+def is_manual_override_active(code: int) -> Optional[bool]:
+    """Check if manual override is active.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        True if manual override active, False if not, None if not applicable
+    """
+    state = get_diagnostic_state(code)
+    return state.manual_override if state is not None else None
+
+
+def is_safe_zone(code: int) -> Optional[bool]:
+    """Check if machine is in safe zone.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        True if in safe zone, False if not, None if not applicable
+    """
+    state = get_diagnostic_state(code)
+    return state.safe_zone if state is not None else None
+
+
+def is_spindle_stopped(code: int) -> Optional[bool]:
+    """Check if spindle is stopped.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        True if spindle stopped, False if not, None if not applicable
+    """
+    state = get_diagnostic_state(code)
+    return state.spindle_stopped if state is not None else None
+
+
+def get_error_type(code: int) -> Optional[str]:
+    """Get error classification for diagnostic code.
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        "FAULT", "STOP", "INIT", or None (normal operation)
+    """
+    state = get_diagnostic_state(code)
+    return state.error_type if state is not None else None
+
+
+def get_power_state(code: int) -> Dict[str, Any]:
+    """Get comprehensive power state from diagnostic code.
+
+    Handles all special cases per SK-2310g2 manual and power_control.md:
+    - 0x00: Power OFF delay (transitional, not truly ON)
+    - 0x05, 0x0E: Maintain prior state (not deterministic)
+    - 0x14-0x17: Ready to power (stable OFF state)
+    - 0x13, 0x18-0x1F: Power ON
+
+    Args:
+        code: Diagnostic code (0x00-0x1F)
+
+    Returns:
+        Dictionary with:
+            power_on: bool - Motor power actually ON (stable state)
+            ready_to_power: bool - System ready to accept power ON command
+            transitioning: bool - In power OFF delay (0x00)
+            description: str - Human-readable state
+    """
+    state = get_diagnostic_state(code)
+    if state is None:
+        return {
+            'power_on': False,
+            'ready_to_power': False,
+            'transitioning': False,
+            'description': 'UNKNOWN'
+        }
+
+    # Special case: 0x00 is power OFF delay (transitioning)
+    # Has power_enabled="ON" temporarily but error_type="INIT"
+    # This is NOT a stable ON state - it's transitioning to OFF
+    if code == 0x00:
+        return {
+            'power_on': False,
+            'ready_to_power': False,
+            'transitioning': True,
+            'description': 'POWERING OFF (delay in progress)'
+        }
+
+    # Power is ON if outputs are active (stable ON state)
+    if state.power_enabled == "ON":
+        return {
+            'power_on': True,
+            'ready_to_power': True,
+            'transitioning': False,
+            'description': 'POWER ON'
+        }
+
+    # Ready to power: system ready to accept power command (stable OFF state)
+    if state.ready_to_power:
+        return {
+            'power_on': False,
+            'ready_to_power': True,
+            'transitioning': False,
+            'description': 'READY TO POWER'
+        }
+
+    # All other states are power OFF (fault/stop conditions)
+    return {
+        'power_on': False,
+        'ready_to_power': False,
+        'transitioning': False,
+        'description': 'POWER OFF'
+    }
 
 
 # =============================================================================
@@ -235,11 +480,9 @@ def parse_ls773_status(response: bytes, status_mask: int = 0x00) -> Dict[str, An
     servo_fault = bool(byte1 & 0x04)
     # Bits [7:3] are diagnostic code (already extracted)
 
-    # Power state inferred from diagnostic code patterns (SK-2310g2 manual page 20)
-    # Diagnostic code is from NOP/READ_STATUS response byte1 bits [7:3]
-    # READY_TO_POWER: 0x14-0x17 (guards in various states, power not yet enabled)
-    # POWER_ON: 0x13 (under-voltage condition), 0x18-0x1F (normal powered operation)
-    power_state = (diagnostic == 0x13) or (0x18 <= diagnostic <= 0x1F)
+    # Get comprehensive power state using get_power_state()
+    # Handles special cases: 0x00 (transitional), 0x05/0x0E (maintain prior), etc.
+    power_info = get_power_state(diagnostic)
 
     return {
         # Raw bytes
@@ -260,7 +503,11 @@ def parse_ls773_status(response: bytes, status_mask: int = 0x00) -> Dict[str, An
 
         # SK-2310g2 specific fields
         'diagnostic': diagnostic,
-        'power_state': power_state,
+        'power_state': power_info['power_on'],  # Backward compatibility
+        'power_on': power_info['power_on'],
+        'ready_to_power': power_info['ready_to_power'],
+        'power_transitioning': power_info['transitioning'],
+        'power_description': power_info['description'],
 
         # Byte0 - Digital inputs
         'input1': input1,
@@ -325,7 +572,8 @@ def format_status(status: Dict[str, Any]) -> str:
     # Diagnostic code with LED display
     diagnostic = status.get('diagnostic', 0)
     led_pattern = format_led_pattern(diagnostic)
-    condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
+    diag_state = get_diagnostic_state(diagnostic)
+    condition = diag_state.condition if diag_state else "Unknown condition"
 
     lines.append(f"\nDiagnostic Code:")
     lines.append(f"  Code:           0x{diagnostic:02X} ({diagnostic:05b}b)")
@@ -521,7 +769,8 @@ def format_io_report(status: Dict[str, Any]) -> str:
     lines.append(f"\nDevice: ID={status.get('device_id', 0)} Version={status.get('version', 0)}")
     diagnostic = status.get('diagnostic', 0)
     led_pattern = format_led_pattern(diagnostic)
-    condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
+    diag_state = get_diagnostic_state(diagnostic)
+    condition = diag_state.condition if diag_state else "Unknown condition"
     lines.append(f"Diagnostic: 0x{diagnostic:02X} {led_pattern} - {condition}")
 
     # Digital Inputs
