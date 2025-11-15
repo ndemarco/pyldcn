@@ -295,10 +295,7 @@ Typical network initialization:
    Close serial port, wait 500ms, reopen at 125kbps
 
 5. **Commmunicate**
-   ```
-   AA 06 22 FF FF 26  # Define full status for device 6
-   ```
-   Example
+
 
 ## Timing Requirements
 
