@@ -309,6 +309,103 @@ class LDCNNetwork:
         return util.load_device_list(filename)
 
     # -------------------------------------------------------------------------
+    # Device Query Methods
+    # -------------------------------------------------------------------------
+
+    def get_device(self, address: int, device_type: Optional[str] = None) -> LDCNDevice:
+        """
+        Get or create a device at the specified address.
+
+        Args:
+            address: Device address (1-127)
+            device_type: Optional device type (e.g., "LS-231SE", "SK-2310g2")
+                        If provided and device doesn't exist, creates new device.
+
+        Returns:
+            LDCNDevice object at the specified address
+
+        Raises:
+            ValueError: If device not found and no device_type provided
+
+        Example:
+            servo = network.get_device(1, 'LS-231SE')
+            supervisor = network.get_device(2, 'SK-2310g2')
+        """
+        # Check if device already exists
+        for device in self.devices:
+            if device.address == address:
+                return device
+
+        # If device doesn't exist and we have a type, create it
+        if device_type is not None:
+            from .devices.servo import LS231SE
+            from .devices.sk2310g2 import SK2310g2
+
+            if device_type == 'LS-231SE':
+                new_device = LS231SE(self, address)
+            elif device_type == 'SK-2310g2':
+                new_device = SK2310g2(self, address)
+            else:
+                new_device = UnknownDevice(self, address)
+                new_device.device_type = device_type
+
+            self.devices.append(new_device)
+            return new_device
+
+        # Device not found and no type provided
+        raise ValueError(f"Device at address {address} not found and no device_type provided")
+
+    def find_device_by_type(self, device_type: str) -> Optional[LDCNDevice]:
+        """
+        Find first device matching the specified device type.
+
+        Args:
+            device_type: Device type string (e.g., "SK-2310g2", "LS-231SE")
+
+        Returns:
+            First matching device or None if not found
+
+        Example:
+            supervisor = network.find_device_by_type("SK-2310g2")
+            servo = network.find_device_by_type("LS-231SE")
+        """
+        for device in self.devices:
+            if device.device_type == device_type:
+                return device
+        return None
+
+    def find_supervisor(self):
+        """
+        Find SK-2310g2 supervisory controller on the network.
+
+        Returns:
+            SK2310g2 device or None if not found
+
+        Example:
+            supervisor = network.find_supervisor()
+            if supervisor:
+                diagnostic = supervisor.read_diagnostic()
+        """
+        return self.find_device_by_type("SK-2310g2")
+
+    def find_devices_by_type(self, device_type: str) -> List[LDCNDevice]:
+        """
+        Find all devices matching the specified device type.
+
+        Args:
+            device_type: Device type string (e.g., "LS-231SE")
+
+        Returns:
+            List of matching devices (empty if none found)
+
+        Example:
+            servos = network.find_devices_by_type("LS-231SE")
+            for servo in servos:
+                print(f"Servo at address {servo.address}")
+        """
+        return [device for device in self.devices if device.device_type == device_type]
+
+    # -------------------------------------------------------------------------
     # High-Level Initialization
     # -------------------------------------------------------------------------
 
@@ -369,7 +466,7 @@ class LDCNNetwork:
 
     def initialize(
         self,
-        mode: InitMode = InitMode.FULL,
+        mode: InitMode = InitMode.AUTO,
         create_objects: bool = True,
         expected_devices: Optional[List[Dict]] = None
     ) -> Tuple[int, List[Dict]]:
@@ -377,7 +474,7 @@ class LDCNNetwork:
         Adaptive network initialization with multiple modes.
 
         Supports multiple initialization strategies from fast validation to
-        full hard reset. Default mode is FULL for backwards compatibility.
+        full hard reset. Default mode is AUTO for adaptive initialization.
 
         Initialization Modes:
         - VALIDATE: Fast validation (~100ms) - verify existing connections
@@ -398,7 +495,7 @@ class LDCNNetwork:
             LDCNInitializationError: If initialization fails
 
         Examples:
-            # Default: Full reset (backwards compatible)
+            # Default: Automatic adaptive initialization
             network.initialize()
 
             # Fast validation of existing connection
@@ -407,8 +504,8 @@ class LDCNNetwork:
             # Soft discovery (preserves servo positions/gains)
             network.initialize(mode=InitMode.SOFT)
 
-            # Automatic adaptive initialization
-            network.initialize(mode=InitMode.AUTO)
+            # Full reset (explicit)
+            network.initialize(mode=InitMode.FULL)
         """
         # Handle AUTO mode - try progressively more invasive approaches
         if mode == InitMode.AUTO:

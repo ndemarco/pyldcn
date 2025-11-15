@@ -8,10 +8,11 @@ License: GPL v2 or later
 """
 
 import struct
-from typing import Dict, List, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
 from pyldcn.device_status import StatusManager
 from ..servo_state import ServoState
+from .. import servo_diagnostics as diag
 
 if TYPE_CHECKING:
     from ..servo import LS231SE

@@ -30,7 +30,6 @@ ADDRESS_UNADDRESSED = 0x00
 ADDRESS_GROUP = 0xFF
 
 # Generic LDCN commands (supported by all device types)
-CMD_RESET_POS = 0x00
 CMD_SET_ADDRESS = 0x01
 CMD_DEFINE_STATUS = 0x02
 CMD_READ_STATUS = 0x03

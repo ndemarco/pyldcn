@@ -49,7 +49,7 @@ class ServoState:
     path_mode: bool = False         # Aux Bit 6: Currently executing path
 
     # -------------------------------------------------------------------------
-    # Control Signals
+    # Control Signals (needed for diagnostic condition matching)
     # -------------------------------------------------------------------------
 
     stop_cmd: bool = False          # Stop motor command bit

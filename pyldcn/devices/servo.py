@@ -24,15 +24,20 @@ from .servo_io import IO
 
 
 # =============================================================================
-# Servo Drive Commands
+# LS-231SE Servo Drive Commands (Motor/Servo Specific)
 # =============================================================================
 
-CMD_LOAD_TRAJECTORY = 0x04
-CMD_START_MOTION = 0x05
-CMD_LOAD_GAINS = 0x06
-CMD_STOP_MOTOR = 0x07
-CMD_SET_HOME_MODE = 0x09
-CMD_CLEAR_BITS = 0x0B
+CMD_RESET_POS = 0x00        # Reset position counter
+CMD_LOAD_TRAJECTORY = 0x04  # Load trajectory parameters
+CMD_START_MOTION = 0x05     # Start motion
+CMD_LOAD_GAINS = 0x06       # Set PID gains
+CMD_STOP_MOTOR = 0x07       # Stop motor
+CMD_IO_CTRL = 0x08          # I/O control
+CMD_SET_HOME_MODE = 0x09    # Configure homing mode
+CMD_CLEAR_BITS = 0x0B       # Clear sticky status bits
+CMD_SAVE_AS_HOME = 0x0C     # Save current position as home
+CMD_ADD_PATHPOINT = 0x0D    # Add path point to buffer
+CMD_EXT = 0x0E              # Extended commands (with subcommand byte)
 
 
 class LS231SE(LDCNDevice):
@@ -180,12 +185,43 @@ class LS231SE(LDCNDevice):
     # Configuration
     # -------------------------------------------------------------------------
 
+    def load_gains(self,
+                   kp: int,
+                   kd: int,
+                   ki: int,
+                   il: int = 255,
+                   ol: int = 255,
+                   cl: int = 255,
+                   el: int = 16000,
+                   sr: int = 1,
+                   db: int = 0) -> None:
+        """
+        Load PID gains with sensible defaults (LOAD_GAINS command).
+
+        Simplified interface to set_gains() with default values for testing
+        and basic operation.
+
+        Args:
+            kp: Proportional gain
+            kd: Derivative gain
+            ki: Integral gain
+            il: Integration limit (default: 255 = maximum)
+            ol: Output limit (default: 255 = maximum)
+            cl: Current limit (default: 255 = maximum)
+            el: Position error limit (default: 16000)
+            sr: Servo rate divisor (default: 1 = fastest)
+            db: Deadband (default: 0 = no deadband)
+        """
+        self.set_gains(kp, kd, ki, il, ol, cl, el, sr, db)
+
     def set_gains(self,
                   kp: int, kd: int, ki: int,
                   il: int, ol: int, cl: int,
                   el: int, sr: int, db: int) -> None:
         """
         Set PID gains (LOAD_GAINS command).
+
+        Low-level interface requiring all parameters.
 
         Args:
             kp: Proportional gain
@@ -363,6 +399,83 @@ class LS231SE(LDCNDevice):
         Delegates to Motion subsystem.
         """
         self._motion.disable()
+
+    def stop(self) -> None:
+        """
+        Stop motor motion immediately.
+
+        Delegates to Motion subsystem.
+        """
+        self._motion.stop()
+
+    # -------------------------------------------------------------------------
+    # Diagnostic Convenience Methods
+    # -------------------------------------------------------------------------
+
+    def is_ready(self, mode: str = "LDCN") -> bool:
+        """
+        Check if servo is ready for motion commands.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            True if operational (ServoON, ServoOFF, AxisOFF), False if faulted
+        """
+        return self._status.is_operational(mode)
+
+    def get_condition(self, mode: str = "LDCN"):
+        """
+        Get current diagnostic condition.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            DiagnosticCondition object or None
+        """
+        return self._status.get_condition(mode)
+
+    def print_status(self, include_leds: bool = False, mode: str = "LDCN") -> None:
+        """
+        Print formatted status report to console.
+
+        Args:
+            include_leds: If True, include LED states in output
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+        """
+        print(self._status.format_status(include_leds, mode))
+
+    def is_faulted(self, mode: str = "LDCN") -> bool:
+        """
+        Check if servo is in faulted state.
+
+        Args:
+            mode: "LDCN" or "Amplifier" (default: "LDCN")
+
+        Returns:
+            True if faulted, False otherwise
+        """
+        return self._status.is_faulted(mode)
+
+    # -------------------------------------------------------------------------
+    # Property Access - Subsystems
+    # -------------------------------------------------------------------------
+
+    @property
+    def status(self):
+        """Access to Status subsystem for advanced operations."""
+        return self._status
+
+    @property
+    def motion(self):
+        """Access to Motion subsystem for advanced operations."""
+        return self._motion
+
+    @property
+    def io(self):
+        """Access to IO subsystem for advanced operations."""
+        return self._io
 
     # -------------------------------------------------------------------------
     # Property Access - Common State

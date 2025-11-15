@@ -239,6 +239,133 @@ class Motion:
         from .servo import CMD_STOP_MOTOR
         self._device.send_command(CMD_STOP_MOTOR, [0x00])
 
+    def stop(self, smooth: bool = False) -> None:
+        """
+        Stop motor motion immediately without disabling amplifier.
+
+        Args:
+            smooth: If True, use smooth stop; if False, use abrupt stop (default)
+        """
+        from .servo import CMD_STOP_MOTOR
+        if smooth:
+            stop_ctrl = STOP_SMOOTH | AMP_ENABLE
+        else:
+            stop_ctrl = STOP_ABRUPT | AMP_ENABLE
+        self._device.send_command(CMD_STOP_MOTOR, [stop_ctrl])
+
+    # -------------------------------------------------------------------------
+    # Position Management
+    # -------------------------------------------------------------------------
+
+    def reset_position(self, position: int = 0) -> None:
+        """
+        Reset current position counter (CMD 0x00).
+
+        Args:
+            position: New position value in encoder counts (default 0)
+
+        Note:
+            Does not move motor, only resets position counter.
+            Use this to set a new coordinate system origin.
+        """
+        from .servo import CMD_RESET_POS
+
+        # CMD_RESET_POS format: [pos_low, pos_mid, pos_high, pos_highest]
+        pos_bytes = [
+            position & 0xFF,
+            (position >> 8) & 0xFF,
+            (position >> 16) & 0xFF,
+            (position >> 24) & 0xFF
+        ]
+        self._device.send_command(CMD_RESET_POS, pos_bytes)
+
+        # Update cached position
+        self._state.position = position
+
+    def save_home(self) -> None:
+        """
+        Save current position as home position (CMD 0x0C).
+
+        Stores current position in non-volatile memory as the
+        home reference point. This position can be recalled later
+        for return-to-home operations.
+
+        Note:
+            This command saves to EEPROM. Avoid calling frequently
+            as EEPROM has limited write cycles (~100,000).
+        """
+        from .servo import CMD_SAVE_AS_HOME
+
+        self._device.send_command(CMD_SAVE_AS_HOME, [])
+
+        # Cache the home position
+        if self._state.position is not None:
+            self._state.home_position = self._state.position
+
+    # -------------------------------------------------------------------------
+    # Path Mode (Coordinated Motion)
+    # -------------------------------------------------------------------------
+
+    def add_path_point(
+        self,
+        position: int,
+        velocity: int,
+        accel: int
+    ) -> None:
+        """
+        Add path point to motion buffer (CMD 0x0D).
+
+        Args:
+            position: Target position delta (encoder counts, int8.frac8 format)
+            velocity: Velocity for this segment (counts per servo tick)
+            accel: Acceleration for this segment (counts per tick²)
+
+        The LS-231SE path buffer holds up to 256 points for coordinated motion.
+        Points are executed in FIFO order when path mode is active.
+
+        Path Point Format (int8.frac8):
+            - Bits 15-8: Integer part (signed, -128 to 127)
+            - Bits 7-0: Fractional part (unsigned, 0.0 to 0.99609375)
+        """
+        from .servo import CMD_ADD_PATHPOINT
+
+        # Pack path point: position_delta (2 bytes), velocity (2 bytes), accel (2 bytes)
+        point_data = struct.pack('<hhh', position, velocity, accel)
+        self._device.send_command(CMD_ADD_PATHPOINT, list(point_data))
+
+    def start_path_mode(self) -> None:
+        """
+        Start executing queued path points.
+
+        The servo will execute path points in FIFO order from the internal buffer.
+        Monitor path_count status to see remaining points.
+        """
+        # Use LOAD_TRAJECTORY with path mode flag
+        traj_ctrl = 0x80 | 0x20  # start_now=1, path_mode=1
+        traj_data = struct.pack('<Biii', traj_ctrl, 0, 0, 0)  # Position/vel/accel unused in path mode
+        self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
+
+    def clear_path_buffer(self) -> None:
+        """
+        Clear all queued path points.
+
+        Stops path mode execution and empties the path buffer.
+        """
+        from .servo import CMD_STOP_MOTOR
+
+        # Stop with path mode clear flag
+        stop_ctrl = 0x80  # Clear path buffer
+        self._device.send_command(CMD_STOP_MOTOR, [stop_ctrl])
+
+    def get_path_count(self) -> int:
+        """
+        Get number of path points remaining in buffer.
+
+        Returns:
+            Number of points in path buffer (0-256)
+        """
+        return self._state.path_count if self._state.path_count is not None else 0
+
 
 class Trajectory:
     """

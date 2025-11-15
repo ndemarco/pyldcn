@@ -106,8 +106,20 @@ The `pyldcn.devices.sk2310g2` module provides encoding/decoding utilities for SK
 - `format_status(status)` - Format status dict as human-readable multi-line string
 - `format_led_pattern(diagnostic)` - Format diagnostic code as LED pattern (🟢⚫🟢🟢🟢)
 
-**Data Access:**
-- `DIAGNOSTIC_CODES[code]` - Lookup table mapping codes (0x00-0x1F) to condition descriptions
+**Diagnostic Code Access:**
+- `get_diagnostic_state(code)` - Get DiagnosticState object for a code (0x00-0x1F)
+- `is_power_ready(code)` - Check if system ready to accept power-on
+- `is_power_enabled(code)` - Check if power outputs A/B are active
+- `is_guard_open(code, guard_num)` - Check if specific guard (1 or 2) is open
+- `is_guard_closed(code, guard_num)` - Check if specific guard (1 or 2) is closed
+- `is_manual_override_active(code)` - Check if manual override is active
+- `is_safe_zone(code)` - Check if machine is in safe zone
+- `is_spindle_stopped(code)` - Check if spindle is stopped
+- `get_error_type(code)` - Get error classification ("FAULT", "STOP", "INIT", or None)
+
+**Diagnostic Data Structure:**
+- `DIAGNOSTIC_CODES` - Tuple of DiagnosticState objects for all 32 codes
+- `DiagnosticState` - NamedTuple with attributes: code, condition, guard_1, guard_2, safe_zone, spindle_stopped, manual_override, power_ready, power_enabled, error_type
 
 **Output Encoding:**
 - `encode_output_byte0(outputs)` - Encode digital outputs 1-8 for SET_OUTPUTS command
@@ -535,52 +547,52 @@ diagnostic = (byte1 >> 3) & 0x1F
 
 **Example:** Diagnostic code 0x06 = binary `00110`
 - Bit pattern: 0-0-1-1-0
-- LED display: ⚫⚫🟢🟢⚫ (LEDs 3,2 ON; LEDs 5,4,1 OFF)
+- LED display: ⚫⚫oo⚫ (LEDs 3,2 ON; LEDs 5,4,1 OFF)
 - Condition: "Power UP Home error"
 
 ## Diagnostic Code Table
 
 **Encoding:** Byte1 bits [7:3] in CMD_READ_STATUS response
 
-**LED Legend:** ⚫ = OFF, 🟢 = ON, 🟡 = Flashing
+**LED Legend:** ⚫ = OFF, o = ON, * = Flashing
 
 | Code | LED Pattern (5-4-3-2-1) | Condition | Power Ready† | Power A/B |
 |------|-------------------------|-----------|--------------|-----------|
-| 0x00 | 🟡🟡🟡🟡🟡 | Power OFF delay in progress | OFF | ON |
-| 0x01 | ⚫⚫⚫⚫🟡 | Initializing | OFF | OFF |
-| 0x02 | ⚫⚫⚫🟢⚫ | Control voltage shorted | OFF | OFF |
-| 0x03 | ⚫⚫⚫🟢🟢 | Output shorted | OFF | OFF |
-| 0x04 | ⚫⚫🟢⚫⚫ | Control voltage LOW (less than 18V) | OFF | OFF |
-| 0x05 | ⚫⚫🟢⚫🟢 | Home/Test switch malfunction (both contacts ON) | Prior state | Prior state |
-| 0x06 | ⚫⚫🟢🟢⚫ | Power UP Home error | OFF | OFF |
-| 0x07 | ⚫⚫🟢🟢🟢 | Power UP manual override error | OFF | OFF |
-| 0x08 | ⚫🟢⚫⚫⚫ | System LOCKED | OFF | OFF |
-| 0x09 | ⚫🟢⚫⚫🟢 | Watchdog Stop | OFF | OFF |
-| 0x0A | ⚫🟢⚫🟢⚫ | Safety Link Error | OFF | OFF |
-| 0x0B | ⚫🟢⚫🟢🟢 | Guard Open Stop - Guards open, spindle not stopped (contacts OK) | OFF | OFF |
-| 0x0B | ⚫🟡⚫🟡🟡 | Guard Open Stop - Guards open, spindle not stopped (contact fault) | OFF | OFF |
-| 0x0C | ⚫🟢🟢⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contacts OK) | OFF | OFF |
-| 0x0C | ⚫🟡🟡⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contact fault) | OFF | OFF |
-| 0x0D | ⚫🟢🟢⚫🟢 | Guard Open Stop - Manual override without Enable button held (contacts OK) | OFF | OFF |
-| 0x0D | ⚫🟡🟡⚫🟡 | Guard Open Stop - Manual override without Enable button held (contact fault) | OFF | OFF |
-| 0x0E | ⚫🟡🟡🟡⚫ | Guard contact fault (one or more contacts malfunctioning) | Prior state | Prior state |
-| 0x0F | ⚫🟢🟢🟢🟢 | Limit Switch Stop | OFF | OFF |
-| 0x10 | 🟢⚫⚫⚫⚫ | Emergency Stop | OFF | OFF |
-| 0x11 | 🟢⚫⚫⚫🟢 | Emergency Stop contact fault or Monitor Loop Open | OFF | OFF |
-| 0x12 | 🟢⚫⚫🟢⚫ | Busy (≤6s) or Power button short/Monitor Loop Open (>6s) | OFF | OFF |
-| 0x13 | 🟢⚫⚫🟢🟢 | Motor Power Supply under-voltage | ON | ON |
-| 0x14 | 🟢⚫🟢⚫⚫ | Guard-1 Open; Guard-2 Open (ready to power) | OFF | OFF |
-| 0x15 | 🟢⚫🟢⚫🟢 | Guard-1 Closed; Guard-2 Open (ready to power) | OFF | OFF |
-| 0x16 | 🟢⚫🟢🟢⚫ | Guard-1 Open; Guard-2 Closed (ready to power) | OFF | OFF |
-| 0x17 | 🟢⚫🟢🟢🟢 | Guard-1 Closed; Guard-2 Closed (ready to power) | OFF | OFF |
-| 0x18 | 🟢🟢⚫⚫⚫ | Guard-1 Open; Guard-2 Open; Manual override | ON | ON |
-| 0x19 | 🟢🟢⚫⚫🟢 | Guard-1 Closed; Guard-2 Open; Manual override | ON | ON |
-| 0x1A | 🟢🟢⚫🟢⚫ | Guard-1 Open; Guard-2 Closed; Manual override | ON | ON |
-| 0x1B | 🟢🟢⚫🟢🟢 | Guard-1 Closed; Guard-2 Closed; Manual override | ON | ON |
-| 0x1C | 🟢🟢🟢⚫⚫ | Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
-| 0x1D | 🟢🟢🟢⚫🟢 | Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
-| 0x1E | 🟢🟢🟢🟢⚫ | Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped | ON | ON |
-| 0x1F | 🟢🟢🟢🟢🟢 | **Normal operation** - All guards closed | ON | ON |
+| 0x00 | ***** | Power OFF delay in progress | OFF | ON |
+| 0x01 | ⚫⚫⚫⚫o | Initializing | OFF | OFF |
+| 0x02 | ⚫⚫⚫o⚫ | Control voltage shorted | OFF | OFF |
+| 0x03 | ⚫⚫⚫oo | Output shorted | OFF | OFF |
+| 0x04 | ⚫⚫o⚫⚫ | Control voltage LOW (less than 18V) | OFF | OFF |
+| 0x05 | ⚫⚫o⚫o | Home/Test switch malfunction (both contacts ON) | Prior state | Prior state |
+| 0x06 | ⚫⚫oo⚫ | Power UP Home error | OFF | OFF |
+| 0x07 | ⚫⚫ooo | Power UP manual override error | OFF | OFF |
+| 0x08 | ⚫o⚫⚫⚫ | System LOCKED | OFF | OFF |
+| 0x09 | ⚫o⚫⚫o | Watchdog Stop | OFF | OFF |
+| 0x0A | ⚫o⚫o⚫ | Safety Link Error | OFF | OFF |
+| 0x0B | ⚫o⚫oo | Guard Open Stop - Guards open, spindle not stopped (contacts OK) | OFF | OFF |
+| 0x0B | ⚫*⚫** | Guard Open Stop - Guards open, spindle not stopped (contact fault) | OFF | OFF |
+| 0x0C | ⚫oo⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contacts OK) | OFF | OFF |
+| 0x0C | ⚫**⚫⚫ | Guard Open Stop - Guards open, not in safe zone (contact fault) | OFF | OFF |
+| 0x0D | ⚫oo⚫o | Guard Open Stop - Manual override without Enable button held (contacts OK) | OFF | OFF |
+| 0x0D | ⚫**⚫* | Guard Open Stop - Manual override without Enable button held (contact fault) | OFF | OFF |
+| 0x0E | ⚫***⚫ | Guard contact fault (one or more contacts malfunctioning) | Prior state | Prior state |
+| 0x0F | ⚫oooo | Limit Switch Stop | OFF | OFF |
+| 0x10 | o⚫⚫⚫⚫ | Emergency Stop | OFF | OFF |
+| 0x11 | o⚫⚫⚫o | Emergency Stop contact fault or Monitor Loop Open | OFF | OFF |
+| 0x12 | o⚫⚫o⚫ | Busy (≤6s) or Power button short/Monitor Loop Open (>6s) | OFF | OFF |
+| 0x13 | o⚫⚫oo | Motor Power Supply under-voltage | ON | ON |
+| 0x14 | o⚫o⚫⚫ | Guard-1 Open; Guard-2 Open (ready to power) | OFF | OFF |
+| 0x15 | o⚫o⚫o | Guard-1 Closed; Guard-2 Open (ready to power) | OFF | OFF |
+| 0x16 | o⚫oo⚫ | Guard-1 Open; Guard-2 Closed (ready to power) | OFF | OFF |
+| 0x17 | o⚫ooo | Guard-1 Closed; Guard-2 Closed (ready to power) | OFF | OFF |
+| 0x18 | oo⚫⚫⚫ | Guard-1 Open; Guard-2 Open; Manual override | ON | ON |
+| 0x19 | oo⚫⚫o | Guard-1 Closed; Guard-2 Open; Manual override | ON | ON |
+| 0x1A | oo⚫o⚫ | Guard-1 Open; Guard-2 Closed; Manual override | ON | ON |
+| 0x1B | oo⚫oo | Guard-1 Closed; Guard-2 Closed; Manual override | ON | ON |
+| 0x1C | ooo⚫⚫ | Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
+| 0x1D | ooo⚫o | Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped | ON | ON |
+| 0x1E | oooo⚫ | Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped | ON | ON |
+| 0x1F | ooooo | **Normal operation** - All guards closed | ON | ON |
 
 † **Power Ready:** Indicates if power enable signal allows power-on. The action to enable Power On depends is configured by [J21](#j21---power-on-control-method).
 

@@ -395,17 +395,12 @@ class SafetyMonitor:
 
     def _decode_diagnostic(self, code: int) -> str:
         """Decode SK-2310g2 diagnostic code to human-readable string"""
-        # From sk2310g2_safety.md Section 6
-        diagnostics = {
-            0x00: "Power OFF delay / Not ready",
-            0x04: "Control voltage LOW (<18V)",
-            0x0A: "Safety Link Error (chain broken)",
-            0x10: "Emergency Stop active",
-            0x14: "Covers open, ready to power",
-            0x1C: "At Home, spindle stopped, covers open",
-            0x1F: "Normal operation - ready",
-        }
-        return diagnostics.get(code, f"See diagnostic table for 0x{code:02X}")
+        from pyldcn.devices.sk2310g2 import get_diagnostic_state
+
+        state = get_diagnostic_state(code)
+        if state:
+            return state.condition
+        return f"Unknown diagnostic code 0x{code:02X}"
 
 
 def main():
