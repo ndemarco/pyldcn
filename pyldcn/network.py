@@ -24,6 +24,27 @@ Usage Example:
         servo.initialize()
         servo.move_to(position=10.0, velocity=100.0, accel=50.0, scale=2000.0)
 
+===============================================================================
+USAGE GUIDANCE
+===============================================================================
+
+This module provides network-level orchestration. Most user code should NOT
+call network.send_command() directly - use device methods instead.
+
+Correct Usage:
+    # GOOD - Use device helper methods
+    servo = network.devices[0]
+    servo.read_status()
+    servo.move_to(position=1000)
+
+    # ACCEPTABLE - Network-level operations
+    network.initialize()
+    network.set_baud_rate(125000)
+    network.reset()
+
+    # DISCOURAGED - Low-level command sending
+    network.send_command(addr, cmd, data)  # Use device.send_command() instead
+
 Author: NickyDoes
 License: GPL v2 or later
 Date: 2025-10-29

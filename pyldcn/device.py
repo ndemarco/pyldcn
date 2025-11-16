@@ -3,6 +3,45 @@ LDCN Base Device Classes
 
 Abstract base class and utilities for all LDCN devices.
 
+===============================================================================
+DEVICE IMPLEMENTATION GUIDE
+===============================================================================
+
+When implementing device-specific methods:
+- Use self.send_command() for low-level command operations
+- PREFER creating named helper methods over exposing raw send_command()
+- ALWAYS check if a helper method already exists before creating new commands
+
+Correct Usage Pattern:
+    # GOOD - Use existing helper methods
+    status = device.read_status()
+    device.move_to(position=1000, velocity=500)
+
+    # ACCEPTABLE - Create new helper method in device class
+    def read_temperature(self):
+        response = self.send_command(CMD_READ_TEMP, [0x01])
+        return response[0]
+
+    # BAD - Calling protocol or network directly from device
+    self.network.protocol.send_command(...)  # WRONG!
+    self.network.send_command(...)           # WRONG!
+
+AI Assistant Guidelines:
+- ALWAYS search for existing helper methods first (read_status, move_to, etc.)
+- If no helper exists, create one with a descriptive name
+- DO NOT use protocol.send_command() or network.send_command() from devices
+- DO use self.send_command() when implementing new device methods
+- Example: Use device.read_status() NOT device.send_command(CMD_READ_STATUS)
+
+Abstraction Hierarchy:
+    device.read_status()         # BEST - Named helper method
+        ↓
+    device.send_command()        # GOOD - Device-level command
+        ↓
+    network.send_command()       # Avoid from devices
+        ↓
+    protocol.send_command()      # Never use from devices
+
 Author: NickyDoes
 License: GPL v2 or later
 """

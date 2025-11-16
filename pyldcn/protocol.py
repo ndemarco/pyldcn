@@ -4,6 +4,34 @@ LDCN Protocol Layer
 Low-level LDCN protocol implementation handling serial communication,
 packet formatting, and baud rate management.
 
+===============================================================================
+ARCHITECTURAL WARNING: LOW-LEVEL MODULE
+===============================================================================
+
+This module contains LOW-LEVEL infrastructure code. Direct use of
+protocol.send_command() is DISCOURAGED outside of network/discovery modules.
+
+ARCHITECTURAL RULES:
+- protocol.send_command() is LOW LEVEL - only network.py and discovery.py should call it
+- Device classes MUST use device.send_command() or higher-level helpers
+- User code SHOULD use named methods (device.read_status(), servo.move_to(), etc.)
+
+Correct Abstraction Layers:
+    protocol.send_command()      # LOW LEVEL - protocol/discovery infrastructure only
+        ↑
+    network.send_command()       # MID LEVEL - network orchestration (delegates to protocol)
+        ↑
+    device.send_command()        # HIGH LEVEL - device methods (delegates to network)
+        ↑
+    device.read_status()         # HIGHEST - named helper methods (PREFERRED for user code)
+
+AI Assistant Guidelines:
+- DO NOT call protocol.send_command() directly from device classes
+- DO use device.send_command() if creating new device methods
+- PREFER using existing helper methods (read_status, move_to, etc.)
+- CHECK if a helper method exists before using send_command()
+- When in doubt, use the highest-level abstraction available
+
 Author: NickyDoes
 License: GPL v2 or later
 """
@@ -29,7 +57,7 @@ HEADER = 0xAA
 ADDRESS_UNADDRESSED = 0x00
 ADDRESS_GROUP = 0xFF
 
-# Generic LDCN commands (supported by all device types)
+# Generic LDCN commands (supported by all device types) from docs/ldcn_protocol.md
 CMD_SET_ADDRESS = 0x01
 CMD_DEFINE_STATUS = 0x02
 CMD_READ_STATUS = 0x03
