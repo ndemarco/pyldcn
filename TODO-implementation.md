@@ -2,28 +2,95 @@
 
 ## SK-2310g2 Missing Features
 
-### 1. CMD_READ_OUTPUT (0x0E) Implementation
+### 1. Output State Tracking (No Hardware Read Support)
 
 **Priority: High**
 
-Currently, the `read_digital_outputs()` method is referenced in example code but does not exist in the implementation.
+**Problem Analysis:**
+
+There is **NO hardware command** to read output states from LDCN I/O devices:
+- **CMD 0x0E is NOP** - Returns status data, not output states
+- **CMD_DEFINE_STATUS (0x02)** - Does not return output status
+- **Hardware does not support reading outputs** - Outputs are write-only
+
+**Output State Determination:**
+
+Output states must be **tracked in software** based on:
+
+1. **Initial State** - State when device initialized
+2. **Explicit Write Operations** - All `CMD_SET_OUTPUTS`, `CMD_WRITE_OUTPUT` commands
+3. **Special Function Side Effects** - Some outputs change based on system state
+
+**Device-Specific Complexity:**
+
+**LS-773 (Generic I/O):**
+- Simple case: Outputs = last written state
+- Track byte0 and byte1 from all write operations
+
+**SK-2310g2 (Supervisory Controller):**
+- Complex case: Some outputs have **special functions** that override written values
+- Special function behavior depends on **jumper configuration** (J10, J16, J19, J20, J21, etc.)
+- Examples of special functions:
+  - **Output 9 (Byte1/Bit1)**: Guard Lock - changes based on safe state, manual override, spindle stopped
+  - **Output 12 (Byte1/Bit4)**: Safety Link Bridge - safety-critical, interlock with spindle
+  - **Output 15 (Byte1/Bit7)**: Power ON - affected by J21 jumper, power button state
+- Special function state can be **inferred** from:
+  - Diagnostic codes (0x00-0x1F)
+  - Input status (Byte1 safe_state, manual_override, spindle_stopped)
+  - System mode (power state, guard states)
+  - Jumper configuration (if known)
+
+**Implementation Strategy:**
+
+**Phase 1: Base Output State Tracker (IOController class)**
+- Track basic output state (byte0, byte1) in `IOController` base class
+- Intercept all output write methods (`set_outputs()`, `set_output_bit()`, etc.)
+- Store shadow state in `self._output_state = {'byte0': 0x00, 'byte1': 0x00}`
+- Implement `read_digital_outputs()` returning tracked state
+- Implement `get_output_bit(bit)` for individual bit queries
+
+**Phase 2: SK-2310g2 Special Function Inference (SK2310g2 class)**
+- Override `read_digital_outputs()` to merge tracked state with inferred special functions
+- Infer special function output states from:
+  - `diagnostic_code` - Guard Lock state from codes 0x14-0x1F
+  - `status['safe_state']` - Safe state affects Guard Lock
+  - `status['manual_override']` - Manual override affects multiple outputs
+  - `status['spindle_stopped']` - Spindle state affects Guard Lock unlock
+- Document jumper dependencies for each special function
+- Mark inferred values with confidence level (definite vs. probable)
+
+**Phase 3: Jumper Configuration Tracking (Future)**
+- Add optional jumper configuration to SK2310g2 initialization
+- Use jumper config to improve special function inference accuracy
+- Validate inferred states against jumper-dependent behaviors
 
 **Required Work:**
-- Implement `CMD_READ_OUTPUT` protocol handler in `pyldcn/protocol.py` (verify command code 0x0E)
-- Add `read_digital_outputs()` method to SK2310g2 class in `pyldcn/devices/io.py`
-- Parse response Byte0 (digital outputs 1-8) and Byte1 (internal control outputs 9-16)
-- Decode Byte1 bits according to SK-2310g2 manual:
-  - Bit 0: Output9 (Internal control)
-  - Bit 1: Guard Lock (0=Unlocked, 1=Locked)
-  - Bit 2: Output11 (Internal control)
-  - Bit 3: Output12 (Manual override inhibit)
-  - Bit 4: Safety Link Bridge (0=Normal, 1=Bridged)
-  - Bit 5: Output14 (Internal control)
-  - Bit 6: Output15 (Guard unlock control when J19 shorted)
-  - Bit 7: Power ON Command (Software power control when J21 shorted)
-- Add helper method `read_output_states()` returning dictionary with named fields
-- Update examples/read_sk2310g2_status.py to verify functionality
-- **Hardware verification required** - test on physical SK-2310g2 device
+
+**IOController Base Class** (`pyldcn/devices/io.py`):
+- Add `_output_state` dictionary to `__init__()`
+- Intercept `set_outputs()` to update `_output_state`
+- Implement `read_digital_outputs()` returning `_output_state`
+- Implement `get_output_bit(bit)` helper method
+- Add `reset_output_state()` for initialization/reset scenarios
+
+**SK2310g2 Device Class** (`pyldcn/devices/io.py`):
+- Override `read_digital_outputs()` to add special function inference
+- Implement `_infer_guard_lock_state()` using diagnostic codes
+- Implement `_infer_power_state()` using diagnostic codes
+- Implement `_infer_safety_link_bridge()` (always 0 if spindle enabled)
+- Document which outputs are write-only vs. inferred vs. tracked
+- Add docstring warnings about inference limitations
+
+**Documentation Requirements:**
+- Document that outputs are **NOT readable from hardware**
+- Explain tracked vs. inferred output states
+- List jumper dependencies for special functions
+- Warn about state desync if outputs changed externally (impossible but document)
+
+**Testing Strategy:**
+- Unit tests for output state tracking (write then read)
+- Integration tests comparing inferred states with known diagnostic codes
+- **Hardware verification**: Set outputs, read diagnostics, verify inference accuracy
 
 ### 2. Analog Output Control
 
