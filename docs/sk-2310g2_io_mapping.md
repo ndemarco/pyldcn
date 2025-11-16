@@ -48,7 +48,7 @@ Digital inputs are returned in the status response as a 16-bit word split into t
 Inputs = Byte1:Byte0 (MSB:LSB)
          ↓    ↓
       [15:8][7:0]
-```text
+```
 
 **Reading Inputs:**
 
@@ -65,7 +65,7 @@ inputs = (byte1 << 8) | byte0  # 16-bit word
 # Check specific input
 if inputs & (1 << 5):  # Input 5 (Air Pressure)
     print("Air pressure OK")
-```text
+```
 
 For detailed status configuration options, see [sk-2310g2_status_reporting.md](sk-2310g2_status_reporting.md).
 
@@ -134,7 +134,7 @@ Digital outputs are sent as a 16-bit word split into two bytes:
 Outputs = Byte1:Byte0 (MSB:LSB)
           ↓    ↓
         [15:8] [7:0]
-```text
+```
 
 **Writing Outputs:**
 
@@ -148,7 +148,7 @@ outputs |= (1 << 9)   # Set Output 9 (Guard Lock)
 byte0 = outputs & 0xFF
 byte1 = (outputs >> 8) & 0xFF
 send_command(CMD_SET_OUTPUTS, [byte0, byte1])
-```text
+```
 
 ### Digital Output Electrical Specifications
 
@@ -158,7 +158,7 @@ Outputs use dry contact relays:
 |---------------|-------|-------|
 | **V_max** | 40VDC | Dry contact relay outputs |
 | **I_max** | 0.5A | Per output |
-$H_2O$
+
 
 ### Byte0 - Application Outputs (Bits 0-7)
 
@@ -227,7 +227,7 @@ response = send_command(CMD_READ_STATUS, [0xFF, 0xFF])
 ain0 = response[3]  # Analog 0 (0-255 for 0-10V)
 ain1 = response[4]  # Analog 1 (0-255 for 0-5V)
 ain2 = response[5]  # Analog 2 (0-255 for 0-5V)
-```text
+```
 
 ## Analog Output (1 channel)
 
@@ -246,7 +246,7 @@ dac_value = int((speed_percent / 100.0) * 255)
 
 # Send to PWM/DAC (data format TBD - likely [channel, value])
 send_command(CMD_SET_PWM_IO, [channel, dac_value])
-```text
+```
 
 ## I/O Connector Reference
 
@@ -463,7 +463,7 @@ def read_spindle_status(self) -> Dict[str, Any]:
         'at_speed': self._get_bit(inputs, INPUT_SPINDLE_AT_SPEED),
         'load_voltage': self.read_analog_input(ANALOG_IN_SPINDLE_LOAD),
     }
-```text
+```
 
 ### Example: Guard Lock Control Implementation
 
@@ -478,7 +478,7 @@ def lock_guards(self) -> None:
 def unlock_guards(self) -> None:
     """Unlock guard doors (if conditions allow)."""
     self.set_output_bit(OUTPUT_GUARD_LOCK, False)
-```text
+```
 
 ## Related Documentation
 
