@@ -11,24 +11,27 @@
 
 The SK-2310g2 uses **LS-773 format**, NOT standard LDCN format. This is critical for correct parsing.
 
-### Key Differences from Standard LDCN:
+### Key Differences from Standard LDCN
 
 1. **Response byte order is different**: Byte0/Byte1 come FIRST, immediately after status byte
 2. **NOP returns minimal status**: Only `[status_byte, checksum]` - no diagnostic code
 3. **CMD_READ_STATUS required**: Must use CMD_READ_STATUS (0x03) with `[0xFF, 0xFF]` to get diagnostic
 
-### LS-773 Response Format:
+### LS-773 Response Format
+
 ```
 [status] [byte0] [byte1] [position] [ad] [velocity] [aux] [home] [dev_id] [pos_err] [pathbuf] [analog] [checksum]
  idx=0    idx=1   idx=2    idx=3-6   ...
 ```
 
 **NOT** standard LDCN format:
+
 ```
 [status] [position] [ad] [velocity] ... [byte0] [byte1] [analog] [checksum]  ← WRONG for SK-2310g2
 ```
 
-### Correct Implementation:
+### Correct Implementation
+
 ```python
 # Method 1: Use the dedicated parser (recommended)
 from pyldcn.devices.sk2310g2 import parse_ls773_status
@@ -42,7 +45,8 @@ byte1 = response[2]  # Internal status + diagnostic
 diagnostic = (byte1 >> 3) & 0x1F  # Extract diagnostic from Byte1 bits [7:3]
 ```
 
-### Incorrect Approaches:
+### Incorrect Approaches
+
 ```python
 # WRONG: Using NOP - no diagnostic code returned
 response = send_command(addr, CMD_NOP)  # Returns only [status] [checksum]
@@ -57,6 +61,7 @@ byte1 = response[19]  # Would read wrong data - this is analog data in LS-773 fo
 ## Document Purpose
 
 This document covers:
+
 - Safety system architecture and jumper configuration
 - Application-specific wiring and integration
 - Diagnostic codes and troubleshooting
@@ -67,27 +72,32 @@ This document covers:
 **Prerequisites:** Read [safety_bus.md](safety_bus.md) for generic Safety Bus specification.
 
 **Terminology Note:** Certain Logosol documentation terms may be confusing to US English speakers:
+
 - **"Cover"** = Safety guard/guarding
 - **"At Home"** = Machine in safe state
 - **"Test Mode"** = Manual override mode (key-switch inhibited, allows limited unguarded operations, optionally with operator presence detection input enabled)
 - **"ACK" (acknowledgewledge)** - Enable, enables motion when guarding is not ensured to be safe.
 - **UM** or **Um** = Motor voltage (from German *Ursprung der Spannung* = potential difference)
+
 ---
 
 ## Quick Navigation
 
 **Getting Started:**
+
 - [Safety System Overview](#safety-system-overview)
 - [Jumper Quick Reference](#jumper-quick-reference)
 - [Configuration Recipes](#configuration-recipes)
 
 **Usage:**
+
 - [LDCN Command Reference](#ldcn-command-reference)
 - [Diagnostic Codes](#diagnostic-codes)
 - [Troubleshooting](#troubleshooting-by-symptom)
 - [Testing Procedures](#testing-procedures)
 
 **Reference:**
+
 - [Python API Reference](#python-api-reference)
 - [Wiring Examples](#wiring-examples)
 - [Detailed Jumper Configuration](#detailed-jumper-configuration)
@@ -102,11 +112,13 @@ The `pyldcn.devices.sk2310g2` module provides encoding/decoding utilities for SK
 ## Module Functions
 
 **Status Parsing:**
+
 - `parse_ls773_status(response)` - Parse LS-773 format response into status dictionary
 - `format_status(status)` - Format status dict as human-readable multi-line string
 - `format_led_pattern(diagnostic)` - Format diagnostic code as LED pattern (🟢⚫🟢🟢🟢)
 
 **Diagnostic Code Access:**
+
 - `get_diagnostic_state(code)` - Get DiagnosticState object for a code (0x00-0x1F)
 - `is_power_ready(code)` - Check if system ready to accept power-on
 - `is_power_enabled(code)` - Check if power outputs A/B are active
@@ -118,10 +130,12 @@ The `pyldcn.devices.sk2310g2` module provides encoding/decoding utilities for SK
 - `get_error_type(code)` - Get error classification ("FAULT", "STOP", "INIT", or None)
 
 **Diagnostic Data Structure:**
+
 - `DIAGNOSTIC_CODES` - Tuple of DiagnosticState objects for all 32 codes
 - `DiagnosticState` - NamedTuple with attributes: code, condition, guard_1, guard_2, safe_zone, spindle_stopped, manual_override, power_ready, power_enabled, error_type
 
 **Output Encoding:**
+
 - `encode_output_byte0(outputs)` - Encode digital outputs 1-8 for SET_OUTPUTS command
 - `encode_output_byte1(power_a, power_b)` - Encode power outputs A/B for SET_OUTPUTS command
 
@@ -146,6 +160,7 @@ See module source for detailed function signatures and usage examples.
 The SK-2310g2 serves as the **safety system coordinator** in LDCN-based CNC systems:
 
 **Core Safety Functions:**
+
 1. **Emergency Stop Monitoring** - Five e-stop connections
 2. **Dual Guarded Zones** - Two guard monitor circuits with positive lock
 3. **Safe State Detection** - Machine is considered safe when guards are closed and drives stationary
@@ -157,33 +172,41 @@ The SK-2310g2 serves as the **safety system coordinator** in LDCN-based CNC syst
 9. **Diagnostic Reporting** - Diagnostic LEDs and status codes indicate system state
 
 ---
+
 ## Emergency Stop
+
 Operators command an emergency stop (e-stop) by activating an emergency stop switch. E-stop switches operate two electrically independent normally closed contacts. The 2310g2 supports e-stop switches via [any of four connectors](#cn3---safety-bus-connector),  monitored in parallel; activating any e-stop switch puts the 2310g2 in emergency stop state.
 
 The integrity of the e-stop system is assured by:
+
 1. Normally closed architecture - failure of a wire activates e-stop
 1. dual circuit - failure of a single switch contact raises a [system alarm](#diagnostic-codes)
 
 **E-stop state**
 Enterint e-stop state:
+
 - disconnects drive motor (UM) power (CN16.8)
 - disables SafetyLINK drive enable (CN3.3)
 - disconnects spindle power supply (? how)
 - affects digital outputs and status code
 
 **Timing Requirement:**
+
 - Transition time between contacts must not exceed 100msec
 - Exceeding this triggers [home sensor fault (diagnostic code 0x05)](#diagnostic-code-table)
 
 **Related states:**
+
 - Normal - contacts A & B were closed simultaneously
 - Timing violation - contacts closed with >100msec interval
 - Invalid state at power-up - e-stop contacts not in a valid state when system powered on (e.g., one contact open and one closed, indicating damaged switch or wiring fault). See [diagnostic code 0x06](#diagnostic-code-table)
 
 ## Guard Door Management
+
 Up to two guarded zones may be configured. Select restricted operations can be allowed when one of the guard zones is open.
 
 Guard doors can be in several states depending on configuration and operating mode:
+
 - **Locked/Closed** - Normal production mode, guards secured and locked
 - **Unlocked Safe State** - Machine in safe state, guards can be opened for access
 - **Manual Override Unlock** - Manual override with keyswitch and enable button held
@@ -192,38 +215,44 @@ Guard doors can be in several states depending on configuration and operating mo
 See [CMD_READ_OUTPUT](#cmd_read_output-0x0e---output-status) for Guard Lock status bit and [Jumper Configuration](#j19---guard-lockunlock-control-mode) for control modes.
 
 ## Safe State Concept with Restricted Manual Override
+
 The machine can be in different states of operator protection, meant to allow reduced functions for setup or maintenenance. The safe state depends on restricted mode selection, normally via a key switch, an operator presence detection, and the overall configuration of the SK-2310g2
 
 ## Safety Link Bus
+
 Each device is series-linked via a hardware bus (independent of the LDCN) to:
+
 - form an electrical safety chain where any single device fault stops all devices
 - share enable and fault states across all devices.
 
 **Valid States:**
+
 - **Normal** - All safety conditions met, system operational
 - **Fault** (Safety Link OUT = LOW) - E-stop activated, guard open, or diagnostic fault
 - **Chain Broken** ([diagnostic code 0x0A](#diagnostic-code-table)) - Downstream device in fault or disconnected
 
 See [CN3 Safety Bus Connector](#cn3---safety-bus-connector) for signal details.
 
-
 ### Zero Speed Automation Mode
 
 Alternative safe state detection without physical home switch. Machine is in safe state when all motion has stopped:
 
 **Safe state active when:**
+
 - All motors stopped >2 seconds (Zero Speed signal ON), AND
 - Spindle stopped (Inputs/Byte0/Bit2 = 1), AND
 - Guard Lock output cleared (Outputs/Byte1/Bit1 = 0)
 
 **Jumper Configuration:**
+
 - J10-1 and J10-4: Configure for Zero Speed operation (see [J10 section](#j10---at-home-safe-zone-detection))
 - CN8 (Home connector): Not used in this mode
 
 ## Manual Override (Test Mode)
+
 Manual override allows certain actions when guards are not safe.
 
-The 
+The
 
 **Operation:** manual override capability is enabled by clearing output 11 (byte 1, bit 3). The operator then activates the physical manual override switch. The controller enters manual override mode. The software can disable manual override at any time by setting Byte 1, bit 3 to 1, providing programmatic control over when manual intervention is permitted.
 
@@ -238,10 +267,12 @@ To enter manual override, all of the following conditions must be met:
 **Note:** The SK-2310g2 datasheet inconsistently notates this bit as "Outputs / Byte1 and Bit3" in the CN15 description (page 9), but correctly identifies it as "Outputs / Byte1 / Bit3" elsewhere in the document.
 
 ## Power Control and Monitoring
+
 The integrated power supply delivers 24Vdc control power continuously. A separate, switched 80Vdc or 120Vdc power supply provides motive power to the drives and spindle. This supply must be enabled.
 
 **Power State Determination**
 Power state is indicated by the diagnostic code, NOT the status byte bit 3:
+
 - **Power OFF**: Diagnostic codes 0x00-0x13 (power not available, except 0x05/0x0E special cases)
 - **Ready to Power** (OFF): 0x14-0x17 (conditions met but not powered)
 - **Power ON**: 0x13 (motor power supply under-voltage but ON), 0x18-0x1F (normal power-on states)
@@ -254,7 +285,6 @@ Drive power will be enabled when safety conditions are met and power button is p
 
 **Drive Power Supply Monitoring**
 When enabled, the power supply connects `loop source` to `loop input`. This loop is monitored by the SK-2310g2.
-
 
 # Jumper Reference
 
@@ -277,11 +307,13 @@ When enabled, the power supply connects `loop source` to `loop input`. This loop
 ## Jumper Interaction Warnings
 
 Spindle operation with guards open (manual override mode):
+
 - J10-3 = SHORT
 - J16 = 1-2 SHORT
 - J20 = SHORT
 
 Manual Lock/Unlock buttons:
+
 - J10-2 = SHORT
 - J19 = SHORT
 
@@ -292,6 +324,7 @@ Leave J18 OPEN - reserved for future use
 ---
 
 # Configuration Recipes
+
 TODO: Each recipe needs to be validated.
 
 ## Recipe 1: Standard Production CNC
@@ -313,6 +346,7 @@ TODO: Each recipe needs to be validated.
 | J21 | OPEN | Power ON button only |
 
 **Safety Characteristics:**
+
 - ✓ Spindle never runs with guards open
 - ✓ Guards unlock only when spindle stopped
 - ✓ Manual unlock button required
@@ -339,6 +373,7 @@ TODO: Each recipe needs to be validated.
 | J21 | SHORT | Power ON via button or software |
 
 **Safety Characteristics:**
+
 - ⚠️ Spindle CAN run with guards open in manual override
 - ⚠️ Requires manual override keyswitch + Acknowledge
 - ⚠️ Return to Recipe 1 for production
@@ -364,6 +399,7 @@ TODO: Each recipe needs to be validated.
 | J21 | SHORT | Power ON via button or software |
 
 **Safety Characteristics:**
+
 - ✓ Automatic guard unlock when all motors stopped
 - ✓ No physical manual override switch required
 - ✓ Spindle never runs with guards open
@@ -377,6 +413,7 @@ TODO: Each recipe needs to be validated.
 ### CMD_READ_STATUS (0x00) - Digital Inputs
 
 **Example:**
+
 ```python
 from pyldcn.devices.io import SK2310g2
 
@@ -387,11 +424,13 @@ print(f"{diagnostic['description']} (Code: {diagnostic['code_hex']})")
 ```
 
 **Command Format:**
+
 ```
 [0x00, addr]
 ```
 
 **Response Format:**
+
 ```
 [NW, HW, Addr, Grp, stat, byte0, byte1, chk]
 ```
@@ -423,6 +462,7 @@ print(f"{diagnostic['description']} (Code: {diagnostic['code_hex']})")
 ### CMD_READ_OUTPUT (0x0E) - Output Status
 
 **Example:**
+
 ```python
 # Read current output states
 inputs = device.read_input_states()
@@ -431,11 +471,13 @@ print(f"At home: {inputs['at_home']}")
 ```
 
 **Command Format:**
+
 ```
 [0x0E, addr]
 ```
 
 **Response Format:**
+
 ```
 [NW, HW, Addr, Grp, stat, byte0, byte1, chk]
 ```
@@ -473,6 +515,7 @@ Short| 7 | Power ON Command | Software power control | Short J21 to enable |
 ### CMD_WRITE_OUTPUT (0x1E) - Control Outputs
 
 **Example:**
+
 ```python
 # Enable spindle forward
 device.enable_spindle('forward')
@@ -482,6 +525,7 @@ device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
 ```
 
 **Command Format:**
+
 ```
 [0x1E, addr, byte0, byte1]
 ```
@@ -534,11 +578,13 @@ The status byte uses the LS-773 format:
 | 0 | Safe State | 1 = System in safe state |
 
 **Diagnostic Code Extraction:**
+
 ```python
 diagnostic = (byte1 >> 3) & 0x1F
 ```
 
 **LED Mapping:** The 5 diagnostic bits map directly to the 5 LED indicators:
+
 - Bit 7 → LED 5 (leftmost)
 - Bit 6 → LED 4
 - Bit 5 → LED 3
@@ -546,6 +592,7 @@ diagnostic = (byte1 >> 3) & 0x1F
 - Bit 3 → LED 1 (rightmost)
 
 **Example:** Diagnostic code 0x06 = binary `00110`
+
 - Bit pattern: 0-0-1-1-0
 - LED display: ⚫⚫oo⚫ (LEDs 3,2 ON; LEDs 5,4,1 OFF)
 - Condition: "Power UP Home error"
@@ -597,7 +644,9 @@ diagnostic = (byte1 >> 3) & 0x1F
 † **Power Ready:** Indicates if power enable signal allows power-on. The action to enable Power On depends is configured by [J21](#j21---power-on-control-method).
 
 ---
+
 # Troubleshooting
+
 ## Symptom: Power Button Not Flashing (Won't Power On)
 
 **Common Causes:**
@@ -622,6 +671,7 @@ diagnostic = (byte1 >> 3) & 0x1F
    - Check wiring continuity on Safety Link chain
 
 2. **Read Safety Bus status:**
+
    ```python
    status = read_status(addr)
    # Check if any slave devices reporting fault
@@ -633,6 +683,7 @@ diagnostic = (byte1 >> 3) & 0x1F
    - Fault clears when bad device removed
 
 **Common Causes:**
+
 - Slave device powered off
 - Broken wire in Safety Link chain
 - Slave device in fault state
@@ -668,6 +719,7 @@ print(f"Safety Link Bridge: {safety_bridge} (must be 0)")
 ```
 
 **Required Conditions for Spindle Enable:**
+
 1. Outputs/Byte0/Bit2 = 1 (spindle command)
 2. Outputs/Byte1/Bit4 = 0 (Safety Link Bridge = 0)
 3. Inputs/Byte1/Bit2 = 0 (ServoFAULT = 0)
@@ -704,26 +756,31 @@ print(f"Guard Lock Output: {guard_lock} (1=locked, 0=unlocked)")
 **Required Conditions for Guard Unlock:**
 
 **Normal Operation:**
+
 - Safe State = 1
 - Spindle Stopped = 1
 - Power OFF or in safe state
 
 **Manual Override (J20=OPEN):**
+
 - Manual Override = 1
 - Acknowledge pressed (CN13.3-4)
 - Spindle Stopped = 1
 
 **Manual Override (J20=SHORT):**
+
 - Manual Override = 1
 - Acknowledge pressed (CN13.3-4)
 - (Spindle state irrelevant)
 
 **Check Jumper Configuration:**
+
 - J10-1, J10-2, J10-4: Safe state detection settings
 - J19: Guard control mode (OPEN or SHORT)
 - J20: Manual override guard unlock requirements
 
 ---
+
 # Connectors and Jumpers
 
 ## CN3 - Safety Bus Connector
@@ -780,15 +837,16 @@ print(f"Guard Lock Output: {guard_lock} (1=locked, 0=unlocked)")
 
 For complete connector pinouts, see SK-2310g2 Manual pages 6-10.
 
-
 # Related Documentation
 
 **pyldcn Documentation:**
+
 - [io_commands.md](io_commands.md) - I/O hardware specifications (digital/analog I/O, PWM, counter/timer)
 - [safety_bus.md](safety_bus.md) - Generic Safety Bus protocol specification
 - [ldcn_protocol.md](ldcn_protocol.md) - Generic LDCN network commands
 
 **SK-2310g2 Manual Reference:**
+
 - Page 5: Jumper configuration summary
 - Pages 6-10: Complete connector pinouts
 - Pages 11-18: Sample application wiring diagrams

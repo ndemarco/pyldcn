@@ -10,6 +10,7 @@
 ## Terminology Note
 
 Logosol documentation uses certain terms that may be confusing to US English speakers:
+
 - **"Cover"** = Safety guard/guarding
 - **"At Home"** = Machine in safe state
 - **"Test Mode"** = Manual override mode (keyswitch-enabled, allows limited unguarded operations with operator presence detection)
@@ -50,6 +51,7 @@ Inputs = Byte1:Byte0 (MSB:LSB)
 ```
 
 **Reading Inputs:**
+
 ```python
 # Configure status once (bit 0 = include digital inputs)
 send_command(CMD_DEFINE_STATUS, [0x01])
@@ -95,6 +97,7 @@ All inputs are compatible with 24VDC industrial control systems.
 **Note 1: Spindle OFF (Input 2) Computation**
 
 This is a **computed input** (not directly wired). It is set to 1 when:
+
 - `Spindle ON` output (Outputs/Byte0/Bit 2) = 0 **AND**
 - `Spindle Stopped` input (CN6 pin 2) = HIGH
 
@@ -134,6 +137,7 @@ Outputs = Byte1:Byte0 (MSB:LSB)
 ```
 
 **Writing Outputs:**
+
 ```python
 # Set outputs as 16-bit word
 outputs = 0x0000
@@ -181,7 +185,7 @@ See "Sample application – Spindle Option 1" and "Sample application – Spindl
 
 | Bit | Name | Connector | Function | Notes |
 |-----|------|-----------|----------|-------|
-| **8** | Output 8 | CN7 | Tool Changer Unlock | 
+| **8** | Output 8 | CN7 | Tool Changer Unlock |
 | **9**| Output 9 | CN9, CN10 | Guard Lock | 1=locked, 0=unlocked |
 | **10** | Output 10 | Internal | Home Enable | Automation mode dependent |
 | **11** | Output 11 | Internal | Manual Mode Inhibit | 1=prevent manual override |
@@ -213,6 +217,7 @@ Analog inputs are returned in status response when configured. See [sk-2310g2_st
 | **2** | CN17.2 | 8-bit | 0-5V | **ADC3** | General purpose analog input |
 
 **Reading Analog Inputs:**
+
 ```python
 # Configure status: inputs + all analog (bits 0-3)
 send_command(CMD_DEFINE_STATUS, [0x0F])
@@ -223,7 +228,6 @@ ain0 = response[3]  # Analog 0 (0-255 for 0-10V)
 ain1 = response[4]  # Analog 1 (0-255 for 0-5V)
 ain2 = response[5]  # Analog 2 (0-255 for 0-5V)
 ```
-
 
 ## Analog Output (1 channel)
 
@@ -316,11 +320,12 @@ Result reflected in Input 8 (At Home / Safe State).
 | 5-6 | Guard 2 Closed (B) | Input | (Hardware) | Redundant monitored safety contact B |
 
 **Guard System:**
+
 - Two independent guard zones, each with redundant monitored inputs (A & B channels)
 - Each zone has a lock release output for solenoid control
 - Guard states reflected in diagnostic codes 0x14-0x1F
 - "Guard" = safety guard/guarding (Logosol term: "Cover")
-- Lock solenoid energized state can be changed with jumpers J14 & J15 
+- Lock solenoid energized state can be changed with jumpers J14 & J15
 
 ### CN11 - E-stop
 
@@ -330,6 +335,7 @@ Result reflected in Input 8 (At Home / Safe State).
 | 3-4 | E-stop B | Input | (Hardware) | in series with other e-stop contacts |
 
 **E-stop System:**
+
 - Redundant monitored E-stop with A & B channels
 - Serially connected through 4 connectors: CN13.1-4, CN15.1-4, CN11.1-4, CN4.11-14
 - All E-stop contacts must be closed for system to enable
@@ -371,12 +377,14 @@ Result reflected in Input 8 (At Home / Safe State).
 | 13 | Manual Override B | Input | (Hardware) | Normally closed contact |
 
 **Manual Override Mode:**
+
 - Requires A & B contact transitions within 100ms
 - Manual Override Inhibit (Output 11, Byte1/Bit3) must be 0
 
 ### CN16 - Power Control Connector
 
 **Power Supply Enable Functionality:**
+
 - Redundant power enable inputs (A & B channels) - must be shorted to ground to enable power
 - Spindle power enable output
 - Power monitor loop (pins 5-6) verifies relay contacts are properly closed
@@ -393,11 +401,13 @@ Result reflected in Input 8 (At Home / Safe State).
 | 10 | Spindle Power Enable | Output | (Hardware) | Spindle power control (connects to CN6.5) |
 
 **Power Monitor Loop:**
+
 - Pin 6 outputs -27V
 - Pin 5 receives return through series-connected power-on relay contacts
 - Verifies relay contacts are properly closed before enabling power
 
 **Notes:**
+
 - "UM" = Motor voltage (Logosol term)
 - Power enable inputs A & B are redundant - both must be shorted to ground for power-on
 
@@ -470,7 +480,6 @@ def unlock_guards(self) -> None:
     self.set_output_bit(OUTPUT_GUARD_LOCK, False)
 ```
 
-
 ## Related Documentation
 
 - [sk-2310g2_status_reporting.md](sk-2310g2_status_reporting.md) - LS-773 status protocol and Define Status command
@@ -483,14 +492,11 @@ def unlock_guards(self) -> None:
 
 ## Notes and Observations
 
-
 ### Needs Clarification (Hardware Testing Required)
+
 5. **Counter/Timer input** - Verify if Input 9 (CN13.1-2) is the counter input for Set Timer Mode (0x8), or identify which input is used. Note: Input 9 is currently assigned to Manual Override keyswitch, which may conflict with counter mode
 
-
 ### Design Decisions for Implementation
+
 1. Use constants defined in [pyldcn/devices/io.py](../pyldcn/devices/io.py) for bit positions
 2. Validate safety constraints in software before sending commands
-
-
-

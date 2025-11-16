@@ -12,10 +12,10 @@ This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-
 
 These are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
 
-
 ## Specific Models
 
 ### LS-773 Hardware Features
+
 - 10 general purpose digital inputs (with configurable pull-up/pull-down)
 - 6 open collector outputs (1A max each)
 - 1 solid-state relay output (0.5A max, OUTPUT 0/POWER)
@@ -27,21 +27,25 @@ These are polled, not interrupt-driven or real-time. The counter/timer is design
 #### LS-773 Input Bit Layout
 
 Byte 0:
+
 | Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
 |-----|---|---|---|---|---|---|---|---|
 | Input | IN7 | IN6 | IN5 | IN4 | IN3 | IN2 | IN1 | IN0 |
 
 Byte 1:
+
 | Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
 |-----|---|---|---|---|---|---|---|---|
 | Input | - | - | - | - | - | - | IN9 | IN8 |
 | Flag | - | - | - | - | - | OUT_SH | - | - |
 
-#### OUT_SH Flag (Byte 1, bit 1):
+#### OUT_SH Flag (Byte 1, bit 1)
+
 - OUT_SH = 1: One or more outputs are shorted to POWER(+)
 - OUT_SH = 0: Normal operation
 
 ### SK-2310g2 Hardware Features
+
 The SK-2310g2 is a supervisory controller with specialized hardware and I/O capabilities.
 
 ### I/O Hardware Differences
@@ -58,11 +62,13 @@ The SK-2310g2 is a supervisory controller with specialized hardware and I/O capa
 ### Analog I/O Summary
 
 **SK-2310g2 Analog Inputs**:
+
 - **ADC-1** (CN6 pin 10): 0-10V (typically spindle F/V feedback)
 - **ADC-2** (CN17 pin 3): 0-5V (general purpose, potentiometer-ready)
 - **ADC-3** (CN17 pin 2): 0-5V (general purpose, potentiometer-ready)
 
 **SK-2310g2 Analog Output**:
+
 - **DAC** (CN6 pin 11): 0-10V (spindle speed control)
 - Control method: Device-specific firmware command (consult SK-2310g2 documentation)
 
@@ -118,6 +124,7 @@ The checksum byte is the 8-bit sum of the status byte plus all data bytes.
 #### Item: Device ID and Version
 
 When bit 5 is set, response includes:
+
 - Byte 0: Device ID = `0x02` (LS-773)
 - Byte 1: Version = `0x32` (50 decimal)
 
@@ -126,6 +133,7 @@ When bit 5 is set, response includes:
 The following examples show actual byte-by-byte status responses for different configurations:
 
 #### Example 1: Digital Inputs Only (Status Item = 0x01)
+
 ```
 Status Item Byte: 0x01 (bit 0 set - Input Bytes)
 Response: [status_byte, input_byte0, input_byte1, checksum]
@@ -139,6 +147,7 @@ Example with IN0, IN2, IN8 active:
 ```
 
 #### Example 2: Inputs + All Analog (Status Item = 0x0F)
+
 ```
 Status Item Byte: 0x0F (bits 0-3 set)
 Response: [status_byte, input_byte0, input_byte1, ain0, ain1, ain2, checksum]
@@ -158,18 +167,16 @@ Example with IN0=1, ADC0=128, ADC1=64, ADC2=255:
 
 One 32-bit selectable counter/timer is available with simple reset-to-zero overflow behavior. Application must detect wrap by polling and comparing consecutive readings.
 
-
 - Timer mode: Counts intervals based on a 5 MHz clock (200 ns resolution)
 - Counter mode: Counts external events on configured input
 - Sync mode: Captures counter/timer value with Sync Input command
 
-
 #### Counter Mode
+
 - Counts high-to-low transitions
   - For LS-773, on DIGITAL IN 9/COUNT
   - For SK-2310g2, input TBD
 - Configurable prescaler divides input frequency (1:1, 2:1, 4:1, 8:1)
-
 
 #### Reset
 
@@ -231,15 +238,18 @@ See [Reading Analog Inputs](#reading-analog-inputs) for usage examples.
 For PWM capable outputs, sets the PWM duty cycle.
 
 **Data**:
+
 - Byte 0: PWM 1 output value (255-0)
 - Byte 1: PWM 2 output value (255-0)
 
 **PWM Value Mapping**:
+
 - 255 = 0% PWM (output OFF)
 - 128 = 50% PWM
 - 0 = 100% PWM (output fully ON)
 
 **Example**:
+
 ```python
 # Set OUTPUT 1 to 50% PWM, OUTPUT 2 to 75% PWM
 pwm1 = 128  # 50%
@@ -248,6 +258,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 ```
 
 **Notes**:
+
 - OUTPUT 1 and OUTPUT 2 must first be enabled for PWM mode by setting their output bits to `1` using `Set Outputs` command
 - PWM frequency is fixed at 20 KHz
 - To use PWM outputs as digital outputs, use `Set Outputs` command or set PWM to `0` or `255`.
@@ -275,10 +286,12 @@ First [Set Sync Output](#set-sync-output) to stage the values, then `Sync Output
 Immediately sets the states of all digital output bits.
 
 **Data**:
+
 - Byte 0: Output bits (bit 0-6 = OUTPUT 0-6, bit 7 unused)
 - Byte 1: Reserved (set to 0x00)
 
-** LS-773 Output Bit Mapping**:
+**LS-773 Output Bit Mapping**:
+
 | Bit | Output | Description |
 |-----|--------|-------------|
 | 0   | OUTPUT 0/POWER | Solid-state relay, 0.5A |
@@ -291,6 +304,7 @@ Immediately sets the states of all digital output bits.
 | 7   | (unused) | Ignored |
 
 **Example**:
+
 ```python
 # Turn on OUTPUT 0, OUTPUT 2, and OUTPUT 5
 outputs = 0b00100101  # bits 0, 2, 5 set
@@ -298,6 +312,7 @@ send_command(addr, 0x06, [outputs, 0x00])
 ```
 
 **Notes**:
+
 - To set PWM and digital values simultaneoustly, see `sync output` command.
 - If a PWM-capable output is set to 1, it operates in PWM mode, with duty cycle set by `Set PWM`
 - If a PWM-capable output is set to 0, it is immediately turned off, regardless of 'Set PWM' value
@@ -313,12 +328,14 @@ send_command(addr, 0x06, [outputs, 0x00])
 Stores output states and PWM values for later synchronous application using [Sync Output](#sync-output)
 
 **Data**:
+
 - Byte 0: Output bits (bit 0-6 = OUTPUT 0-6, bit 7 unused)
 - Byte 1: Reserved (set to 0x00)
 - Byte 2: PWM 1 output value (255-0)
 - Byte 3: PWM 2 output value (255-0)
 
 **Example**:
+
 ```python
 # Stage outputs: OUTPUT 0 and OUTPUT 1 on, OUTPUT 1 at 75% PWM
 outputs = 0b00000011
@@ -339,9 +356,11 @@ send_command(addr, 0x05, [])  # Sync Output
 Configures the 32-bit counter/timer operation mode.
 
 **Data**:
+
 - Byte 0: Timer mode configuration byte
 
 **Configuration Byte Bits**:
+
 | Bit | Function |
 |-----|----------|
 | 0   | 0 = Disabled, 1 = Enabled |
@@ -350,6 +369,7 @@ Configures the 32-bit counter/timer operation mode.
 | 2,3,6,7 | Not used |
 
 **Example**:
+
 ```python
 # Enable counter mode with 4:1 prescaler
 config = 0b00100011  # bit 0=1 (enable), bit 1=1 (counter), bits 4-5=10 (4:1)
@@ -365,6 +385,7 @@ send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 ```
 
 **Notes**:
+
 - Counter value is read via Define Status or Read Status commands (bit 4)
 - Counter wraps at 2^32 - 1 with no status indication or interrupt
 - See [Counter/Timer](#countertimer) for overflow behavior and use cases
@@ -378,10 +399,12 @@ send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
 Captures current input states and counter/timer value atomically.
 
 **Use Case**:
+
 - Atomic, simultaneous snapshot of all digital inputs and timer/counter value
 - Read captured values using [Read Status](#read-status-command) with values reported on [status items](#2-status-items) bits 6 and 7
 
 **Workflow**:
+
 ```python
 # 1. Send Sync Input command
 send_command(addr, 0x0C, [])
@@ -432,6 +455,7 @@ while True:
 ### Reading Analog Inputs
 
 Include analog bits when needed:
+
 ```python
 # Configure: inputs + all analog
 send_command(CMD_DEFINE_STATUS, [0x0F])
@@ -482,7 +506,6 @@ def initialize_io_node(addr):
 - Resolution: 8-bit (0-255)
 - Only specific outputs support PWM
 
-
 ```python
 # Step 1: Enable PWM outputs (set output bits to 1)
 # See: Set Outputs command
@@ -510,4 +533,3 @@ send_command(addr, 0x06, [0x00, 0x00])
   - Application-specific I/O mappings
   - Includes analog output for spindle control
 - [ldcn_protocol.md](ldcn_protocol.md) - Generic LDCN network protocol documentation
-

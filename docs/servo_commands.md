@@ -54,14 +54,15 @@ For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 Resets the 32-bit encoder counter to zero.
 
 **Example**:
+
 ```
 AA 01 00 01  # Reset position on device 1
 ```
 
 **Notes**:
+
 - The position encoder is different from the home position
 - Do not issue this command during a trapezoidal move
-
 
 ---
 
@@ -107,6 +108,7 @@ Defines what additional data will be sent in status packets along with the statu
 | 14-15 | (reserved) | - | Clear to 0 |
 
 **Notes**:
+
 - Status data is always sent in bit order (0, 1, 2, 3, ...)
 - Setting bits causes corresponding data to be appended after status byte
 - Power-up or `hard reset` resets to return only status byte + checksum
@@ -132,6 +134,7 @@ Non-permanent version of Define Status. The status packet returned includes the 
 Loads a motion trajectory into the servo drive's path planner.
 
 **Data**:
+
 - Byte 0: Trajectory control flags
 - Optional bytes based on control flags set:
   - If bit 0 set: Bytes 1-4: Position (int32, little-endian, encoder counts)
@@ -140,6 +143,7 @@ Loads a motion trajectory into the servo drive's path planner.
   - If bit 3 set: Next 1-2 bytes: PWM value (uint8 or uint16)
 
 **Trajectory Control Flags**:
+
 | Bit | Function |
 |-----|----------|
 | 0   | Load position data (adds 4 bytes) |
@@ -152,11 +156,13 @@ Loads a motion trajectory into the servo drive's path planner.
 | 7   | Start motion now |
 
 **Common Control Values**:
+
 - `0x9F` (bits 0,1,2,3,4,7): Load all params + servo mode + start now
 - `0x97` (bits 0,1,2,4,7): Load pos/vel/acc + servo mode + start now
 - `0x90` (bits 4,7): Servo mode + start now (no new data)
 
 **Notes**:
+
 - Position is absolute in encoder counts
 - Velocity and acceleration values depend on scale and servo rate
 - Use SCALE (e.g., 2000 counts/mm) to convert units
@@ -172,6 +178,7 @@ Loads a motion trajectory into the servo drive's path planner.
 Starts previously loaded motion trajectory.
 
 **Example**:
+
 ```
 AA 01 05 06  # Start motion on device 1
 ```
@@ -189,6 +196,7 @@ AA 01 05 06  # Start motion on device 1
 Sets PID control loop gains for the servo drive.
 
 **Data**:
+
 - Bytes 0-1: kp - Proportional gain (uint16)
 - Bytes 2-3: kd - Derivative gain (uint16)
 - Bytes 4-5: ki - Integral gain (uint16)
@@ -200,6 +208,7 @@ Sets PID control loop gains for the servo drive.
 - Byte 12: db - Deadband (uint8)
 
 **Notes**:
+
 - Gains must be tuned for specific motor and load
 - Incorrect gains can cause instability or poor performance
 - Start with conservative values and tune incrementally
@@ -215,10 +224,12 @@ Sets PID control loop gains for the servo drive.
 Stops servo motor and controls amplifier enable state.
 
 **Data**:
+
 - Byte 0: Stop control flags
 - Bytes 1-4: Stop position (optional, only if bit 4 set)
 
 **Stop Control Flags**:
+
 | Bit | Function |
 |-----|----------|
 | 0   | Pic_ae (Power Driver enable) |
@@ -229,6 +240,7 @@ Stops servo motor and controls amplifier enable state.
 | 5-7 | Not used (clear to 0) |
 
 **Common Combinations**:
+
 - `0x05` (bits 0,2): Enable amplifier + stop abruptly → Enable drive for motion
 - `0x09` (bits 0,3): Enable amplifier + stop smoothly → Graceful stop
 - `0x01` (bit 0 only): Enable amplifier only → Hold current position
@@ -236,6 +248,7 @@ Stops servo motor and controls amplifier enable state.
 - `0x00`: Disable amplifier → Disable everything
 
 **Examples**:
+
 ```
 AA 01 17 05 1D  # Enable amplifier, stop abruptly (standard init)
 AA 01 17 09 21  # Enable amplifier, stop smoothly (graceful stop)
@@ -246,6 +259,7 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 **IMPORTANT**: Bit 0 (Pic_ae) must be set to enable the power driver. Drive initialization requires sending 0x05 (bits 0,2) to enable amplifier and close servo loop.
 
 **Notes**:
+
 - Only one of bits 1, 2, 3, or 4 should be set at the same time
 - Bit 4 requires 4 additional data bytes specifying the stopping position
 
@@ -260,10 +274,12 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 Controls brake output and configures path point buffer timing.
 
 **Data**:
+
 - Byte 0: Control byte
 - Bytes 1-2: Path point buffer counter (optional, only if bit 6 set)
 
 **Control Byte**:
+
 | Bit | Function |
 |-----|----------|
 | 0 | Brake output mode: 0 = automatic (status-controlled), 1 = manual (bit 1 control) |
@@ -273,12 +289,14 @@ Controls brake output and configures path point buffer timing.
 | 7 | Not used (must be 0) |
 
 **Path Point Buffer Counter**:
+
 - Range: 0x0000 to 0x7FFF
 - Purpose: Sets time interval between path points
 - Calculation: `time_between_points = counter × 51.2 µs`
 - Example: counter = 100 → 5.12 ms between points
 
 **Notes**:
+
 - Brake output is typically controlled automatically based on drive status
 - Manual brake control useful for testing or special applications
 - Path point timing must be set before executing path mode
@@ -295,9 +313,11 @@ Controls brake output and configures path point buffer timing.
 Configures homing mode to capture home position on specified conditions.
 
 **Data**:
+
 - Byte 0: Homing control byte
 
 **Homing Control Byte**:
+
 | Bit | Function |
 |-----|----------|
 | 0   | Capture on Limit 1 (Reverse/Negative direction) |
@@ -312,6 +332,7 @@ Configures homing mode to capture home position on specified conditions.
 **Important**: Set one (and only one) of bits 2, 4, or 5 for stop behavior.
 
 **Common Control Bytes**:
+
 - `0x11` (0b00010001): Home to Limit 1, stop abruptly
 - `0x12` (0b00010010): Home to Limit 2, stop abruptly
 - `0x18` (0b00011000): Home to Index, stop abruptly
@@ -319,6 +340,7 @@ Configures homing mode to capture home position on specified conditions.
 - `0x22` (0b00100010): Home to Limit 2, stop smoothly
 
 **Homing Sequence**:
+
 1. Set home mode with desired capture condition
 2. Load velocity trajectory (use velocity mode, not position mode!)
 3. Start motion (command 0x05)
@@ -326,6 +348,7 @@ Configures homing mode to capture home position on specified conditions.
 5. Home position captured when condition is met
 
 **Example - Home to Limit 2**:
+
 ```
 AA 01 19 12 2C     # Set home mode: Limit 2 + stop abruptly
 AA 01 94 36 ...    # Load velocity trajectory (forward direction)
@@ -334,6 +357,7 @@ AA 01 05 06        # Start motion
 ```
 
 **Example - Two-Stage Homing** (Limit switch then Index pulse):
+
 ```
 AA 01 19 12 2C     # Home to Limit 2, stop abruptly
 AA 01 94 36 ...    # Load velocity trajectory (forward)
@@ -347,11 +371,13 @@ AA 01 05 06        # Start motion
 ```
 
 **Status Monitoring**:
+
 - `home_in_progress` (status bit 7) is set when command is issued
 - Bit remains 1 while searching for home condition
 - Bit clears to 0 when home position is captured
 
 **Notes**:
+
 - Homing uses **velocity mode**, not position mode
 - The motor moves continuously until the home condition is met
 - Two-stage homing (limit + index) provides both speed and precision
@@ -380,11 +406,13 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 Clears "sticky" status bits that latch on fault conditions.
 
 **Example**:
+
 ```
 AA 01 0B 0C  # Clear sticky bits on device 1
 ```
 
 **Sticky Bits Cleared**:
+
 - Checksum error (bit 1)
 - Current limit (bit 2)
 - Position error (bit 4)
@@ -404,6 +432,7 @@ AA 01 0B 0C  # Clear sticky bits on device 1
 Saves the current encoder position as the home position.
 
 **Example**:
+
 ```
 AA 01 0C 0D  # Save current position as home on device 1
 ```
@@ -411,6 +440,7 @@ AA 01 0C 0D  # Save current position as home on device 1
 **Use Case**: Synchronous home position capture across multiple axes. This command can be issued to a group of controllers to set their current positions as home synchronously.
 
 **Notes**:
+
 - Stored home position can be read via Define Status/Read Status (bit 4)
 - Does not move the motor - only stores the current position value
 - Home position is a 32-bit signed integer
@@ -426,6 +456,7 @@ AA 01 0C 0D  # Save current position as home on device 1
 Adds incremental path points to the 256-entry path buffer for continuous motion trajectories.
 
 **Data**:
+
 - 0 bytes: Start path execution
 - 2 bytes: Add 1 path point
 - 4 bytes: Add 2 path points
@@ -436,6 +467,7 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 - 14 bytes: Add 7 path points (maximum per command)
 
 **Data Format** (per path point, 2 bytes):
+
 - **Format**: 16-bit signed integer (int8.frac8)
 - **Byte 0**: Fractional part (1/256 of encoder count)
 - **Byte 1**: Integer part (encoder counts)
@@ -443,6 +475,7 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 - **Little-endian**: LSB first, MSB second
 
 **Path Point Mechanics**:
+
 1. Each 2-byte value is added to the desired position every servo tick
 2. The value is applied **Path Point Buffer Counter** times (set via 0x8 command)
 3. This creates a linear segment from current position to next path point
@@ -451,16 +484,19 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 **Buffer Capacity**: 256 path points maximum
 
 **Timing**:
+
 - Time per point = Path Point Buffer Counter × 51.2 µs
 - Example: Counter = 100 → 5.12 ms per point
 - Must be set via I/O Control (0x8) command before path execution
 
 **Status Monitoring**:
+
 - Use Status bit 7 (path_count) to monitor buffer usage
 - Use Auxiliary Status bit 6 (path_mode) to check if path is executing
 - Buffer refill when path_count drops below threshold
 
 **Notes**:
+
 - Path buffer holds 256 points total
 - Points are consumed at the rate set by Path Point Buffer Counter
 - Servo must be enabled before starting path execution
@@ -488,6 +524,7 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 Advanced features accessed via command 0xE with sub-command codes.
 
 **Command Structure**:
+
 - **Command**: 0xE
 - **Data**: 1 to n bytes
   - Byte 0: Sub-command code (0x00, 0x01, 0x02, 0x04, 0x05, 0x10)
@@ -503,11 +540,13 @@ Advanced features accessed via command 0xE with sub-command codes.
 Configures automatic stop behavior when limit switches are triggered.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x00)
 - Byte 1: Control byte for Limit 1 (Reverse)
 - Byte 2: Control byte for Limit 2 (Forward)
 
 **Limit Control Byte Bits**:
+
 | Bit | Function |
 |-----|----------|
 | 0 | Servo in one direction only (allow motion away from limit) |
@@ -517,6 +556,7 @@ Configures automatic stop behavior when limit switches are triggered.
 | 4-7 | Not used (must be 0) |
 
 **Behavior**:
+
 - **Bit 0 set**: Position servo enabled only in direction away from limit
 - **Bit 1 set**: Position servo disabled, PWM = 0 (bits 2-3 ignored)
 - **Bit 2 set**: Motor servos to current position (abrupt stop)
@@ -535,9 +575,11 @@ Configures automatic stop behavior when limit switches are triggered.
 Reads hall sensor state and calculates initial motor angle for brushless motors.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x01)
 
 **Description**:
+
 - Reads current hall sensor inputs
 - Calculates initial rotor angle
 - Angle will be overwritten when first index pulse arrives
@@ -556,9 +598,11 @@ Reads hall sensor state and calculates initial motor angle for brushless motors.
 Requests the drive to resend its last status response.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x02)
 
 **Description**:
+
 - Drive resends the most recent status packet
 - Useful for recovering from communication errors without re-executing command
 
@@ -576,20 +620,24 @@ Requests the drive to resend its last status response.
 Synchronizes servo ticks across multiple drives via hardware sync lines.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x04)
 - Byte 1: Mode (0 = disable, 1 = enable)
 
 **Description**:
+
 - Eliminates velocity differences caused by oscillator drift
 - Multiple LS-231SE drives connected via hardware sync lines
 - All drives run servo ticks in perfect synchronization
 - Reduces timing errors in coordinated multi-axis motion
 
 **Timing Error Reduction**:
+
 - Without hardware sync: ~10 ppm oscillator drift accumulates over time
 - With hardware sync: Only ±25 µs start time variation remains
 
 **Hardware Requirements**:
+
 - Physical sync connections between drives
 - See datasheet for sync line wiring
 
@@ -607,6 +655,7 @@ Synchronizes servo ticks across multiple drives via hardware sync lines.
 Configures watchdog timer for communication fault detection.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x05)
 - Byte 1: Mode
   - 0 = Watchdog off
@@ -616,17 +665,20 @@ Configures watchdog timer for communication fault detection.
 - Byte 2: Timeout (in multiples of 8192 µs = 8.192 ms)
 
 **Description**:
+
 - Watchdog refreshed by any command sent to drive
 - Upon timeout, executes configured action
 - Drive stops executing motion commands after timeout
 - Send this command again to reset watchdog
 
 **Watchdog Status** (via Define Status bit 12):
+
 - `0xFFFF` (65535): Watchdog not activated
 - `0x0000` (0): Watchdog expired
 - Other value: Remaining time in multiples of 8192 µs
 
 **Timeout Calculation**:
+
 - Timeout = byte_2 × 8.192 ms
 - Example: byte_2 = 122 → ~1000 ms (1 second)
 
@@ -644,10 +696,12 @@ Configures watchdog timer for communication fault detection.
 Sets the motor position error limit for dual-loop control systems.
 
 **Data**:
+
 - Byte 0: Sub-command code (0x10)
 - Bytes 1-2: Motor error limit (16-bit, little-endian)
 
 **Description**:
+
 - Used in dual-loop mode (encoder on load + encoder on motor)
 - After power-up: motor error limit = master error limit
 - Set Gain command also resets motor error limit to master error limit
@@ -685,15 +739,18 @@ The status byte returned by servo drives has the following bit definitions:
 | 7   | home_in_progress | Set while searching for home position, cleared when home captured |
 
 **Fault Conditions** (sticky bits - must be cleared with Clear Bits command):
+
 - Bit 1: Checksum error - resend command
 - Bit 2: Current limit - reduce load or check motor, then clear
 - Bit 4: Position error - motor stalled or load too high, resolve issue then clear
 
 **Power Detection**:
+
 - Bit 3 = 1: Amplifier power is ON
 - Bit 3 = 0: Amplifier power is OFF
 
 **Notes**:
+
 - Sticky bits remain set until explicitly cleared with Clear Bits (0x0B) command
 - Bits 3, 5, 6 may function as diagnostic bits (see LS-231SE Diagnostic and I/O section)
 
@@ -715,6 +772,7 @@ When configured via Define Status (bit 3), an auxiliary status byte is returned:
 | 7   | (unused) | Not defined in datasheet |
 
 **Notes**:
+
 - Bit 0 may function as diagnostic bit (see LS-231SE Diagnostic and I/O section)
 - Sticky bits (1, 5) remain set until cleared with Clear Bits (0x0B) command
 - On power-up/reset: pos_wrap, servo_on, accel_done, slew_done, servo_overrun all clear to 0
@@ -740,6 +798,7 @@ Complete 7-step initialization sequence for servo drives:
 Convert between physical units and encoder counts using a scale factor.
 
 **Common Scales**:
+
 - Direct-drive: 2000-10000 counts/mm
 - Ballscrew (5mm pitch): 4000 counts/rev → 800 counts/mm
 - Ballscrew (10mm pitch): 4000 counts/rev → 400 counts/mm

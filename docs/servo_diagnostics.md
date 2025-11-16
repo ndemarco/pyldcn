@@ -17,6 +17,7 @@ This document describes the diagnostic and I/O functionality of the LS-231SE ser
 The LS-231SE operates in LDCN mode when the mode selection bits are set to `000`. This is the standard configuration for LDCN protocol communication.
 
 ### Mode Selection
+
 - **MODEbit[C,B,A] = 000**: LDCN Dual loop mode (standard LDCN mode)
 - Other mode bit combinations (001-111) select different operational modes (Analog, PWM, Step & Direction, etc.)
 
@@ -61,6 +62,7 @@ The LS-231SE operates in LDCN mode when the mode selection bits are set to `000`
 The following tables show the relationship between status bits and drive conditions in LDCN mode (MODEbit[C,B,A] = 000).
 
 **Legend**:
+
 - `1` = Bit set (HIGH)
 - `0` = Bit clear (LOW)
 - `X` = Don't care (either state)
@@ -122,18 +124,21 @@ The following tables show the relationship between status bits and drive conditi
 The LS-231SE has three LED indicators for drive status:
 
 ### Orange LED
+
 - **ON**: Normal power, various operational states
 - **OFF**: Servo disabled, axis off, specific error conditions
 - **Blink**: Error conditions (Hall, EEPROM, motor short, position error)
 - **Alternate**: Motor power issues, servo off mode
 
 ### Green LED
+
 - **ON**: Normal operation, servo on, various operational states
 - **OFF**: Motor power drop, encoder error, specific fault conditions
 - **Blink**: Error conditions, disabled state, master encoder error
 - **Alternate**: Servo off mode, stopped state
 
 ### Red (FAULT) LED
+
 - **OFF**: Normal operation, no faults, encoder error
 - **ON**: Servo on, axis off, various fault conditions
 - **Blink**: Motor power issues, brake short, overload, stopped
@@ -153,6 +158,7 @@ The brake output (OUTbit0) controls an external motor brake:
 | **CN8pin9 Low** | Brake control signal low | Brake released via CN8 pin 9 |
 
 **Brake Control**:
+
 - Automatically applied (Closed) during most error conditions
 - Released during normal operation (AxisOFF, ServoOFF with no errors)
 - Can be manually controlled via I/O Control command (0x08)
@@ -175,6 +181,7 @@ The FAULT relay closes during most error conditions and is used to signal extern
 ## Diagnostic Procedures
 
 ### Normal Operation Indicators
+
 - **Orange**: ON
 - **Green**: ON or Alternate (ServoOFF)
 - **Red**: ON (ServoON) or OFF (No Motor Power after Init)
@@ -182,6 +189,7 @@ The FAULT relay closes during most error conditions and is used to signal extern
 - **Status Bit 3 (Power)**: 1 (for ServoON) or 0 (for AxisOFF)
 
 ### Error Detection
+
 1. **Check LED patterns** - Blinking LEDs indicate specific errors
 2. **Read status byte** - Check bits 4 (Pos_error), 5 (Home Source), 6 (Limit2)
 3. **Read auxiliary status** - Check bit 2 (Servo)
@@ -190,26 +198,31 @@ The FAULT relay closes during most error conditions and is used to signal extern
 ### Common Error Conditions
 
 #### Hall Sensor Error (ErrHALL)
+
 - **LEDs**: Orange Blink, Green Blink, Red Fast Blink
 - **Cause**: Invalid hall sensor reading on brushless motor
 - **Action**: Check hall sensor connections, verify motor type
 
 #### Encoder Error (EncoderERR)
+
 - **LEDs**: Orange Blink, Green OFF, Red OFF
 - **Cause**: Encoder signal lost or invalid
 - **Action**: Check encoder connections, verify encoder power, **requires reset**
 
 #### Position Error (PositionERROR)
+
 - **LEDs**: Orange ON, Green Blink, Red ON
 - **Cause**: Position following error exceeded limit
 - **Action**: Check mechanical load, verify gains, clear sticky bit
 
 #### Motor Power Drop
+
 - **LEDs**: Orange ON, Green OFF, Red Blink
 - **Cause**: Motor power supply voltage drop
 - **Action**: Check motor power supply, verify power connections
 
 #### Overload
+
 - **LEDs**: Orange Blink, Green ON, Red Blink
 - **Cause**: Current limiting active, excessive load
 - **Action**: Reduce load, check motor specifications, verify current limit setting

@@ -16,19 +16,58 @@ This document describes the **design principles and architecture** for the pyldc
 
 ## Class Hierarchy
 
+### Composition (HAS-A relationships)
+
 ```
-LDCNNetwork                    # pyldcn/network.py
+LDCNNetwork                           # pyldcn/network.py (orchestration)
+    ├── protocol: LDCNProtocol        # pyldcn/protocol.py (serial + LDCN protocol)
+    ├── discovery: DeviceDiscovery    # pyldcn/discovery.py (addressing, discovery)
+    └── devices: list[LDCNDevice]     # managed device instances
+```
+
+### Inheritance (IS-A relationships)
+
+```
+LDCNDevice (ABC)                      # pyldcn/device.py (base for all devices)
     │
-    ├── devices: list[LDCNDevice]
+    ├── Servo (ABC)                   # pyldcn/devices/servo.py (servo base class)
+    │   └── LS231SE                   # pyldcn/devices/servo.py (specific servo)
     │
-    └── LDCNDevice (ABC)       # pyldcn/device.py
-            │
-            ├── Servo (ABC)    # pyldcn/devices/servo.py
-            │   └── LS231SE    # pyldcn/devices/servo.py
-            │
-            └── IOController (ABC)  # pyldcn/devices/io.py
-                ├── SK2310g2   # pyldcn/devices/io.py
-                └── LS773      # pyldcn/devices/io.py
+    └── IOController (ABC)            # pyldcn/devices/io.py (I/O base class)
+        ├── SK2310g2                  # pyldcn/devices/io.py (supervisory I/O)
+        └── LS773                     # pyldcn/devices/io.py (generic I/O)
+```
+
+### Complete Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ LDCNNetwork (orchestration layer)                          │
+│ - Manages serial connection                                 │
+│ - Coordinates protocol, discovery, devices                  │
+├─────────────────────────────────────────────────────────────┤
+│  ├─> LDCNProtocol (protocol layer)                         │
+│  │    - Serial communication                                │
+│  │    - LDCN packet building/parsing                        │
+│  │    - Checksum validation                                 │
+│  │                                                           │
+│  ├─> DeviceDiscovery (discovery layer)                     │
+│  │    - Network initialization (reset, addressing)          │
+│  │    - Device type detection                               │
+│  │    - Adaptive initialization modes                       │
+│  │                                                           │
+│  └─> devices: list[LDCNDevice] (device layer)              │
+│       - Device instances (LS231SE, SK2310g2, etc.)          │
+│       - Device-specific operations                          │
+└─────────────────────────────────────────────────────────────┘
+
+Device Inheritance Hierarchy:
+  LDCNDevice (ABC)
+      ├── Servo (ABC)
+      │   └── LS231SE
+      └── IOController (ABC)
+          ├── SK2310g2
+          └── LS773
 ```
 
 ---

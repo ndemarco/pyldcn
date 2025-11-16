@@ -99,6 +99,7 @@ print("Homed to Index pulse")
 ## Home using Velocity Mode
 
 In velocity mode:
+
 - The motor moves continuously at the specified velocity
 - The `position` field in LOAD_TRAJECTORY is ignored (set to 0)
 - Direction is set by bit 6 of the trajectory control byte:
@@ -124,6 +125,7 @@ In velocity mode:
 ## Status Monitoring
 
 Monitor the `home_in_progress` bit (bit 7) in the status byte:
+
 - Set to 1 when SET_HOME_MODE command is issued
 - Remains 1 while searching for home condition
 - Clears to 0 when home position is captured
@@ -138,6 +140,7 @@ within 1/encoder count revolution.
 2. **Stage 2 - Fine** Move slowly back to encoder index pulse (highly repeatable position)
 
 This provides:
+
 - Speed: Fast approach to limit
 - Precision: Index pulse gives sub-micron repeatability
 - Reliability: Limit switch provides absolute reference

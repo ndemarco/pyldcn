@@ -66,6 +66,7 @@ In addition to individual addresses (1-127), each LDCN device has a **group addr
 | 0xFF    | All devices (broadcast) - no group leader |
 
 Group addressing scenarios:
+
 - **Set Baud Rate** - Change network speed for all devices atomically
 - **Load Trajectory** - Prepare multiple axes, then trigger with group start
 - **Start Motion** - Begin coordinated multi-axis moves at the same time
@@ -76,6 +77,7 @@ Group addressing scenarios:
 One device in a group can be designated as the **group leader**. Only the group's leader responds to group commands. All other group members remain silent to elminate bus contention.
 
 **How It Works**
+
 1. Host sends command to group address (e.g., 0xFF)
 2. All devices with that group address execute the command
 3. If a group leader is configured, it responds. If no leader is configured, all devices remain silent.
@@ -89,6 +91,7 @@ AA 00 21 [individual] [group] [checksum]
 ```
 
 **Example - Creating a motion group:**
+
 ```
 AA 00 21 01 F0 11  # Device 1: individual=1, group=0xF0
 AA 00 21 02 F0 12  # Device 2: individual=2, group=0xF0
@@ -143,6 +146,7 @@ See [servo_commands.md](servo_commands.md) for the **Enable/Disable Hardware Syn
 The following commands are part of the base LDCN protocol and supported by **all device types** (servo drives, I/O controllers, etc.).
 
 Device-specific commands (e.g., Load Trajectory, Load Gains for servos) are documented separately:
+
 - Servo Drive Commands: See `servo_commands.md`
 - I/O Controller Commands: See 'io_commands.md`
 
@@ -151,15 +155,18 @@ Device-specific commands (e.g., Load Trajectory, Load Gains for servos) are docu
 Sets individual and group addresses for a device.
 
 **Data**:
+
 - Byte 0: Individual address (1-127)
 - Byte 1: Group address (128-255)
 
 **Example**:
+
 ```
 AA 00 21 01 FF 21  # Set device to address 1, group 0xFF
 ```
 
 **Notes**:
+
 - Sent to address 0x00 (unaddressed)
 - First Set Address after reset enables next device in chain
 - Used for auto-addressing during initialization
@@ -169,9 +176,11 @@ AA 00 21 01 FF 21  # Set device to address 1, group 0xFF
 Selects data to return in status packets.
 
 **Data**:
+
 - Bytes 0-1: Status bits (16-bit little-endian)
 
 **Status Bits**:
+
 | Bit | Data Returned |
 |-----|---------------|
 | 0   | Position (4 bytes) |
@@ -188,6 +197,7 @@ Selects data to return in status packets.
 | 13  | Motor position and error (6 bytes) |
 
 **Example**:
+
 ```
 AA 06 22 FF FF 26  # Device 6, request all status data (0xFFFF)
 ```
@@ -201,14 +211,17 @@ Like Define Status, but only affects the immediate response (non-permanent).
 Changes baud rate of all devices. **Group command only** (no status response).
 
 **Data**:
+
 - Byte 0: BRD value (see Baud Rate Divisors table)
 
 **Example**:
+
 ```
 AA FF 1A 27 46  # Change all devices to 125kbps (BRD=0x27)
 ```
 
 **Notes**:
+
 - Must be sent to group address 0xFF
 - Do not set a group leader when sending this command
 - Master must close and reopen serial port at new baud rate
@@ -220,11 +233,13 @@ Returns current status data without performing any action.
 **Data**: None
 
 **Example**:
+
 ```
 AA 01 0E 0F  # NOP to device 1
 ```
 
 **Notes**:
+
 - Used for polling status
 - checks for device responsiveness
 
@@ -235,11 +250,13 @@ Resets controller to power-up state.
 **Data**: None
 
 **Example**:
+
 ```
 AA FF 0F 0E  # Reset all devices
 ```
 
 **Notes**:
+
 - No status returned
 - Device returns to address 0x00, baud 19200
 - **Special behavior at address 0xFF**: Resets device regardless of its configured group address
@@ -254,6 +271,7 @@ The meaning of status byte bits and auxiliary status data is **device-specific**
 - **I/O Controller (SK-2310g2)**: See `docs/logosol/LS-2310g2-Supervisor-IO-Controller.pdf`
 
 **Common Status Bits** (most devices):
+
 | Bit | Name | Description |
 |-----|------|-------------|
 | 1   | cksum_error | Checksum error in received packet |
@@ -265,12 +283,15 @@ The meaning of status byte bits and auxiliary status data is **device-specific**
 Typical network initialization:
 
 1. **Hard Reset** (at any valid baud rate)
+
    ```
    AA FF 0F 0E
    ```
+
    Wait 2 seconds.
 
 2. **Set Addresses** (at 19200 baud)
+
    ```
    AA 00 21 01 FF 21  # Device 1
    AA 00 21 02 FF 22  # Device 2
@@ -279,9 +300,11 @@ Typical network initialization:
    AA 00 21 05 FF 25  # Device 5
    AA 00 21 06 FF 26  # Device 6 (I/O controller)
    ```
+
    Wait 300ms between each
 
 3. **Verify Communication**
+
    ```
    AA 01 0E 0F  # NOP to each device
    AA 02 0E 10
@@ -289,13 +312,14 @@ Typical network initialization:
    ```
 
 4. **Change Baud Rate**
+
    ```
    AA FF 1A 27 46  # Change to 125kbps
    ```
+
    Close serial port, wait 500ms, reopen at 125kbps
 
 5. **Commmunicate**
-
 
 ## Timing Requirements
 
@@ -321,6 +345,7 @@ If checksum doesn't match, device sets bit 1 in status byte. Resend command.
 ### Communication Lost
 
 If device stops responding:
+
 1. Try Hard Reset at current baud rate
 2. Try Hard Reset at 19200 baud
 3. Power cycle hardware

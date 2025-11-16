@@ -11,6 +11,7 @@ This document describes the **Safety Bus** interface specification used across L
 The Safety Bus is a **daisy-chain safety interlock system** that connects multiple Logosol devices to create a coordinated safety chain. All devices in the chain must report safe conditions for the system to operate. It complements the Logisol Device Control Network (LDCN), delivering a reliable, fail-secure connection between safety critical devices. The Safety Bus reacts immediately but simply to a safety event. LDCN can later deliver richer information about the event.
 
 **Key Safety Features:**
+
 - 100% relay contact-based implementation
 - Fail-safe design (open circuit = unsafe condition)
 - Coordinated emergency stop across all devices
@@ -18,6 +19,7 @@ The Safety Bus is a **daisy-chain safety interlock system** that connects multip
 - Servo fault monitoring
 
 **Devices with Safety Bus Support:**
+
 - **SK-2310g2** - Supervisor I/O Controller (typically safety master)
 - **LS-231SE** - Servo Drive (safety chain participant)
 - **LS-2315** - Spindle Drive (safety interface)
@@ -51,6 +53,7 @@ The Safety Bus provides:
 **Connector Type:** 4-pin (check device documentation)
 
 ### Pin Definitions
+
 CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for all devices except the supervising device.
 
 | Pin | Signal | Type | Direction | Electrical Spec |
@@ -71,6 +74,7 @@ CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for
 **Signal Type:** Relay contact output, 24Vdc, 0.15A max
 
 **Electrical Characteristics:**
+
 - HIGH = Relay contact closed, 24V present
 - LOW = Relay contact open, 0V (or floating)
 - Switching time: Typically 10-50ms (relay dependent)
@@ -79,11 +83,13 @@ CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for
 **Behavior by Device Role:**
 
 **Safety Master (e.g., SK-2310g2):**
+
 - Generates Safety Link OUT based on system safety conditions
 - Monitors covers, emergency stops, safe zones, test modes
 - Complex logic (device-specific - see device documentation)
 
 **Safety Participant (e.g., LS-231SE):**
+
 - If no device faults, passes Safety Link IN to Safety Link OUT
 - Simple AND gate: OUT = IN && (no local faults)
 
@@ -98,11 +104,13 @@ CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for
 **Signal Type:** Digital input, 24Vdc monitoring
 
 **Electrical Characteristics:**
+
 - HIGH (OK): 18-30Vdc nominal
 - LOW (FAULT): open circuite (<5Vdc)
 - Input impedance: Typically 10-100kΩ (device-specific)
 
 **Logic:**
+
 ```
 Safety Link IN = HIGH (OK):
   - Safety chain is intact
@@ -116,6 +124,7 @@ Safety Link IN = LOW (OPEN - FAULT):
 ```
 
 **Critical Behavior:**
+
 - **Fail-safe design:** Open circuit (broken wire) = FAULT condition
 - **Immediate response:** LOW input triggers emergency shutdown
 - **No latching:** Returns to normal when chain restored (device-dependent)
@@ -131,11 +140,13 @@ Safety Link IN = LOW (OPEN - FAULT):
 **Signal Type:** Relay contact output, 24Vdc, 0.15A max
 
 **Electrical Characteristics:**
+
 - HIGH: Relay contact closed, 24V present
 - LOW: Relay contact open, 0V
 - Switching time: Typically 10-50ms
 
 **Typical Logic (device-dependent):**
+
 ```
 Enable/Stop = HIGH when:
   - Power is ON
@@ -150,6 +161,7 @@ Enable/Stop = OPEN (LOW) when:
 ```
 
 **Typical Use Cases:**
+
 - Enable signal to servo amplifier, spindle drive
 - Power supply contactor control
 - External safety device monitoring
@@ -166,18 +178,21 @@ Enable/Stop = OPEN (LOW) when:
 **Roles:**
 
 **As INPUT (e.g., SK-2310g2):**
+
 - Monitors servo drive fault outputs (OR'd together)
 - HIGH = One or more servo drives has fault
 - LOW = All drives operating normally
 - Used to prevent power-on when servo faults exist
 
 **As OUTPUT (e.g., LS-231SE):**
+
 - Reports servo drive fault status
 - HIGH = Drive has fault (overload, position error, limit)
 - LOW = Drive operating normally
 - Can be OR'd with other drives to single fault input
 
 **Example Faults Reported:**
+
 - Motor overload/overcurrent
 - Following error / position error
 - Limit switch activation
@@ -210,6 +225,7 @@ The Safety Bus implements a **series safety chain** where all devices must be sa
 ```
 
 **Signal Flow:**
+
 1. Master device generates Safety Link OUT based on system conditions
 2. Signal propagates through Participant 1 (passes through if no faults)
 3. Signal propagates through Participant 2 (passes through if no faults)
@@ -217,6 +233,7 @@ The Safety Bus implements a **series safety chain** where all devices must be sa
 5. If loop is complete (all HIGH), system is safe to operate
 
 **Logical Function:**
+
 ```
 System Safe = Master Conditions AND Device1 Safe AND Device2 Safe AND ... AND DeviceN Safe
 ```
@@ -236,6 +253,7 @@ Master OUT (HIGH) ──> Device1 IN (HIGH) ──> Device1 OUT (HIGH)
 ```
 
 **Result:**
+
 - Master detects LOW on Safety Link IN
 - Master immediately disables:
   - Power Enable output
@@ -245,6 +263,7 @@ Master OUT (HIGH) ──> Device1 IN (HIGH) ──> Device1 OUT (HIGH)
 - System enters safe state
 
 **Recovery:**
+
 - Fault must be cleared at Device 2
 CLAUDE: Confirm if all faults must be reset in addition to clearing the fault cause.
 - Device 2 OUT returns to HIGH
@@ -269,6 +288,7 @@ Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 unit
 ```
 
 **Operation:**
+
 - Master A generates Safety Link based on Zone 1 conditions
 - Master B receives it, combines with Zone 2 conditions, regenerates OUT
 - Both zones must be safe for system operation
@@ -283,6 +303,7 @@ Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 unit
 **Typical Device:** SK-2310g2, custom I/O controller
 
 **Responsibilities:**
+
 - Generate Safety Link OUT based on system safety conditions:
   - Emergency stop monitoring (multiple locations)
   - Cover/guard position monitoring
@@ -296,6 +317,7 @@ Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 unit
 - Provide operator interface (buttons, LEDs, displays)
 
 **Example Logic (device-specific):**
+
 ```
 Safety Link OUT = Covers Closed OR (At Home AND Spindle Stopped) OR Test Mode
 ```
@@ -307,6 +329,7 @@ Safety Link OUT = Covers Closed OR (At Home AND Spindle Stopped) OR Test Mode
 **Typical Device:** LS-231SE
 
 **Responsibilities:**
+
 - Pass through Safety Link IN to OUT if no drive faults
 - Break chain (OUT = LOW) if local fault occurs:
   - Motor overload
@@ -319,6 +342,7 @@ Safety Link OUT = Covers Closed OR (At Home AND Spindle Stopped) OR Test Mode
 - Maintain position tracking during safe stop
 
 **Logic:**
+
 ```
 Safety Link OUT = Safety Link IN AND (No Drive Faults) AND (Amplifier Enabled)
 ServoFAULT = Any Drive Fault Active
@@ -331,6 +355,7 @@ ServoFAULT = Any Drive Fault Active
 **Typical Device:** LS-2315
 
 **Responsibilities:**
+
 - Monitor Enable/Stop input (or dedicated spindle enable)
 - Report spindle stopped status to master
 - Report spindle fault to master
@@ -338,9 +363,11 @@ ServoFAULT = Any Drive Fault Active
 - Safe stop on loss of enable
 
 **Typical Connections:**
+
 - Enable input ← from Master spindle enable output
 - Stopped output → to Master spindle stopped input
 - Fault output → to Master spindle fault input
+
 ---
 
 ## Related Documentation
@@ -355,6 +382,7 @@ ServoFAULT = Any Drive Fault Active
 ## References
 
 **Multi-Axis CNC Servo Controller**
+
 - Document: Doc # 714000001 / Rev. F
 - Date: 03/25/2011
 - Content Used:
@@ -364,6 +392,7 @@ ServoFAULT = Any Drive Fault Active
   - Page 19: Digital I/O table showing safety signal mappings
 
 **LS-231SE Advanced Multifunctional Servo Drive Datasheet**
+
 - Content Used:
   - CN3 Safety Bus connector specifications
   - Safety Link pass-through logic
@@ -371,6 +400,7 @@ ServoFAULT = Any Drive Fault Active
   - Amplifier enable input behavior
 
 **LS-2315 High-Performance Spindle Drive**
+
 - Content Used:
   - Spindle safety interface specifications
   - Enable/Stop input requirements

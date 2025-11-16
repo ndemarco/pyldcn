@@ -13,6 +13,7 @@ This document describes status reporting for the LS-231SE servo drive, a multifu
 The LS-231SE uses a flexible status reporting system where the host selects which data items to include in status responses. This allows applications to minimize communication overhead by requesting only the data they need.
 
 Status responses are returned for:
+
 - `NOP` command (0x0) - Returns status with previously defined items
 - `Read Status` command (0x3) - Returns status with specified items (one-time)
 - Most other commands - Return status according to defined items
@@ -113,6 +114,7 @@ When bit 3 is set in the status configuration, the auxiliary status byte is retu
 The checksum byte is the 8-bit sum of the status byte plus all data bytes.
 
 **Verification**:
+
 ```python
 # Calculate expected checksum
 expected = sum(response[:-1]) & 0xFF
@@ -151,10 +153,12 @@ Defines what additional data will be sent in the status packet along with the st
 The status data will always be sent in the order listed in the Status Items table. For example, if bits 0 and 3 are set, the status packet will consist of the status byte followed by four bytes of position data, followed by the auxiliary status byte, followed by the checksum.
 
 **Data Byte Encoding**:
+
 - If status_bits ≤ 0xFF (bits 0-7 only): Send 1 byte (command byte 0x12)
 - If status_bits > 0xFF (bits 8-15 used): Send 2 bytes (command byte 0x22)
 
 **Example**:
+
 ```python
 # Define persistent status: position, velocity, aux status, position error
 status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # 0x004D
@@ -164,6 +168,7 @@ send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 ```
 
 **Notes**:
+
 - Configuration persists until power cycle or hard reset
 - Hard Reset or power cycle returns to default (`0x0000`)
 - To minimize communication overhead, request only needed data items
@@ -180,6 +185,7 @@ send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 This is a non-permanent version of the Define Status command. The status packet returned in response to this command will incorporate the data bytes specified, but subsequent status packets will include only the data bytes previously specified with the Define Status command.
 
 **Example**:
+
 ```python
 # One-time read: position and velocity only
 status_bits = 0x0001 | 0x0004  # 0x0005
@@ -193,6 +199,7 @@ checksum = response[7]
 ```
 
 **Use Cases**:
+
 - Reading status items without changing persistent configuration
 - Debugging or diagnostics
 - One-time queries for specific data
