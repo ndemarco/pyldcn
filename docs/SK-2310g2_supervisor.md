@@ -19,16 +19,16 @@ The SK-2310g2 uses **LS-773 format**, NOT standard LDCN format. This is critical
 
 ### LS-773 Response Format
 
-```
+```text
 [status] [byte0] [byte1] [position] [ad] [velocity] [aux] [home] [dev_id] [pos_err] [pathbuf] [analog] [checksum]
  idx=0    idx=1   idx=2    idx=3-6   ...
-```
+```text
 
 **NOT** standard LDCN format:
 
-```
+```text
 [status] [position] [ad] [velocity] ... [byte0] [byte1] [analog] [checksum]  ← WRONG for SK-2310g2
-```
+```text
 
 ### Correct Implementation
 
@@ -43,7 +43,7 @@ response = send_command(addr, CMD_READ_STATUS, [0xFF, 0xFF])
 byte0 = response[1]  # Digital inputs
 byte1 = response[2]  # Internal status + diagnostic
 diagnostic = (byte1 >> 3) & 0x1F  # Extract diagnostic from Byte1 bits [7:3]
-```
+```text
 
 ### Incorrect Approaches
 
@@ -54,7 +54,7 @@ response = send_command(addr, CMD_NOP)  # Returns only [status] [checksum]
 # WRONG: Parsing as standard LDCN format
 byte0 = response[18]  # Would read wrong data - this is pathbuf in LS-773 format
 byte1 = response[19]  # Would read wrong data - this is analog data in LS-773 format
-```
+```text
 
 ---
 
@@ -421,19 +421,19 @@ from pyldcn.devices.io import SK2310g2
 status = device.read_status()
 diagnostic = device.decode_diagnostic()
 print(f"{diagnostic['description']} (Code: {diagnostic['code_hex']})")
-```
+```text
 
 **Command Format:**
 
-```
+```text
 [0x00, addr]
-```
+```text
 
 **Response Format:**
 
-```
+```text
 [NW, HW, Addr, Grp, stat, byte0, byte1, chk]
-```
+```text
 
 **Byte0 Digital Inputs (SK-2310g2):**
 
@@ -468,19 +468,19 @@ print(f"{diagnostic['description']} (Code: {diagnostic['code_hex']})")
 inputs = device.read_input_states()
 print(f"Spindle fault: {inputs['spindle_fault']}")
 print(f"At home: {inputs['at_home']}")
-```
+```text
 
 **Command Format:**
 
-```
+```text
 [0x0E, addr]
-```
+```text
 
 **Response Format:**
 
-```
+```text
 [NW, HW, Addr, Grp, stat, byte0, byte1, chk]
-```
+```text
 
 **Byte0 Digital Outputs:**
 
@@ -522,13 +522,13 @@ device.enable_spindle('forward')
 
 # Set individual output bit
 device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
-```
+```text
 
 **Command Format:**
 
-```
+```text
 [0x1E, addr, byte0, byte1]
-```
+```text
 
 ---
 
@@ -538,9 +538,9 @@ device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
 
 The SK-2310g2 inherits the LS-773 status response format. When CMD_READ_STATUS (0x03) is sent with data byte `[0xFF, 0xFF]` to request all status fields, the response contains:
 
-```
+```text
 [status_byte] [byte0] [byte1] [position] [velocity] [home] [checksum]
-```
+```text
 
 ### Status Byte (First Response Byte)
 
@@ -581,7 +581,7 @@ The status byte uses the LS-773 format:
 
 ```python
 diagnostic = (byte1 >> 3) & 0x1F
-```
+```text
 
 **LED Mapping:** The 5 diagnostic bits map directly to the 5 LED indicators:
 
@@ -716,7 +716,7 @@ safety_bridge = (byte1 & 0x10) != 0
 
 print(f"Spindle Command: {spindle_cmd}")
 print(f"Safety Link Bridge: {safety_bridge} (must be 0)")
-```
+```text
 
 **Required Conditions for Spindle Enable:**
 
@@ -751,7 +751,7 @@ byte1_out = outputs[6]
 guard_lock = (byte1_out & 0x02) != 0
 
 print(f"Guard Lock Output: {guard_lock} (1=locked, 0=unlocked)")
-```
+```text
 
 **Required Conditions for Guard Unlock:**
 

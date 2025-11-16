@@ -18,16 +18,16 @@ This document describes the **design principles and architecture** for the pyldc
 
 ### Composition (HAS-A relationships)
 
-```
+```text
 LDCNNetwork                           # pyldcn/network.py (orchestration)
     ├── protocol: LDCNProtocol        # pyldcn/protocol.py (serial + LDCN protocol)
     ├── discovery: DeviceDiscovery    # pyldcn/discovery.py (addressing, discovery)
     └── devices: list[LDCNDevice]     # managed device instances
-```
+```text
 
 ### Inheritance (IS-A relationships)
 
-```
+```text
 LDCNDevice (ABC)                      # pyldcn/device.py (base for all devices)
     │
     ├── Servo (ABC)                   # pyldcn/devices/servo.py (servo base class)
@@ -36,11 +36,11 @@ LDCNDevice (ABC)                      # pyldcn/device.py (base for all devices)
     └── IOController (ABC)            # pyldcn/devices/io.py (I/O base class)
         ├── SK2310g2                  # pyldcn/devices/io.py (supervisory I/O)
         └── LS773                     # pyldcn/devices/io.py (generic I/O)
-```
+```text
 
 ### Complete Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │ LDCNNetwork (orchestration layer)                          │
 │ - Manages serial connection                                 │
@@ -68,7 +68,7 @@ Device Inheritance Hierarchy:
       └── IOController (ABC)
           ├── SK2310g2
           └── LS773
-```
+```text
 
 ---
 

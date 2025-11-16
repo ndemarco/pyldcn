@@ -122,7 +122,7 @@ received = response[-1]
 
 if expected != received:
     print(f"Checksum error: expected 0x{expected:02X}, got 0x{received:02X}")
-```
+```text
 
 ---
 
@@ -165,7 +165,7 @@ status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # 0x004D
 send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 
 # All subsequent NOP commands and responses will include these items
-```
+```text
 
 **Notes**:
 
@@ -196,7 +196,7 @@ status_byte = response[0]
 position = struct.unpack('<i', bytes(response[1:5]))[0]  # 4 bytes, signed
 velocity = struct.unpack('<h', bytes(response[5:7]))[0]  # 2 bytes, signed
 checksum = response[7]
-```
+```text
 
 **Use Cases**:
 
@@ -230,7 +230,7 @@ while True:
     if status_byte & 0x04:  # current_limit (sticky)
         print("Current limit exceeded - clearing fault")
         send_command(addr, 0x0E, [0x15])  # Clear Bits command
-```
+```text
 
 ### Reading Multiple Status Items
 
@@ -270,7 +270,7 @@ if status_byte & 0x10:  # pos_error
     print(f"Position error fault: {pos_error} counts (sticky)")
 if aux_status & 0x02:  # pos_wrap
     print("Position counter wrapped (sticky)")
-```
+```text
 
 ### Clearing Sticky Bits
 
@@ -286,7 +286,7 @@ response = send_command(addr, 0x00)  # NOP
 status_byte = response[0]
 if status_byte & 0x14 == 0:  # bits 2 and 4
     print("Sticky faults cleared successfully")
-```
+```text
 
 ### Variable-Length Response Parsing
 
@@ -329,7 +329,7 @@ def _parse_status(response: bytes, status_bits: int) -> dict:
         idx += 2
 
     return result
-```
+```text
 
 ---
 
@@ -362,7 +362,7 @@ def initialize_servo(addr):
     # Step 6: Read and verify status
     response = send_command(addr, 0x00)  # NOP
     return parse_servo_status(response, status_bits)
-```
+```text
 
 ### Motion Monitoring
 
@@ -401,7 +401,7 @@ def monitor_motion(addr):
         time.sleep(0.01)  # 10ms polling
 
     print("Move complete!")
-```
+```text
 
 ### Fault Detection and Recovery
 
@@ -451,7 +451,7 @@ def check_and_clear_faults(addr):
         print("No faults detected")
 
     return faults
-```
+```text
 
 ---
 

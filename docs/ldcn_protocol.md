@@ -29,12 +29,12 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 ### Command Packet (Host → Device)
 
-```
+```text
 ┌────────┬─────────┬──────────┬──────────────────────┬──────────┐
 │ Header │ Address │  Cmd/Len │ Data (0-16 bytes)    │ Checksum │
 │ (0xAA) │ (1 byte)│ (1 byte) │                      │ (1 byte) │
 └────────┴─────────┴──────────┴──────────────────────┴──────────┘
-```
+```text
 
 - **Header**: `0xAA`
 - **Address**: Device address (1-127) or group address (128-255)
@@ -44,12 +44,12 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The PC (mast
 
 ### Response Packet (Device → Host)
 
-```
+```text
 ┌────────┬──────────────────────────┬──────────┐
 │ Status │ Additional Status Data   │ Checksum │
 │(1 byte)│ (0-20 bytes, variable)   │ (1 byte) │
 └────────┴──────────────────────────┴──────────┘
-```
+```text
 
 - **Status**: Status byte (see Status Byte section)
 - **Additional Data**: Configurable via *Define Status* command
@@ -86,17 +86,17 @@ One device in a group can be designated as the **group leader**. Only the group'
 
 Set group addresses using the **Set Address** command (0x1):
 
-```
+```text
 AA 00 21 [individual] [group] [checksum]
-```
+```text
 
 **Example - Creating a motion group:**
 
-```
+```text
 AA 00 21 01 F0 11  # Device 1: individual=1, group=0xF0
 AA 00 21 02 F0 12  # Device 2: individual=2, group=0xF0
 AA 00 21 03 F0 13  # Device 3: individual=3, group=0xF0
-```
+```text
 
 Now all three devices belong to group 0xF0.
 
@@ -113,7 +113,7 @@ send_command(addr=3, cmd=0x8, data=trajectory_z)  # Z axis
 # 2. Start all axes simultaneously with group command
 send_command(addr=0xF0, cmd=0x5, data=[0x00])  # Start motion on group 0xF0
 # All three axes begin moving within ±25 microseconds
-```
+```text
 
 ### Important Notes
 
@@ -161,9 +161,9 @@ Sets individual and group addresses for a device.
 
 **Example**:
 
-```
+```text
 AA 00 21 01 FF 21  # Set device to address 1, group 0xFF
-```
+```text
 
 **Notes**:
 
@@ -198,9 +198,9 @@ Selects data to return in status packets.
 
 **Example**:
 
-```
+```text
 AA 06 22 FF FF 26  # Device 6, request all status data (0xFFFF)
-```
+```text
 
 ### 0x3 - Read Status
 
@@ -216,9 +216,9 @@ Changes baud rate of all devices. **Group command only** (no status response).
 
 **Example**:
 
-```
+```text
 AA FF 1A 27 46  # Change all devices to 125kbps (BRD=0x27)
-```
+```text
 
 **Notes**:
 
@@ -234,9 +234,9 @@ Returns current status data without performing any action.
 
 **Example**:
 
-```
+```text
 AA 01 0E 0F  # NOP to device 1
-```
+```text
 
 **Notes**:
 
@@ -251,9 +251,9 @@ Resets controller to power-up state.
 
 **Example**:
 
-```
+```text
 AA FF 0F 0E  # Reset all devices
-```
+```text
 
 **Notes**:
 
@@ -352,7 +352,7 @@ If device stops responding:
 
 ## RS-485 Wiring
 
-```
+```text
 ┌─────────┐          ┌─────────┐          ┌─────────┐
 │ Master  │          │ Device 1│          │ Device N│
 │  (PC)   │          │         │          │         │
@@ -364,7 +364,7 @@ If device stops responding:
      │                                          │
     [R]                                        [R]
     120Ω                                       120Ω
-```
+```text
 
 - Use shielded twisted pair cable
 - Terminate each end. LDCN devices have selectable termination. See datasheet.
@@ -373,7 +373,7 @@ If device stops responding:
 
 ## Example Communication Session
 
-```
+```text
 # Power up - devices at 19200 baud
 TX: AA FF 0F 0E              # Hard reset
 RX: (none)
@@ -400,7 +400,7 @@ RX: 31 31                    # Device responding
 # Enable amplifier
 TX: AA 01 17 05 1D           # Stop abruptly + amp enable
 RX: (no response expected for stop command)
-```
+```text
 
 ## Protocol Gotchas
 

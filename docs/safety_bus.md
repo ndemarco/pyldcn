@@ -111,7 +111,7 @@ CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for
 
 **Logic:**
 
-```
+```text
 Safety Link IN = HIGH (OK):
   - Safety chain is intact
   - All upstream devices report safe conditions
@@ -121,7 +121,7 @@ Safety Link IN = LOW (OPEN - FAULT):
   - Safety chain is broken
   - One or more upstream devices experiencing unsafe conditions
   - System power and spindle power must be immediately disabled
-```
+```text
 
 **Critical Behavior:**
 
@@ -147,7 +147,7 @@ Safety Link IN = LOW (OPEN - FAULT):
 
 **Typical Logic (device-dependent):**
 
-```
+```text
 Enable/Stop = HIGH when:
   - Power is ON
   - No stop conditions active
@@ -158,7 +158,7 @@ Enable/Stop = OPEN (LOW) when:
   - Power OFF
   - Safety interlock open
   - System fault condition
-```
+```text
 
 **Typical Use Cases:**
 
@@ -210,7 +210,7 @@ Enable/Stop = OPEN (LOW) when:
 
 The Safety Bus implements a **series safety chain** where all devices must be safe for system operation.
 
-```
+```text
      ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
      │  Master     │         │ Participant │         │ Participant │
      │  Device     │         │  Device 1   │         │  Device 2   │
@@ -222,7 +222,7 @@ The Safety Bus implements a **series safety chain** where all devices must be sa
   │  └─────────────┘         └─────────────┘         └─────────────┘  │
   │                                                                     │
   └─────────────────────────── Return Loop ───────────────────────────┘
-```
+```text
 
 **Signal Flow:**
 
@@ -234,9 +234,9 @@ The Safety Bus implements a **series safety chain** where all devices must be sa
 
 **Logical Function:**
 
-```
+```text
 System Safe = Master Conditions AND Device1 Safe AND Device2 Safe AND ... AND DeviceN Safe
-```
+```text
 
 This implements a fail-safe **logical AND** of all safety conditions.
 
@@ -246,11 +246,11 @@ This implements a fail-safe **logical AND** of all safety conditions.
 
 **Scenario: Device 2 Develops Fault**
 
-```
+```text
 Master OUT (HIGH) ──> Device1 IN (HIGH) ──> Device1 OUT (HIGH)
                       ──> Device2 IN (HIGH) ──> Device2 OUT (LOW - FAULT!)
                       ──> Master IN (LOW) = CHAIN BROKEN
-```
+```text
 
 **Result:**
 
@@ -276,7 +276,7 @@ CLAUDE: Confirm if all faults must be reset in addition to clearing the fault ca
 
 Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 units for multi-zone machines).
 
-```
+```text
      ┌──────────┐       ┌──────────┐       ┌──────────┐
      │ Master A │       │ Master B │       │ Servo 1  │
      │  Zone 1  │       │  Zone 2  │       │          │
@@ -285,7 +285,7 @@ Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 unit
   │  └──────────┘       └──────────┘       └──────────┘  │
   │                                                        │
   └────────────────────── Return ─────────────────────────┘
-```
+```text
 
 **Operation:**
 
@@ -318,9 +318,9 @@ Some systems may have multiple safety controllers (e.g., multiple SK-2310g2 unit
 
 **Example Logic (device-specific):**
 
-```
+```text
 Safety Link OUT = Covers Closed OR (At Home AND Spindle Stopped) OR Test Mode
-```
+```text
 
 ---
 
@@ -343,10 +343,10 @@ Safety Link OUT = Covers Closed OR (At Home AND Spindle Stopped) OR Test Mode
 
 **Logic:**
 
-```
+```text
 Safety Link OUT = Safety Link IN AND (No Drive Faults) AND (Amplifier Enabled)
 ServoFAULT = Any Drive Fault Active
-```
+```text
 
 ---
 

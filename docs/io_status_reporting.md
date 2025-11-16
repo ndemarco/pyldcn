@@ -134,7 +134,7 @@ The following examples show actual byte-by-byte status responses for different c
 
 #### Example 1: Digital Inputs Only (Status Item = 0x01)
 
-```
+```text
 Status Item Byte: 0x01 (bit 0 set - Input Bytes)
 Response: [status_byte, input_byte0, input_byte1, checksum]
 Total: 4 bytes
@@ -144,11 +144,11 @@ Example with IN0, IN2, IN8 active:
   Byte 1: 0x05        (Input byte 0: bits 0,2 set = 0b00000101)
   Byte 2: 0x01        (Input byte 1: bit 0 set = 0b00000001 = IN8)
   Byte 3: 0x06        (Checksum: 0x00 + 0x05 + 0x01 = 0x06)
-```
+```text
 
 #### Example 2: Inputs + All Analog (Status Item = 0x0F)
 
-```
+```text
 Status Item Byte: 0x0F (bits 0-3 set)
 Response: [status_byte, input_byte0, input_byte1, ain0, ain1, ain2, checksum]
 Total: 7 bytes
@@ -161,7 +161,7 @@ Example with IN0=1, ADC0=128, ADC1=64, ADC2=255:
   Byte 4: 0x40        (Analog 1: 64 decimal = 0x40 hex)
   Byte 5: 0xFF        (Analog 2: 255 decimal = 0xFF hex)
   Byte 6: 0xC0        (Checksum: 0x00+0x01+0x00+0x80+0x40+0xFF = 0x1C0, truncated to 0xC0)
-```
+```text
 
 ### Counter/Timer
 
@@ -255,7 +255,7 @@ For PWM capable outputs, sets the PWM duty cycle.
 pwm1 = 128  # 50%
 pwm2 = 64   # 75%
 send_command(addr, 0x04, [pwm1, pwm2])
-```
+```text
 
 **Notes**:
 
@@ -309,7 +309,7 @@ Immediately sets the states of all digital output bits.
 # Turn on OUTPUT 0, OUTPUT 2, and OUTPUT 5
 outputs = 0b00100101  # bits 0, 2, 5 set
 send_command(addr, 0x06, [outputs, 0x00])
-```
+```text
 
 **Notes**:
 
@@ -345,7 +345,7 @@ send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
 
 # Later, simultaneously apply the staged values
 send_command(addr, 0x05, [])  # Sync Output
-```
+```text
 
 ### Set Timer Mode
 
@@ -382,7 +382,7 @@ send_command(addr, 0x08, [config])
 # Reset counter (disable then re-enable)
 send_command(addr, 0x08, [0x00])  # Disable
 send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
-```
+```text
 
 **Notes**:
 
@@ -419,7 +419,7 @@ response = send_command(addr, 0x03, [status_bits])
 # - Captured input byte 1
 # - Captured counter value (4 bytes, LSB first)
 # - Checksum
-```
+```text
 
 **Note:** There is no trigger or interrupt to capture all values on a counter/timer or  input transition. Capture can only be initiated via a LDCN command and is subject to transmission and command processing delays.
 
@@ -450,7 +450,7 @@ while True:
     # Verify checksum
     if status_byte & 0x02:
         print("Warning: Checksum error detected")
-```
+```text
 
 ### Reading Analog Inputs
 
@@ -470,7 +470,7 @@ ain0 = response[3]            # Analog input 0 (0-255)
 ain1 = response[4]            # Analog input 1 (0-255)
 ain2 = response[5]            # Analog input 2 (0-255)
 checksum = response[6]        # Checksum
-```
+```text
 
 ## Examples
 
@@ -495,7 +495,7 @@ def initialize_io_node(addr):
     # Step 4: Read and verify status
     response = send_command(addr, 0x0E, [])  # NOP to read status
     return parse_io_status(response)
-```
+```text
 
 ---
 
@@ -520,7 +520,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 # To disable PWM: set output bits to 0
 send_command(addr, 0x06, [0x00, 0x00])
-```
+```text
 
 ---
 

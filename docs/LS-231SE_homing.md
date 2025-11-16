@@ -94,7 +94,7 @@ while True:
     time.sleep(0.05)
 
 print("Homed to Index pulse")
-```
+```text
 
 ## Home using Velocity Mode
 
@@ -155,7 +155,7 @@ This provides:
 
 The manual's FindHomePosition procedure:
 
-```
+```text
 AA 01 19 12 2C     # Set home mode: Limit 2 + stop abruptly (0x12)
 AA 01 94 36...     # Load velocity trajectory (forward)
 AA 01 05 06        # Start motion
@@ -164,6 +164,6 @@ AA 01 19 18 32     # Set home mode: Index + stop abruptly (0x18)
 AA 01 94 77...     # Load velocity trajectory (reverse)
 AA 01 05 06        # Start motion
                    # Wait for home_in_progress = 0
-```
+```text
 
 This homes to Limit 2, then backs off to the nearest index pulse.

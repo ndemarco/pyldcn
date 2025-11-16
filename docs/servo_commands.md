@@ -55,9 +55,9 @@ Resets the 32-bit encoder counter to zero.
 
 **Example**:
 
-```
+```text
 AA 01 00 01  # Reset position on device 1
-```
+```text
 
 **Notes**:
 
@@ -179,9 +179,9 @@ Starts previously loaded motion trajectory.
 
 **Example**:
 
-```
+```text
 AA 01 05 06  # Start motion on device 1
-```
+```text
 
 **Use Case**: Execute a trajectory loaded with the Load Trajectory command (without bit 7 set). Useful for synchronized multi-axis motion - load all axes, then start them simultaneously with a group command.
 
@@ -249,12 +249,12 @@ Stops servo motor and controls amplifier enable state.
 
 **Examples**:
 
-```
+```text
 AA 01 17 05 1D  # Enable amplifier, stop abruptly (standard init)
 AA 01 17 09 21  # Enable amplifier, stop smoothly (graceful stop)
 AA 01 17 01 19  # Enable amplifier only (hold position)
 AA 01 17 02 1A  # Turn motor off (disable servo)
-```
+```text
 
 **IMPORTANT**: Bit 0 (Pic_ae) must be set to enable the power driver. Drive initialization requires sending 0x05 (bits 0,2) to enable amplifier and close servo loop.
 
@@ -349,16 +349,16 @@ Configures homing mode to capture home position on specified conditions.
 
 **Example - Home to Limit 2**:
 
-```
+```text
 AA 01 19 12 2C     # Set home mode: Limit 2 + stop abruptly
 AA 01 94 36 ...    # Load velocity trajectory (forward direction)
 AA 01 05 06        # Start motion
 # Wait for home_in_progress bit to clear
-```
+```text
 
 **Example - Two-Stage Homing** (Limit switch then Index pulse):
 
-```
+```text
 AA 01 19 12 2C     # Home to Limit 2, stop abruptly
 AA 01 94 36 ...    # Load velocity trajectory (forward)
 AA 01 05 06        # Start motion
@@ -368,7 +368,7 @@ AA 01 19 18 32     # Home to Index, stop abruptly
 AA 01 94 77 ...    # Load velocity trajectory (reverse, slower)
 AA 01 05 06        # Start motion
 # Wait for home_in_progress = 0
-```
+```text
 
 **Status Monitoring**:
 
@@ -407,9 +407,9 @@ Clears "sticky" status bits that latch on fault conditions.
 
 **Example**:
 
-```
+```text
 AA 01 0B 0C  # Clear sticky bits on device 1
-```
+```text
 
 **Sticky Bits Cleared**:
 
@@ -433,9 +433,9 @@ Saves the current encoder position as the home position.
 
 **Example**:
 
-```
+```text
 AA 01 0C 0D  # Save current position as home on device 1
-```
+```text
 
 **Use Case**: Synchronous home position capture across multiple axes. This command can be issued to a group of controllers to set their current positions as home synchronously.
 

@@ -19,7 +19,7 @@ servo = network.get_device(1, 'LS-231SE')
 servo.load_gains(kp=10, kd=1000, ki=0)
 servo.move_to_counts(position=5000, velocity=2000, accel=200)
 servo.print_status()
-```
+```text
 
 ---
 
@@ -369,7 +369,7 @@ servo.move_to_counts(position=5000, velocity=2000, accel=200)
 while not servo.move_done:
     servo.read_status()
     time.sleep(0.05)
-```
+```text
 
 ### Two-Stage Homing
 
@@ -383,7 +383,7 @@ servo.home_to_limit(
 )
 servo._motion.reset_position(0)
 servo._motion.save_home()
-```
+```text
 
 ### Status Monitoring
 
@@ -402,7 +402,7 @@ print(f"Condition: {condition.condition}")
 if servo.is_faulted():
     print("FAULT DETECTED")
     servo.clear_faults()
-```
+```text
 
 ### Path Mode
 
@@ -419,7 +419,7 @@ servo._motion.start_path_mode()
 while servo._motion.get_path_count() > 0:
     servo.read_status()
     time.sleep(0.1)
-```
+```text
 
 ### Custom Status Configuration
 
@@ -431,7 +431,7 @@ servo.status.define_status(mask)
 # Read configured items
 status = servo.read_status()
 print(f"Pos: {status['position']}, Vel: {status['velocity']}")
-```
+```text
 
 ---
 
@@ -501,7 +501,7 @@ print(f"Pos: {status['position']}, Vel: {status['velocity']}")
 
 ## File Organization
 
-```
+```text
 pyldcn/
 ├── devices/
 │   ├── servo.py                    # Main LS231SE class
@@ -519,7 +519,7 @@ examples/
 ├── servo_homing_example.py          # ⭐ NEW: Homing sequences
 ├── servo_comprehensive_example.py   # ⭐ NEW: Complete demo
 └── servo_coordinated_motion.py      # ⭐ NEW: Multi-axis coordination
-```
+```text
 
 ---
 
