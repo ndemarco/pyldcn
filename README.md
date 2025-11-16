@@ -26,6 +26,54 @@ The library provides a clean, object-oriented interface with full type hints and
 - **Context Managers** - Pythonic `with` statement support
 - **Zero Duplication** - Single source of truth for all protocol operations
 
+### Architecture
+
+The library uses a layered architecture with clear abstraction boundaries:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      USER CODE                              │
+│  (Examples, applications, scripts)                          │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│               NAMED HELPER METHODS                          │
+│  servo.move_to(), device.read_status(), etc.               │
+│  ✓ PREFERRED for user code                                 │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              DEVICE LAYER (device.py)                       │
+│  device.send_command(cmd, data)                             │
+│  ✓ Use when implementing device methods                    │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              NETWORK LAYER (network.py)                     │
+│  network.send_command(addr, cmd, data)                      │
+│  ⚠ Avoid from user code - use device methods               │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              PROTOCOL LAYER (protocol.py)                   │
+│  protocol.send_command(addr, cmd, data)                     │
+│  ⛔ Infrastructure only - do not call from devices/user code│
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                   Serial Hardware (RS-485)
+```
+
+**Best Practices:**
+- ✅ **DO** use named helper methods: `servo.move_to()`, `device.read_status()`
+- ✅ **DO** use `device.send_command()` when implementing new device methods
+- ⚠️ **AVOID** calling `network.send_command()` from device classes or user code
+- ⛔ **NEVER** call `protocol.send_command()` from device classes or user code
+
 ---
 
 ## Installation
