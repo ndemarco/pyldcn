@@ -1,14 +1,15 @@
 """
-SK-2310g2 I/O Controller Device
+I/O Controller Device Classes
 
-Generic LDCN I/O controller used for supervisory control with safety
-and spindle control functions.
+Base class for all I/O controllers and specific implementations
+(SK-2310g2, LS-773).
 
 Author: NickyDoes
 License: GPL v2 or later
 """
 
 import time
+from abc import ABC
 from typing import Optional, Dict, Any
 
 # Import from parent package (modular architecture)
@@ -20,6 +21,39 @@ from pyldcn.protocol import CMD_READ_STATUS
 from .status import SK2310g2Status
 from . import sk2310g2  # Keep for formatting utilities
 
+
+# =============================================================================
+# I/O Controller Base Class
+# =============================================================================
+
+class IOController(LDCNDevice, ABC):
+    """
+    Generic I/O Controller Base Class
+
+    Provides common interface for all LDCN I/O controllers.
+    Specific I/O types (SK2310g2, LS773, etc.) inherit from this class.
+
+    Common Features:
+    - Digital input reading
+    - Digital output control
+    - Analog I/O (device-specific)
+    - Status reporting
+    - Counter/timer functions (device-specific)
+
+    This base class establishes the interface that all I/O controllers
+    must implement, ensuring consistent API across different I/O types.
+    """
+
+    def __init__(self, network: LDCNNetwork, address: int):
+        """
+        Initialize generic I/O controller.
+
+        Args:
+            network: Parent LDCNNetwork object
+            address: Device address (1-127)
+        """
+        super().__init__(network, address)
+        self.device_type = "IOController"
 
 
 # =============================================================================
@@ -119,7 +153,7 @@ ANALOG_IN_ADC2 = 1             # CN17.3: 0-5V general purpose
 ANALOG_IN_ADC3 = 2             # CN17.2: 0-5V general purpose
 
 
-class SK2310g2(LDCNDevice):
+class SK2310g2(IOController):
     """
     SK-2310g2 I/O Controller
 
@@ -1435,5 +1469,68 @@ class SK2310g2(LDCNDevice):
         🔴 UNVERIFIED - Not yet tested on hardware
         """
         self.set_output_bit(OUTPUT_TOOL_CHANGER_UNLOCK, False)
+
+
+# =============================================================================
+# LS-773 Network I/O Node (Future Implementation)
+# =============================================================================
+
+class LS773(IOController):
+    """
+    LS-773 Network I/O Node
+
+    Generic LDCN I/O node with versatile capabilities:
+
+    Hardware Capabilities:
+    - 10 digital inputs
+    - 7 digital outputs (6 standard + 1 amplifier enable)
+    - PWM generation at 20 KHz (outputs 1 & 2)
+    - 32-bit counter/timer with prescaler
+    - 3 analog inputs (8-bit, configurable 0-5V or 0-10V range)
+    - Synchronized I/O capture and application
+
+    Typical Applications:
+    - General purpose I/O expansion
+    - Frequency measurement and timing
+    - Motor speed control via PWM
+    - Sensor interface (analog and digital)
+
+    🔴 NOT YET IMPLEMENTED - Placeholder for future development
+
+    When implementing, refer to LS-773 datasheet for:
+    - Command codes specific to LS-773
+    - Status byte format
+    - PWM configuration
+    - Counter/timer modes
+    - Analog I/O configuration
+
+    Author: NickyDoes
+    License: GPL v2 or later
+    """
+
+    def __init__(self, network: LDCNNetwork, address: int):
+        """
+        Initialize LS-773 I/O node.
+
+        Args:
+            network: Parent LDCNNetwork object
+            address: Device address (1-127)
+        """
+        super().__init__(network, address)
+        self.device_type = "LS-773"
+
+    def read_status(self) -> Dict[str, Any]:
+        """
+        Read status from LS-773.
+
+        🔴 NOT YET IMPLEMENTED
+
+        Raises:
+            NotImplementedError: LS773 implementation pending
+        """
+        raise NotImplementedError(
+            "LS773 not yet implemented. Refer to LS-773 datasheet "
+            "for status byte format and implement status parsing."
+        )
 
 

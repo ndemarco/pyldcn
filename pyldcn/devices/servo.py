@@ -1,8 +1,7 @@
 """
-LS-231SE Servo Drive Device
+Servo Drive Device Classes
 
-Servo-specific operations including motion control, status reading,
-and PID gain configuration.
+Base class for all servo drives and LS-231SE specific implementation.
 
 Author: NickyDoes
 License: GPL v2 or later
@@ -10,6 +9,7 @@ License: GPL v2 or later
 
 import time
 import struct
+from abc import ABC
 from typing import Optional, Dict, List
 
 # Import from parent package (modular architecture)
@@ -21,6 +21,40 @@ from .servo_state import ServoState
 from .status import ServoStatus
 from .servo_motion import Motion, Trajectory
 from .servo_io import IO
+
+
+# =============================================================================
+# Servo Drive Base Class
+# =============================================================================
+
+class Servo(LDCNDevice, ABC):
+    """
+    Generic Servo Drive Base Class
+
+    Provides common interface for all LDCN servo drives.
+    Specific servo types (LS231SE, etc.) inherit from this class.
+
+    Common Features:
+    - Motion control (position, velocity, acceleration)
+    - PID gain configuration
+    - Status reporting
+    - Fault detection
+    - Amplifier enable/disable
+
+    This base class establishes the interface that all servo drives
+    must implement, ensuring consistent API across different servo types.
+    """
+
+    def __init__(self, network: LDCNNetwork, address: int):
+        """
+        Initialize generic servo drive.
+
+        Args:
+            network: Parent LDCNNetwork object
+            address: Device address (1-127)
+        """
+        super().__init__(network, address)
+        self.device_type = "Servo"
 
 
 # =============================================================================
@@ -40,7 +74,7 @@ CMD_ADD_PATHPOINT = 0x0D    # Add path point to buffer
 CMD_EXT = 0x0E              # Extended commands (with subcommand byte)
 
 
-class LS231SE(LDCNDevice):
+class LS231SE(Servo):
     """
     LS-231SE Servo Drive
 

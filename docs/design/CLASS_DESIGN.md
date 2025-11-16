@@ -21,11 +21,14 @@ LDCNNetwork                    # pyldcn/network.py
     │
     ├── devices: list[LDCNDevice]
     │
-    └── LDCNDevice (ABC)       # pyldcn/network.py
+    └── LDCNDevice (ABC)       # pyldcn/device.py
             │
-            ├── LS231SE        # pyldcn/devices/servo.py
-            ├── SK2310g2       # pyldcn/devices/io.py
-            └── LS773          # pyldcn/devices/io.py
+            ├── Servo (ABC)    # pyldcn/devices/servo.py
+            │   └── LS231SE    # pyldcn/devices/servo.py
+            │
+            └── IOController (ABC)  # pyldcn/devices/io.py
+                ├── SK2310g2   # pyldcn/devices/io.py
+                └── LS773      # pyldcn/devices/io.py
 ```
 
 ---

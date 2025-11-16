@@ -33,12 +33,17 @@ from .exceptions import (
 )
 
 from .devices import (
-    # Device classes
+    # Base device classes
+    Servo,
+    IOController,
+
+    # Specific device types
     LS231SE,
     SK2310g2,
+    LS773,
 )
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 __author__ = 'NickyDoes'
 __license__ = 'GPL-2.0-or-later'
 
@@ -48,8 +53,15 @@ __all__ = [
     'LDCNDevice',
     'UnknownDevice',
     'InitMode',
+
+    # Base device classes
+    'Servo',
+    'IOController',
+
+    # Specific devices
     'LS231SE',
     'SK2310g2',
+    'LS773',
 
     # Exceptions
     'LDCNError',
