@@ -284,7 +284,7 @@ Typical network initialization:
 
 1. **Hard Reset** (at any valid baud rate)
 
-   ```
+   ```text
    AA FF 0F 0E
    ```
 
@@ -292,7 +292,7 @@ Typical network initialization:
 
 2. **Set Addresses** (at 19200 baud)
 
-   ```
+   ```text
    AA 00 21 01 FF 21  # Device 1
    AA 00 21 02 FF 22  # Device 2
    AA 00 21 03 FF 23  # Device 3
@@ -305,7 +305,7 @@ Typical network initialization:
 
 3. **Verify Communication**
 
-   ```
+   ```text
    AA 01 0E 0F  # NOP to each device
    AA 02 0E 10
    ...
@@ -313,7 +313,7 @@ Typical network initialization:
 
 4. **Change Baud Rate**
 
-   ```
+   ```text
    AA FF 1A 27 46  # Change to 125kbps
    ```
 
