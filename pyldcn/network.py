@@ -339,7 +339,7 @@ class LDCNNetwork:
         # If device doesn't exist and we have a type, create it
         if device_type is not None:
             from .devices.servo import LS231SE
-            from .devices.sk2310g2 import SK2310g2
+            from .devices.io import SK2310g2
 
             if device_type == 'LS-231SE':
                 new_device = LS231SE(self, address)
@@ -409,61 +409,6 @@ class LDCNNetwork:
     # High-Level Initialization
     # -------------------------------------------------------------------------
 
-    def soft_initialize(
-        self,
-        create_objects: bool = True,
-        baud_list: Optional[List[int]] = None
-    ) -> Tuple[int, List[Dict]]:
-        """
-        Soft initialization without reset (InitMode.SOFT).
-
-        Discovers devices at their current addresses and baud rate without
-        performing a hard reset. This preserves device state including:
-        - Servo positions and gains
-        - Device configurations
-        - Status reporting settings
-
-        Steps:
-        1. Auto-detect current baud rate
-        2. Scan addresses for responding devices
-        3. Query device types and versions
-        4. Verify communication
-        5. Optionally create device objects
-
-        Args:
-            create_objects: If True, create device objects and populate self.devices
-            baud_list: List of baud rates to try (default: COMMON_BAUDS)
-
-        Returns:
-            Tuple of (num_devices, device_info_list)
-
-        Raises:
-            LDCNInitializationError: If no devices found or baud detection fails
-        """
-        try:
-            # Auto-detect baud rate
-            detected_baud = self.auto_detect_baud(baud_list)
-
-            # Discover devices at current addresses (no reset)
-            device_info = self.discover_devices(start_address=1)
-
-            # Filter to only responding devices
-            responding_devices = [d for d in device_info if d['responding']]
-
-            if len(responding_devices) == 0:
-                raise LDCNInitializationError("No devices found during soft discovery")
-
-            # Create device objects if requested
-            if create_objects:
-                self.create_device_objects(responding_devices)
-
-            return len(responding_devices), responding_devices
-
-        except LDCNDetectionError as e:
-            raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
-        except Exception as e:
-            raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
-
     def initialize(
         self,
         mode: InitMode = InitMode.AUTO,
@@ -527,8 +472,22 @@ class LDCNNetwork:
 
             # Level 1: Try SOFT initialization
             try:
-                return self.soft_initialize(create_objects=create_objects)
-            except LDCNInitializationError:
+                # Auto-detect baud rate
+                detected_baud = self.auto_detect_baud()
+
+                # Discover devices at current addresses (no reset)
+                device_info = self.discover_devices(start_address=1)
+
+                # Filter to only responding devices
+                responding_devices = [d for d in device_info if d['responding']]
+
+                if len(responding_devices) > 0:
+                    # Create device objects if requested
+                    if create_objects:
+                        self.create_device_objects(responding_devices)
+                    return len(responding_devices), responding_devices
+
+            except (LDCNDetectionError, LDCNInitializationError):
                 pass  # Fall through to next level
 
             # Level 2: Try READDRESS (reset at detected baud only)
@@ -576,7 +535,30 @@ class LDCNNetwork:
                 raise LDCNInitializationError("Validation failed")
 
         elif mode == InitMode.SOFT:
-            return self.soft_initialize(create_objects=create_objects)
+            # Soft discovery - preserve device state (no reset)
+            try:
+                # Auto-detect baud rate
+                detected_baud = self.auto_detect_baud()
+
+                # Discover devices at current addresses (no reset)
+                device_info = self.discover_devices(start_address=1)
+
+                # Filter to only responding devices
+                responding_devices = [d for d in device_info if d['responding']]
+
+                if len(responding_devices) == 0:
+                    raise LDCNInitializationError("No devices found during soft discovery")
+
+                # Create device objects if requested
+                if create_objects:
+                    self.create_device_objects(responding_devices)
+
+                return len(responding_devices), responding_devices
+
+            except LDCNDetectionError as e:
+                raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
+            except Exception as e:
+                raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
 
         elif mode == InitMode.READDRESS:
             # Detect baud, reset at that baud, re-address
