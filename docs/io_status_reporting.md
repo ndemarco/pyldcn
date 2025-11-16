@@ -1,4 +1,4 @@
-# Logosol Network I/O Node commands
+# Logosol Network I/O device commands
 
 **Author:** NickyDoes
 **Source:** LS-773 Network I/O Node Datasheet (Doc# 712773001, Rev. B) and CNC-SK-2310g2 Manual (Doc # 710231005 / Rev. D, 03/05/2020)
@@ -8,11 +8,9 @@
 
 ## General Introduction
 
-This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-2310g2. The '773 is a general purpose I/O device, whereas the '2310 is a supervisory controller with I/O characteristics, plus general I/O features. The LDCN protocol and commands are substantially similar between the two.
+This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-2310g2. The '773 is a general purpose I/O device, whereas the '2310 is a supervisory controller with I/O characteristics, plus general I/O features. The LDCN protocol and commands are substantially similar between the two, with the LS-773 being more generic, and the SK-2310g2 being tailored for a specific purpose.
 
-These are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
-
-## Specific Models
+## Specific Model Introduction
 
 ### LS-773 Hardware Features
 
@@ -76,21 +74,27 @@ The SK-2310g2 is a supervisory controller with specialized hardware and I/O capa
 
 ## Common Features
 
+### Polled, not interrupt driven
+
+Like all LDCN devices, I/O devices are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
+
+### Output state
+
+No command or method exists to read the state of outputs. The host must store the output state. This state image must be updated when faults or errors may change the device's state inadvertently.
+
 ### Status Reporting
 
 Logosol LDCN compliant I/O nodes convey their input state and other state details via status reporting. These nodes report status in response to `READ STATUS` and `NOP` commands and return a configurable set of status details.
 
+By default, both methods to read status will return no status items (`0x00`).
+
 To return a defined status one time, request status with [Read Status](#read-status-command), and append the byte encoded set of desired [status items](#2-status-items).
 
-To define a persistent subset of status information, send the [Define Status](#define-status-command) command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items.
-
-By default, both methods to read status will return the full set of status information (`0x00`). The status configuration is cleared upon `Hard Reset`.
-
-It is not possible to read the state of outputs. The host must store the output state if desired.
+To define a persistent subset of status information, send the [Define Status](#define-status-command) command and append the byte-encoded desired items. All future `Nop` commands will return the configured status items. The status configuration is cleared upon `Hard Reset` or a power cycle.
 
 ### Status Response
 
-Every status response packet consists of three parts, with packet size being the sum of `Define Status` item sizes:
+Every status response packet consists of three parts, with packet size being the sum of item sizes as found in [Status Items](#status-items)`:
 
 #### 1. Status Byte
 
@@ -125,8 +129,8 @@ The checksum byte is the 8-bit sum of the status byte plus all data bytes.
 
 When bit 5 is set, response includes:
 
-- Byte 0: Device ID = `0x02` (LS-773)
-- Byte 1: Version = `0x32` (50 decimal)
+- Byte 0: Device ID (example: `0x02` for LS-773)
+- Byte 1: Version (example: `0x32`= 50 decimal)
 
 ### Status Response Format Examples
 
@@ -144,7 +148,7 @@ Example with IN0, IN2, IN8 active:
   Byte 1: 0x05        (Input byte 0: bits 0,2 set = 0b00000101)
   Byte 2: 0x01        (Input byte 1: bit 0 set = 0b00000001 = IN8)
   Byte 3: 0x06        (Checksum: 0x00 + 0x05 + 0x01 = 0x06)
-```text
+```
 
 #### Example 2: Inputs + All Analog (Status Item = 0x0F)
 
@@ -161,7 +165,7 @@ Example with IN0=1, ADC0=128, ADC1=64, ADC2=255:
   Byte 4: 0x40        (Analog 1: 64 decimal = 0x40 hex)
   Byte 5: 0xFF        (Analog 2: 255 decimal = 0xFF hex)
   Byte 6: 0xC0        (Checksum: 0x00+0x01+0x00+0x80+0x40+0xFF = 0x1C0, truncated to 0xC0)
-```text
+```
 
 ### Counter/Timer
 
@@ -178,7 +182,7 @@ One 32-bit selectable counter/timer is available with simple reset-to-zero overf
   - For SK-2310g2, input TBD
 - Configurable prescaler divides input frequency (1:1, 2:1, 4:1, 8:1)
 
-#### Reset
+#### Resetting
 
 To reset to zero:
 
@@ -255,7 +259,7 @@ For PWM capable outputs, sets the PWM duty cycle.
 pwm1 = 128  # 50%
 pwm2 = 64   # 75%
 send_command(addr, 0x04, [pwm1, pwm2])
-```text
+```
 
 **Notes**:
 
@@ -309,7 +313,7 @@ Immediately sets the states of all digital output bits.
 # Turn on OUTPUT 0, OUTPUT 2, and OUTPUT 5
 outputs = 0b00100101  # bits 0, 2, 5 set
 send_command(addr, 0x06, [outputs, 0x00])
-```text
+```
 
 **Notes**:
 
@@ -345,7 +349,7 @@ send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
 
 # Later, simultaneously apply the staged values
 send_command(addr, 0x05, [])  # Sync Output
-```text
+```
 
 ### Set Timer Mode
 
@@ -382,7 +386,7 @@ send_command(addr, 0x08, [config])
 # Reset counter (disable then re-enable)
 send_command(addr, 0x08, [0x00])  # Disable
 send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
-```text
+```
 
 **Notes**:
 
@@ -419,7 +423,7 @@ response = send_command(addr, 0x03, [status_bits])
 # - Captured input byte 1
 # - Captured counter value (4 bytes, LSB first)
 # - Checksum
-```text
+```
 
 **Note:** There is no trigger or interrupt to capture all values on a counter/timer or  input transition. Capture can only be initiated via a LDCN command and is subject to transmission and command processing delays.
 
@@ -450,7 +454,7 @@ while True:
     # Verify checksum
     if status_byte & 0x02:
         print("Warning: Checksum error detected")
-```text
+```
 
 ### Reading Analog Inputs
 
@@ -470,7 +474,7 @@ ain0 = response[3]            # Analog input 0 (0-255)
 ain1 = response[4]            # Analog input 1 (0-255)
 ain2 = response[5]            # Analog input 2 (0-255)
 checksum = response[6]        # Checksum
-```text
+```
 
 ## Examples
 
@@ -495,7 +499,7 @@ def initialize_io_node(addr):
     # Step 4: Read and verify status
     response = send_command(addr, 0x0E, [])  # NOP to read status
     return parse_io_status(response)
-```text
+```
 
 ---
 
@@ -520,7 +524,7 @@ send_command(addr, 0x04, [pwm1, pwm2])
 
 # To disable PWM: set output bits to 0
 send_command(addr, 0x06, [0x00, 0x00])
-```text
+```
 
 ---
 
