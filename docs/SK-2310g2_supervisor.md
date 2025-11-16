@@ -677,7 +677,7 @@ diagnostic = (byte1 >> 3) & 0x1F
    # Check if any slave devices reporting fault
    ```
 
-3. **Isolate fault:**
+1. **Isolate fault:**
    - Disconnect downstream devices one by one
    - Re-test after each disconnection
    - Fault clears when bad device removed

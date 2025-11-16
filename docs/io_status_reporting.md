@@ -94,7 +94,7 @@ To define a persistent subset of status information, send the [Define Status](#d
 
 ### Status Response
 
-Every status response packet consists of three parts, with packet size being the sum of item sizes as found in [Status Items](#status-items)`:
+Every status response packet consists of three parts, with packet size being the sum of item sizes as found in [Status Items](#2-status-items)`:
 
 #### 1. Status Byte
 

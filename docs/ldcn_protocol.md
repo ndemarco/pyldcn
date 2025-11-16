@@ -15,15 +15,15 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The controll
 ## Baud Rate Divisors (BRD)
 
 | Baud Rate | BRD Value | Note
-|-----------|-----------|-------------|
-| 9600      | 0x81      | 
-| 19200     | 0x3F      | Default after reset |
-| 57600     | 0x14      | 
-| 115200    | 0x0A      | 
-| **125000**| **0x27**  | **Recommended** |
-| 312500    | 0x0F      | 
-| 625000    | 0x07      | 
-| 1250000   | 0x03      | 
+|-----------|-----------|-------------
+| 9600      | 0x81      |
+| 19200     | 0x3F      | Default after reset
+| 57600     | 0x14      |
+| 115200    | 0x0A      |
+| **125000**| **0x27**  | **Recommended**
+| 312500    | 0x0F      |
+| 625000    | 0x07      |
+| 1250000   | 0x03      |
 
 ## Packet Structure
 
@@ -45,6 +45,7 @@ LDCN is a master-slave serial protocol using RS-485 physical layer. The controll
 ### Status Packet (Device → Host)
 
 The status is a compliled set of device states, sent in response to a **Nop** or **Read Status** command.
+
 ```text
 ┌────────┬──────────────────────────┬──────────┐
 │ Status │ Status Data              │ Checksum │
@@ -62,9 +63,9 @@ Each LDCN device can optionally be assigned to one group addresses (128-255) in 
 
 **Broadcast Group Address:**
 
-| Address | Description |
-|---------|-------------|
-| 0xFF    | All devices (broadcast) - no group leader |
+| Address | Description
+|---------|-------------
+| 0xFF    | All devices (broadcast) - no group leader
 
 Group addressing scenarios:
 
@@ -114,7 +115,7 @@ send_command(addr=0xF0, cmd=0x5, data=[0x00])  # Start motion on group 0xF0
 - **Baud rate changes**: Use group address 0xFF with no group leader
 - **Timing**: Devices execute group commands within ±25 microseconds of each other
 - **Single group**: A device can belong to zero or one group
-- ** Reassignment**: A device's group address can be modified
+- **Reassignment**: A device's group address can be modified
 
 ## Hardware Synchronization Mode
 
@@ -170,7 +171,6 @@ Selects items to return in status packets.
 - Bytes 0-n: Status bits (16-bit little-endian)
 - Byte map is device type dependent
 - Devices default to 0x00 - no items returned
-
 
 **Example**:
 
@@ -245,10 +245,9 @@ The meaning of status byte bits and auxiliary status data is device-type specifi
 
 **Common Status Bits** (most devices):
 
-| Bit | Name | Description |
-|-----|------|-------------|
-| 1   | cksum_error | Checksum error in received packet |
-
+| Bit | Name | Description
+|-----|------|-------------
+| 1   | cksum_error | Checksum error in received packet
 
 ## Initialization Sequence
 
