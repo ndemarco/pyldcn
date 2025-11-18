@@ -46,7 +46,7 @@ BAUD_RATES = {
     125000: 0x27,
     312500: 0x0F,
     625000: 0x07,
-    1250000: 0x03
+    1250000: 0x03,
 }
 
 # Default baud rate after reset
@@ -59,7 +59,7 @@ COMMON_BAUDS = [125000, 19200, 115200, 57600, 9600]
 # Timing constants (seconds)
 DELAY_AFTER_COMMAND = 0.001  # 1ms - devices respond within microseconds
 DELAY_AFTER_RESET = 2.0
-DELAY_AFTER_ADDRESS = 0.05   # Reduced from 0.3s
+DELAY_AFTER_ADDRESS = 0.05  # Reduced from 0.3s
 DELAY_AFTER_BAUD_CHANGE = 0.1  # Reduced from 0.5s
 
 
@@ -68,7 +68,7 @@ class LDCNProtocol:
     Low-level LDCN protocol handler.
 
     Manages serial port communication and implements the LDCN packet protocol.
-    All device communication flows through send_command().
+    All device communication flows through device classes, which call send_command().
 
     Attributes:
         port: Serial port path (e.g., '/dev/ttyUSB0')
@@ -136,7 +136,7 @@ class LDCNProtocol:
             baudrate=baud,
             timeout=self.timeout,
             write_timeout=self.timeout,
-            inter_byte_timeout=0.01  # 10ms max gap between bytes
+            inter_byte_timeout=0.01,  # 10ms max gap between bytes
         )
         self.baud_rate = baud
         time.sleep(0.05)  # Brief delay for port to stabilize
@@ -145,7 +145,9 @@ class LDCNProtocol:
     # Core Protocol
     # -------------------------------------------------------------------------
 
-    def send_command(self, address: int, command: int, data: Optional[List[int]] = None) -> bytes:
+    def send_command(
+        self, address: int, command: int, data: Optional[List[int]] = None
+    ) -> bytes:
         """
         Send LDCN command packet and return response.
 
@@ -197,12 +199,14 @@ class LDCNProtocol:
         if len(response) < 2:
             # Some commands (like SET_BAUD to group address) don't return responses
             if address == ADDRESS_GROUP:
-                return b''
+                return b""
             raise LDCNTimeoutError(f"No response from address {address}")
 
         # Verify checksum
         if not self._verify_checksum(response):
-            raise LDCNChecksumError(f"Checksum mismatch in response from address {address}")
+            raise LDCNChecksumError(
+                f"Checksum mismatch in response from address {address}"
+            )
 
         return response
 
@@ -244,11 +248,21 @@ class LDCNProtocol:
             ValueError: If baud rate not supported
         """
         if baud not in BAUD_RATES:
-            raise ValueError(f"Unsupported baud rate: {baud}. Supported: {list(BAUD_RATES.keys())}")
+            raise ValueError(
+                f"Unsupported baud rate: {baud}. Supported: {list(BAUD_RATES.keys())}"
+            )
 
         # Send SET_BAUD to group address
         brd_value = BAUD_RATES[baud]
-        packet = bytes([HEADER, ADDRESS_GROUP, 0x1A, brd_value, (ADDRESS_GROUP + 0x1A + brd_value) & 0xFF])
+        packet = bytes(
+            [
+                HEADER,
+                ADDRESS_GROUP,
+                0x1A,
+                brd_value,
+                (ADDRESS_GROUP + 0x1A + brd_value) & 0xFF,
+            ]
+        )
 
         if self.serial and self.serial.is_open:
             self.serial.write(packet)
