@@ -177,6 +177,7 @@ ANALOG_OUTPUT_LABELS = {
 # Status Formatting
 # =============================================================================
 
+
 def format_led_pattern(diagnostic: int) -> str:
     """
     Format diagnostic code as LED pattern string.
@@ -185,15 +186,16 @@ def format_led_pattern(diagnostic: int) -> str:
         diagnostic: 5-bit diagnostic code (0x00-0x1F)
 
     Returns:
-        String showing LED pattern in 5-4-3-2-1 order
-        Example: "🟢⚫🟢🟢⚫" for diagnostic 0x16
+        String showing LED pattern in 1-2-3-4-5 order
+        Example: "o⚫00⚫" for diagnostic 0x16
     """
-    led5 = '🟢' if (diagnostic & 0x10) else '⚫'
-    led4 = '🟢' if (diagnostic & 0x08) else '⚫'
-    led3 = '🟢' if (diagnostic & 0x04) else '⚫'
-    led2 = '🟢' if (diagnostic & 0x02) else '⚫'
-    led1 = '🟢' if (diagnostic & 0x01) else '⚫'
-    return f"{led5}{led4}{led3}{led2}{led1}"
+    led1 = "o" if (diagnostic & 0x01) else "⚫"
+    led2 = "o" if (diagnostic & 0x02) else "⚫"
+    led3 = "o" if (diagnostic & 0x04) else "⚫"
+    led4 = "o" if (diagnostic & 0x08) else "⚫"
+    led5 = "o" if (diagnostic & 0x10) else "⚫"
+
+    return f"{led1}{led2}{led3}{led4}{led5}"
 
 
 def format_status(status: Dict[str, Any]) -> str:
@@ -217,7 +219,7 @@ def format_status(status: Dict[str, Any]) -> str:
     lines.append(f"  Version:        {status.get('version', 0)}")
 
     # Diagnostic code with LED display
-    diagnostic = status.get('diagnostic', 0)
+    diagnostic = status.get("diagnostic", 0)
     led_pattern = format_led_pattern(diagnostic)
     condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
 
@@ -233,7 +235,7 @@ def format_status(status: Dict[str, Any]) -> str:
     lines.append(f"  Byte1:          0x{status.get('byte1', 0):02X}")
 
     # Digital inputs - Byte0 (bits 0-7)
-    byte0 = status.get('byte0', 0)
+    byte0 = status.get("byte0", 0)
     lines.append(f"\nDigital Inputs (Byte0):")
     for bit in range(8):
         value = (byte0 >> bit) & 1
@@ -242,7 +244,7 @@ def format_status(status: Dict[str, Any]) -> str:
         lines.append(f"  Input {bit}:       {state}  - {function}")
 
     # Digital inputs - Byte1 (bits 8-15)
-    byte1_val = status.get('byte1', 0)
+    byte1_val = status.get("byte1", 0)
     lines.append(f"\nDigital Inputs (Byte1):")
     for bit in range(8, 16):
         value = (byte1_val >> (bit - 8)) & 1
@@ -251,22 +253,30 @@ def format_status(status: Dict[str, Any]) -> str:
         lines.append(f"  Input {bit}:      {state}  - {function}")
 
     # Analog inputs - using corrected 8-bit byte-based decoding
-    analog_raw = status.get('analog_inputs', 0)
-    ad_value = status.get('ad_value', 0)
+    analog_raw = status.get("analog_inputs", 0)
+    ad_value = status.get("ad_value", 0)
     lines.append(f"\nAnalog Inputs:")
-    lines.append(f"  Raw:            analog=0x{analog_raw:04X} ad_value=0x{ad_value:02X}")
+    lines.append(
+        f"  Raw:            analog=0x{analog_raw:04X} ad_value=0x{ad_value:02X}"
+    )
     # Channel 0: Low byte (8-bit, 0-255)
     ch0_raw = analog_raw & 0xFF
     ch0_percent = (ch0_raw / 255.0) * 100.0
-    lines.append(f"  Channel 0:      {ch0_raw:4d} (0x{ch0_raw:02X}) = {ch0_percent:5.1f}% - Spindle Load")
+    lines.append(
+        f"  Channel 0:      {ch0_raw:4d} (0x{ch0_raw:02X}) = {ch0_percent:5.1f}% - Spindle Load"
+    )
     # Channel 1: High byte (8-bit, 0-255)
     ch1_raw = (analog_raw >> 8) & 0xFF
     ch1_percent = (ch1_raw / 255.0) * 100.0
-    lines.append(f"  Channel 1:      {ch1_raw:4d} (0x{ch1_raw:02X}) = {ch1_percent:5.1f}% - ADC2 (GP)")
+    lines.append(
+        f"  Channel 1:      {ch1_raw:4d} (0x{ch1_raw:02X}) = {ch1_percent:5.1f}% - ADC2 (GP)"
+    )
     # Channel 2: ad_value field (8-bit, 0-255)
     ch2_raw = ad_value & 0xFF
     ch2_percent = (ch2_raw / 255.0) * 100.0
-    lines.append(f"  Channel 2:      {ch2_raw:4d} (0x{ch2_raw:02X}) = {ch2_percent:5.1f}% - ADC3 (GP)")
+    lines.append(
+        f"  Channel 2:      {ch2_raw:4d} (0x{ch2_raw:02X}) = {ch2_percent:5.1f}% - ADC3 (GP)"
+    )
 
     # Power state
     lines.append(f"\nPower:")
@@ -290,7 +300,9 @@ def format_digital_inputs(byte0: int, byte1: int) -> str:
 
     lines = []
     lines.append(f"Digital Inputs (Byte1:Byte0 = 0x{inputs:04X}):")
-    lines.append(f"{'Bit':<4} {'Val':<4} {'Name':<12} {'Connector':<10} {'Function':<35}")
+    lines.append(
+        f"{'Bit':<4} {'Val':<4} {'Name':<12} {'Connector':<10} {'Function':<35}"
+    )
     lines.append("-" * 75)
 
     for bit in range(16):
@@ -316,12 +328,16 @@ def format_digital_outputs(byte0: int, byte1: int) -> str:
 
     lines = []
     lines.append(f"Digital Outputs (Byte1:Byte0 = 0x{outputs:04X}):")
-    lines.append(f"{'Bit':<4} {'Val':<4} {'Name':<12} {'Connector':<10} {'Function':<35}")
+    lines.append(
+        f"{'Bit':<4} {'Val':<4} {'Name':<12} {'Connector':<10} {'Function':<35}"
+    )
     lines.append("-" * 75)
 
     for bit in range(16):
         value = (outputs >> bit) & 1
-        name, connector, function = DIGITAL_OUTPUT_LABELS.get(bit, ("Unknown", "?", "?"))
+        name, connector, function = DIGITAL_OUTPUT_LABELS.get(
+            bit, ("Unknown", "?", "?")
+        )
         lines.append(f"{bit:<4} {value:<4} {name:<12} {connector:<10} {function:<35}")
 
     return "\n".join(lines)
@@ -362,14 +378,22 @@ def format_analog_inputs(analog_values: Dict[int, int]) -> str:
     """
     lines = []
     lines.append("Analog Inputs:")
-    lines.append(f"{'Ch':<4} {'Hex':<7} {'Dec':<6} {'Voltage':<9} {'%':<7} {'Label':<18} {'Connector':<10} {'Range':<6}")
+    lines.append(
+        f"{'Ch':<4} {'Hex':<7} {'Dec':<6} {'Voltage':<9} {'%':<7} {'Label':<18} {'Connector':<10} {'Range':<6}"
+    )
     lines.append("-" * 75)
 
     for ch in range(3):
         adc_value = analog_values.get(ch, 0)
-        label, connector, voltage_range = ANALOG_INPUT_LABELS.get(ch, ("Unknown", "?", "0-5V"))
-        hex_str, dec_str, voltage_str, percent_str = format_analog_value(adc_value, voltage_range)
-        lines.append(f"{ch:<4} {hex_str:<7} {dec_str:<6} {voltage_str:<9} {percent_str:<7} {label:<18} {connector:<10} {voltage_range:<6}")
+        label, connector, voltage_range = ANALOG_INPUT_LABELS.get(
+            ch, ("Unknown", "?", "0-5V")
+        )
+        hex_str, dec_str, voltage_str, percent_str = format_analog_value(
+            adc_value, voltage_range
+        )
+        lines.append(
+            f"{ch:<4} {hex_str:<7} {dec_str:<6} {voltage_str:<9} {percent_str:<7} {label:<18} {connector:<10} {voltage_range:<6}"
+        )
 
     return "\n".join(lines)
 
@@ -386,12 +410,20 @@ def format_analog_output(adc_value: int) -> str:
     """
     lines = []
     lines.append("Analog Output:")
-    lines.append(f"{'Ch':<4} {'Hex':<7} {'Dec':<6} {'Voltage':<9} {'%':<7} {'Label':<18} {'Connector':<10} {'Range':<6}")
+    lines.append(
+        f"{'Ch':<4} {'Hex':<7} {'Dec':<6} {'Voltage':<9} {'%':<7} {'Label':<18} {'Connector':<10} {'Range':<6}"
+    )
     lines.append("-" * 75)
 
-    label, connector, voltage_range = ANALOG_OUTPUT_LABELS.get(0, ("Unknown", "?", "0-10V"))
-    hex_str, dec_str, voltage_str, percent_str = format_analog_value(adc_value, voltage_range)
-    lines.append(f"{0:<4} {hex_str:<7} {dec_str:<6} {voltage_str:<9} {percent_str:<7} {label:<18} {connector:<10} {voltage_range:<6}")
+    label, connector, voltage_range = ANALOG_OUTPUT_LABELS.get(
+        0, ("Unknown", "?", "0-10V")
+    )
+    hex_str, dec_str, voltage_str, percent_str = format_analog_value(
+        adc_value, voltage_range
+    )
+    lines.append(
+        f"{0:<4} {hex_str:<7} {dec_str:<6} {voltage_str:<9} {percent_str:<7} {label:<18} {connector:<10} {voltage_range:<6}"
+    )
 
     return "\n".join(lines)
 
@@ -412,44 +444,48 @@ def format_io_report(status: Dict[str, Any]) -> str:
     lines.append("=" * 80)
 
     # Device info and diagnostic
-    lines.append(f"\nDevice: ID={status.get('device_id', 0)} Version={status.get('version', 0)}")
-    diagnostic = status.get('diagnostic', 0)
+    lines.append(
+        f"\nDevice: ID={status.get('device_id', 0)} Version={status.get('version', 0)}"
+    )
+    diagnostic = status.get("diagnostic", 0)
     led_pattern = format_led_pattern(diagnostic)
     condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
     lines.append(f"Diagnostic: 0x{diagnostic:02X} {led_pattern} - {condition}")
 
     # Digital Inputs
-    byte0 = status.get('byte0', 0)
-    byte1 = status.get('byte1', 0)
+    byte0 = status.get("byte0", 0)
+    byte1 = status.get("byte1", 0)
     lines.append(f"\n{format_digital_inputs(byte0, byte1)}")
 
     # Digital Outputs (if available)
-    if 'digital_outputs' in status:
-        out_byte0 = status['digital_outputs'] & 0xFF
-        out_byte1 = (status['digital_outputs'] >> 8) & 0xFF
+    if "digital_outputs" in status:
+        out_byte0 = status["digital_outputs"] & 0xFF
+        out_byte1 = (status["digital_outputs"] >> 8) & 0xFF
         lines.append(f"\n{format_digital_outputs(out_byte0, out_byte1)}")
 
     # Analog Inputs
     # Note: Actual encoding TBD - using analog_inputs field as placeholder
-    analog_raw = status.get('analog_inputs', 0)
+    analog_raw = status.get("analog_inputs", 0)
     # Placeholder: Assume analog_inputs is a 16-bit value encoding multiple channels
     # This will need to be updated based on actual hardware response
     analog_values = {
-        0: (analog_raw >> 0) & 0x3FF,   # Channel 0: bits 0-9
-        1: (analog_raw >> 10) & 0x1F,   # Channel 1: bits 10-14 (scaled)
+        0: (analog_raw >> 0) & 0x3FF,  # Channel 0: bits 0-9
+        1: (analog_raw >> 10) & 0x1F,  # Channel 1: bits 10-14 (scaled)
         2: 0,  # Channel 2: TBD
     }
     lines.append(f"\n{format_analog_inputs(analog_values)}")
 
     # Analog Output (if available)
-    if 'analog_output' in status:
+    if "analog_output" in status:
         lines.append(f"\n{format_analog_output(status['analog_output'])}")
 
     # Safety summary
     lines.append(f"\nSafety Status:")
     lines.append(f"  Power:          {'ON' if status.get('power_state') else 'OFF'}")
     lines.append(f"  At Home:        {'Yes' if status.get('safe_state') else 'No'}")
-    lines.append(f"  Manual Override: {'Active' if status.get('manual_override') else 'Inactive'}")
+    lines.append(
+        f"  Manual Override: {'Active' if status.get('manual_override') else 'Inactive'}"
+    )
     lines.append(f"  Servo Fault:    {'FAULT' if status.get('servo_fault') else 'OK'}")
 
     lines.append("\n" + "=" * 80)
@@ -460,6 +496,7 @@ def format_io_report(status: Dict[str, Any]) -> str:
 # =============================================================================
 # Output Encoding (Future expansion)
 # =============================================================================
+
 
 def encode_output_byte0(outputs: Dict[str, bool]) -> int:
     """
@@ -479,21 +516,21 @@ def encode_output_byte0(outputs: Dict[str, bool]) -> int:
     # See CMD_SET_OUTPUTS in docs/SK-2310g2_supervisor.md
     byte0 = 0
 
-    if outputs.get('output1', False):
+    if outputs.get("output1", False):
         byte0 |= 0x01
-    if outputs.get('output2', False):
+    if outputs.get("output2", False):
         byte0 |= 0x02
-    if outputs.get('output3', False):
+    if outputs.get("output3", False):
         byte0 |= 0x04
-    if outputs.get('output4', False):
+    if outputs.get("output4", False):
         byte0 |= 0x08
-    if outputs.get('output5', False):
+    if outputs.get("output5", False):
         byte0 |= 0x10
-    if outputs.get('output6', False):
+    if outputs.get("output6", False):
         byte0 |= 0x20
-    if outputs.get('output7', False):
+    if outputs.get("output7", False):
         byte0 |= 0x40
-    if outputs.get('output8', False):
+    if outputs.get("output8", False):
         byte0 |= 0x80
 
     return byte0
@@ -604,7 +641,9 @@ class SK2310g2(IOController):
         from pyldcn.network import LDCNError
 
         spindle_on = bool(byte0 & (1 << 2))  # OUTPUT_SPINDLE_ON = bit 2
-        safety_bridge = bool(byte1 & (1 << 4))  # OUTPUT_SAFETY_LINK_BRIDGE = bit 12 (byte1 bit 4)
+        safety_bridge = bool(
+            byte1 & (1 << 4)
+        )  # OUTPUT_SAFETY_LINK_BRIDGE = bit 12 (byte1 bit 4)
 
         if spindle_on and safety_bridge:
             raise LDCNError(
@@ -623,7 +662,7 @@ class SK2310g2(IOController):
         Configure which status items are returned in NOP responses.
 
         Sends DEFINE_STATUS command to configure persistent status reporting.
-        Delegates to status subsystem for state tracking.
+        Updates status subsystem state tracking.
 
         Args:
             status_mask: Bitmask of status items to include (see SK2310g2Status.status_items)
@@ -632,7 +671,10 @@ class SK2310g2(IOController):
             device.define_status(0x01)  # Only digital inputs
             device.define_status(0xFF)  # All status items
         """
-        self._status.configure(status_mask)
+        # Send command using parent implementation
+        super().define_status(status_mask)
+        # Update status manager's cached mask
+        self._status.status_mask = status_mask
 
     def configure(self) -> None:
         """
@@ -645,7 +687,7 @@ class SK2310g2(IOController):
         """
         # Request all status items: digital_inputs, analog_in_0-2, counter_timer,
         # device_id, sync_inputs, sync_counter (bits 0-7, i.e., 0xFF)
-        self._status.configure(0xFF)
+        self.define_status(0xFF)
         time.sleep(1.0)
 
     def hard_reset(self) -> None:
@@ -729,6 +771,7 @@ class SK2310g2(IOController):
         """
         status = self.read_status()
         return status.get("diagnostic", 0)
+
     def decode_diagnostic(self, diag_code: Optional[int] = None) -> Dict[str, Any]:
         """
         Decode diagnostic code to human-readable system state.
