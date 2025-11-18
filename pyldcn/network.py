@@ -2,14 +2,13 @@
 """
 LDCN Network Manager
 
-High-level network orchestration for Logosol LDCN (Logosol Distributed Control
-Network) devices. Coordinates protocol layer, device discovery, and device
-management.
+Logosol LDCN (Logosol Distributed Control Network) device orchestration. Coordinates
+protocol layer, device discovery, and device management.
 
 Modular Architecture:
     - protocol.py: Low-level serial communication and LDCN protocol
     - discovery.py: Device discovery, addressing, and verification
-    - device.py: Base device classes (LDCNDevice, UnknownDevice)
+    - device.py: Base device classes (LDCNDevice, others)
     - devices/: Device-specific implementations (LS231SE, SK2310g2)
     - network.py: High-level orchestration (this file)
 
@@ -121,11 +120,13 @@ class LDCNNetwork:
     # Core Protocol (delegate to protocol)
     # -------------------------------------------------------------------------
 
-    def send_command(self, address: int, command: int, data: Optional[List[int]] = None) -> bytes:
+    def send_command(
+        self, address: int, command: int, data: Optional[List[int]] = None
+    ) -> bytes:
         """
         Send LDCN command packet and return response.
 
-        Delegates to protocol layer for low-level communication.
+        **Do not call directly** Delegates to protocol layer for low-level communication.
 
         Args:
             address: Device address (1-127) or group (128-255)
@@ -213,7 +214,7 @@ class LDCNNetwork:
         self,
         start_address: int = 1,
         end_address: Optional[int] = None,
-        early_exit_threshold: int = 3
+        early_exit_threshold: int = 3,
     ) -> List[Dict]:
         """
         Discover device types and versions on the network.
@@ -228,7 +229,9 @@ class LDCNNetwork:
         Returns:
             List of device info dictionaries
         """
-        return self.discovery.discover_devices(start_address, end_address, early_exit_threshold)
+        return self.discovery.discover_devices(
+            start_address, end_address, early_exit_threshold
+        )
 
     def validate_devices(self, expected_devices: Optional[List[Dict]] = None) -> bool:
         """
@@ -341,9 +344,9 @@ class LDCNNetwork:
             from .devices.servo import LS231SE
             from .devices.sk2310g2 import SK2310g2
 
-            if device_type == 'LS-231SE':
+            if device_type == "LS-231SE":
                 new_device = LS231SE(self, address)
-            elif device_type == 'SK-2310g2':
+            elif device_type == "SK-2310g2":
                 new_device = SK2310g2(self, address)
             else:
                 new_device = UnknownDevice(self, address)
@@ -353,7 +356,9 @@ class LDCNNetwork:
             return new_device
 
         # Device not found and no type provided
-        raise ValueError(f"Device at address {address} not found and no device_type provided")
+        raise ValueError(
+            f"Device at address {address} not found and no device_type provided"
+        )
 
     def find_device_by_type(self, device_type: str) -> Optional[LDCNDevice]:
         """
@@ -410,9 +415,7 @@ class LDCNNetwork:
     # -------------------------------------------------------------------------
 
     def soft_initialize(
-        self,
-        create_objects: bool = True,
-        baud_list: Optional[List[int]] = None
+        self, create_objects: bool = True, baud_list: Optional[List[int]] = None
     ) -> Tuple[int, List[Dict]]:
         """
         Soft initialization without reset (InitMode.SOFT).
@@ -448,7 +451,7 @@ class LDCNNetwork:
             device_info = self.discover_devices(start_address=1)
 
             # Filter to only responding devices
-            responding_devices = [d for d in device_info if d['responding']]
+            responding_devices = [d for d in device_info if d["responding"]]
 
             if len(responding_devices) == 0:
                 raise LDCNInitializationError("No devices found during soft discovery")
@@ -468,7 +471,7 @@ class LDCNNetwork:
         self,
         mode: InitMode = InitMode.AUTO,
         create_objects: bool = True,
-        expected_devices: Optional[List[Dict]] = None
+        expected_devices: Optional[List[Dict]] = None,
     ) -> Tuple[int, List[Dict]]:
         """
         Adaptive network initialization with multiple modes.
@@ -516,10 +519,10 @@ class LDCNNetwork:
                     num_devices = len(self.devices)
                     device_info = [
                         {
-                            'address': dev.address,
-                            'device_id': dev.model_id if dev.model_id else 0xFF,
-                            'version': dev.version if dev.version else 0x00,
-                            'responding': True
+                            "address": dev.address,
+                            "device_id": dev.model_id if dev.model_id else 0xFF,
+                            "version": dev.version if dev.version else 0x00,
+                            "responding": True,
                         }
                         for dev in self.devices
                     ]
@@ -537,8 +540,14 @@ class LDCNNetwork:
                 self.protocol._open_port(detected_baud)
 
                 # Reset at detected baud only
-                packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
-                               CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
+                packet = bytes(
+                    [
+                        HEADER,
+                        ADDRESS_GROUP,
+                        CMD_HARD_RESET,
+                        CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER,
+                    ]
+                )
                 assert self.protocol.serial is not None
                 self.protocol.serial.write(packet)
                 self.protocol.serial.flush()
@@ -564,10 +573,10 @@ class LDCNNetwork:
                 num_devices = len(self.devices)
                 device_info = [
                     {
-                        'address': dev.address,
-                        'device_id': dev.model_id if dev.model_id else 0xFF,
-                        'version': dev.version if dev.version else 0x00,
-                        'responding': True
+                        "address": dev.address,
+                        "device_id": dev.model_id if dev.model_id else 0xFF,
+                        "version": dev.version if dev.version else 0x00,
+                        "responding": True,
                     }
                     for dev in self.devices
                 ]
@@ -585,8 +594,14 @@ class LDCNNetwork:
                 self.protocol._open_port(detected_baud)
 
                 # Reset at detected baud only
-                packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET,
-                               CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER])
+                packet = bytes(
+                    [
+                        HEADER,
+                        ADDRESS_GROUP,
+                        CMD_HARD_RESET,
+                        CMD_HARD_RESET ^ ADDRESS_GROUP ^ HEADER,
+                    ]
+                )
                 assert self.protocol.serial is not None
                 self.protocol.serial.write(packet)
                 self.protocol.serial.flush()
@@ -596,12 +611,16 @@ class LDCNNetwork:
                 self.protocol._open_port(DEFAULT_BAUD)
                 num_devices = self.address_devices()
                 if num_devices == 0:
-                    raise LDCNInitializationError("No devices found during re-addressing")
+                    raise LDCNInitializationError(
+                        "No devices found during re-addressing"
+                    )
 
                 device_info = self.discover_devices()
                 responding = self.verify_devices(device_info)
                 if len(responding) == 0:
-                    raise LDCNInitializationError("No devices responding after re-addressing")
+                    raise LDCNInitializationError(
+                        "No devices responding after re-addressing"
+                    )
 
                 if create_objects:
                     self.create_device_objects(device_info)
@@ -628,7 +647,9 @@ class LDCNNetwork:
                 # Step 4: Verify communication
                 responding = self.verify_devices(device_info)
                 if len(responding) == 0:
-                    raise LDCNInitializationError("No devices responding after addressing")
+                    raise LDCNInitializationError(
+                        "No devices responding after addressing"
+                    )
 
                 # Step 5: Create device objects if requested
                 if create_objects:
@@ -646,7 +667,7 @@ class LDCNNetwork:
     # Context Manager Support
     # -------------------------------------------------------------------------
 
-    def __enter__(self) -> 'LDCNNetwork':
+    def __enter__(self) -> "LDCNNetwork":
         """Enable 'with' statement usage."""
         self.open()
         return self
@@ -658,7 +679,7 @@ class LDCNNetwork:
 
 # Re-export device classes for backwards compatibility
 __all__ = [
-    'LDCNNetwork',
-    'LDCNDevice',
-    'UnknownDevice',
+    "LDCNNetwork",
+    "LDCNDevice",
+    "UnknownDevice",
 ]
