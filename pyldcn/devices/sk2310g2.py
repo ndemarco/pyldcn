@@ -186,8 +186,8 @@ def format_led_pattern(diagnostic: int) -> str:
         diagnostic: 5-bit diagnostic code (0x00-0x1F)
 
     Returns:
-        String showing LED pattern in 1-2-3-4-5 order
-        Example: "o⚫00⚫" for diagnostic 0x16
+        String showing LED pattern in 5-4-3-2-1 order (left to right)
+        Example: "o⚫oo⚫" for diagnostic 0x16 (bit pattern: 1-0-1-1-0)
     """
     led1 = "⚫" if (diagnostic & 0x01) else "o"
     led2 = "⚫" if (diagnostic & 0x02) else "o"
@@ -195,7 +195,7 @@ def format_led_pattern(diagnostic: int) -> str:
     led4 = "⚫" if (diagnostic & 0x08) else "o"
     led5 = "⚫" if (diagnostic & 0x10) else "o"
 
-    return f"{led1}{led2}{led3}{led4}{led5}"
+    return f"{led5}{led4}{led3}{led2}{led1}"
 
 
 def format_status(status: Dict[str, Any]) -> str:
@@ -225,7 +225,7 @@ def format_status(status: Dict[str, Any]) -> str:
 
     lines.append("\nDiagnostic Code:")
     lines.append(f"  Code:           0x{diagnostic:02X} ({diagnostic:05b}b)")
-    lines.append(f"  LED Display:    {led_pattern}  (1-2-3-4-5)")
+    lines.append(f"  LED Display:    {led_pattern}  (5-4-3-2-1)")
     lines.append(f"  Condition:      {condition}")
 
     # Raw values
