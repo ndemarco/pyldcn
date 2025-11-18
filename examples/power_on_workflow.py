@@ -100,29 +100,6 @@ def initialize_network(port: str, target_baud: int = 125000) -> LDCNNetwork:
         raise
 
 
-def find_supervisor(network: LDCNNetwork) -> SK2310g2:
-    """
-    Find SK2310g2 supervisor on the network.
-
-    Args:
-        network: Initialized LDCNNetwork
-
-    Returns:
-        SK2310g2 device object
-
-    Raises:
-        LDCNError: If supervisor not found
-    """
-    print_step(2, "Locate Supervisor Device")
-
-    for device in network.devices:
-        if isinstance(device, SK2310g2):
-            print(f"✓ Found supervisor: {device}")
-            return device
-
-    raise LDCNError("SK2310g2 supervisor not found on network")
-
-
 def configure_supervisor(supervisor: SK2310g2):
     """
     Configure supervisor for full status reporting.
@@ -242,7 +219,12 @@ def main():
         network = initialize_network(args.port, args.baud)
 
         # Step 2: Find supervisor
-        supervisor = find_supervisor(network)
+        print_step(2, "Locate Supervisor Device")
+        supervisors = network.find_devices_by_type("SK-2310g2")
+        if not supervisors:
+            raise LDCNError("SK2310g2 supervisor not found on network")
+        supervisor = supervisors[0]
+        print(f"✓ Found supervisor: {supervisor}")
 
         # Step 3: Configure supervisor
         configure_supervisor(supervisor)

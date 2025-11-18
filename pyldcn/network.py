@@ -83,6 +83,7 @@ class LDCNNetwork:
 
         # Device management
         self.devices: List[LDCNDevice] = []
+        self._expected_devices: Optional[List[Dict]] = None
 
         # Expose commonly used attributes for convenience
         self.port = port
@@ -344,20 +345,6 @@ class LDCNNetwork:
                 return device
         return None
 
-    def find_supervisor(self):
-        """
-        Find SK-2310g2 supervisory controller on the network.
-
-        Returns:
-            SK2310g2 device or None if not found
-
-        Example:
-            supervisor = network.find_supervisor()
-            if supervisor:
-                diagnostic = supervisor.read_diagnostic()
-        """
-        return self.find_device_by_type("SK-2310g2")
-
     def find_devices_by_type(self, device_type: str) -> List[LDCNDevice]:
         """
         Find all devices matching the specified device type.
@@ -616,7 +603,10 @@ class LDCNNetwork:
                         "No devices responding after addressing"
                     )
 
-                # Step 5: Create device objects if requested
+                # Step 5: Store expected devices for future validations
+                self._expected_devices = [d for d in device_info if d["responding"]]
+
+                # Step 6: Create device objects if requested
                 if create_objects:
                     self.create_device_objects(device_info)
 
