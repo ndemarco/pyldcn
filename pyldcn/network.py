@@ -45,7 +45,6 @@ from .exceptions import (
     LDCNDetectionError,
     LDCNInitializationError,
 )
-from . import util
 
 
 class LDCNNetwork:
@@ -276,40 +275,6 @@ class LDCNNetwork:
         """
         self.devices = self.discovery.create_device_objects(device_list, self)
         return self.devices
-
-    # -------------------------------------------------------------------------
-    # Device List Management
-    # -------------------------------------------------------------------------
-
-    def save_device_list(self, filename: str) -> None:
-        """
-        Save discovered device list to JSON file.
-
-        Saves hardware facts from network discovery only.
-        Does not include axis configuration.
-
-        Args:
-            filename: Path to save file (e.g., 'device_list.json')
-        """
-        util.save_device_list(self.devices, self.port, self.baud_rate, filename)
-
-    def load_device_list(self, filename: str) -> List[Dict]:
-        """
-        Load device list from JSON file.
-
-        Validates file format and returns device information.
-        Does not create device objects or open serial port.
-
-        Args:
-            filename: Path to device list file
-
-        Returns:
-            List of device info dictionaries
-
-        Raises:
-            LDCNError: If file format invalid or unsupported version
-        """
-        return util.load_device_list(filename)
 
     # -------------------------------------------------------------------------
     # Device Query Methods
