@@ -168,7 +168,7 @@ ANALOG_OUTPUT_LABELS = {
 # =============================================================================
 # NOTE: Status parsing moved to pyldcn/devices/status/sk2310g2_status.py
 # =============================================================================
-# SK2310G2_STATUS_ITEMS, DIAGNOSTIC_CODES, and parse_ls773_status()
+# SK2310G2_STATUS_ITEMS, DIAGNOSTIC_CODES, and status parsing functionality
 # have been moved to the SK2310g2Status class for better organization.
 # Import from .status.sk2310g2_status if needed.
 
@@ -189,11 +189,11 @@ def format_led_pattern(diagnostic: int) -> str:
         String showing LED pattern in 1-2-3-4-5 order
         Example: "o⚫00⚫" for diagnostic 0x16
     """
-    led1 = "o" if (diagnostic & 0x01) else "⚫"
-    led2 = "o" if (diagnostic & 0x02) else "⚫"
-    led3 = "o" if (diagnostic & 0x04) else "⚫"
-    led4 = "o" if (diagnostic & 0x08) else "⚫"
-    led5 = "o" if (diagnostic & 0x10) else "⚫"
+    led1 = "⚫" if (diagnostic & 0x01) else "o"
+    led2 = "⚫" if (diagnostic & 0x02) else "o"
+    led3 = "⚫" if (diagnostic & 0x04) else "o"
+    led4 = "⚫" if (diagnostic & 0x08) else "o"
+    led5 = "⚫" if (diagnostic & 0x10) else "o"
 
     return f"{led1}{led2}{led3}{led4}{led5}"
 
@@ -203,7 +203,7 @@ def format_status(status: Dict[str, Any]) -> str:
     Format SK-2310g2 status dictionary for readable display.
 
     Args:
-        status: Status dictionary from parse_ls773_status()
+        status: Status dictionary from SK2310g2Status.parse() or SK2310g2.read_status()
 
     Returns:
         Multi-line formatted string with all status information
@@ -214,7 +214,7 @@ def format_status(status: Dict[str, Any]) -> str:
     lines.append("=" * 60)
 
     # Device info
-    lines.append(f"\nDevice:")
+    lines.append("\nDevice:")
     lines.append(f"  Device ID:      {status.get('device_id', 0)}")
     lines.append(f"  Version:        {status.get('version', 0)}")
 
@@ -223,20 +223,20 @@ def format_status(status: Dict[str, Any]) -> str:
     led_pattern = format_led_pattern(diagnostic)
     condition = DIAGNOSTIC_CODES.get(diagnostic, "Unknown condition")
 
-    lines.append(f"\nDiagnostic Code:")
+    lines.append("\nDiagnostic Code:")
     lines.append(f"  Code:           0x{diagnostic:02X} ({diagnostic:05b}b)")
-    lines.append(f"  LED Display:    {led_pattern}  (5-4-3-2-1)")
+    lines.append(f"  LED Display:    {led_pattern}  (1-2-3-4-5)")
     lines.append(f"  Condition:      {condition}")
 
     # Raw values
-    lines.append(f"\nRaw Status:")
+    lines.append("\nRaw Status:")
     lines.append(f"  Status byte:    0x{status.get('status', 0):02X}")
     lines.append(f"  Byte0:          0x{status.get('byte0', 0):02X}")
     lines.append(f"  Byte1:          0x{status.get('byte1', 0):02X}")
 
     # Digital inputs - Byte0 (bits 0-7)
     byte0 = status.get("byte0", 0)
-    lines.append(f"\nDigital Inputs (Byte0):")
+    lines.append("\nDigital Inputs (Byte0):")
     for bit in range(8):
         value = (byte0 >> bit) & 1
         state = "HIGH" if value else "LOW "
@@ -245,7 +245,7 @@ def format_status(status: Dict[str, Any]) -> str:
 
     # Digital inputs - Byte1 (bits 8-15)
     byte1_val = status.get("byte1", 0)
-    lines.append(f"\nDigital Inputs (Byte1):")
+    lines.append("\nDigital Inputs (Byte1):")
     for bit in range(8, 16):
         value = (byte1_val >> (bit - 8)) & 1
         state = "HIGH" if value else "LOW "
@@ -255,7 +255,7 @@ def format_status(status: Dict[str, Any]) -> str:
     # Analog inputs - using corrected 8-bit byte-based decoding
     analog_raw = status.get("analog_inputs", 0)
     ad_value = status.get("ad_value", 0)
-    lines.append(f"\nAnalog Inputs:")
+    lines.append("\nAnalog Inputs:")
     lines.append(
         f"  Raw:            analog=0x{analog_raw:04X} ad_value=0x{ad_value:02X}"
     )
@@ -279,7 +279,7 @@ def format_status(status: Dict[str, Any]) -> str:
     )
 
     # Power state
-    lines.append(f"\nPower:")
+    lines.append("\nPower:")
     lines.append(f"  Power state:    {'ON' if status.get('power_state') else 'OFF'}")
 
     return "\n".join(lines)
@@ -433,7 +433,7 @@ def format_io_report(status: Dict[str, Any]) -> str:
     Format comprehensive I/O report from status dictionary.
 
     Args:
-        status: Status dictionary from parse_ls773_status()
+        status: Status dictionary from SK2310g2Status.parse() or SK2310g2.read_status()
 
     Returns:
         Multi-line formatted string with complete I/O state
@@ -480,7 +480,7 @@ def format_io_report(status: Dict[str, Any]) -> str:
         lines.append(f"\n{format_analog_output(status['analog_output'])}")
 
     # Safety summary
-    lines.append(f"\nSafety Status:")
+    lines.append("\nSafety Status:")
     lines.append(f"  Power:          {'ON' if status.get('power_state') else 'OFF'}")
     lines.append(f"  At Home:        {'Yes' if status.get('safe_state') else 'No'}")
     lines.append(
