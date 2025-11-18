@@ -1,0 +1,33 @@
+Code (Hex),Code (Dec),Byte1[7:3] (Binary),LED Pattern (5-4-3-2-1),Description,Power Ready,Power A/B,Primary State Category,Guard-1 State,Guard-2 State,Safe Zone,Spindle Stopped,Manual Override,Additional Notes
+0x00,0,00000,*****,Power OFF delay in progress,OFF,ON,POWER_OFF_DELAY,,,,,,Power transitioning OFF
+0x01,1,00001,⚫⚫⚫⚫o,Initializing,OFF,OFF,INITIALIZING,,,,,,System starting up
+0x02,2,00010,⚫⚫⚫o⚫,Control voltage shorted,OFF,OFF,FAULT,,,,,,FAULT: Short circuit
+0x03,3,00011,⚫⚫⚫oo,Output shorted,OFF,OFF,FAULT,,,,,,FAULT: Output short
+0x04,4,00100,⚫⚫o⚫⚫,Control voltage LOW (less than 18V),OFF,OFF,FAULT,,,,,,FAULT: Under-voltage
+0x05,5,00101,⚫⚫o⚫o,Safe zone/Manual override switch malfunction (both contacts ON),Prior,Prior,FAULT,,,,,,FAULT: Switch error
+0x06,6,00110,⚫⚫oo⚫,Power UP safe zone sensor error,OFF,OFF,FAULT,,,,,,FAULT: Sensor error at power-up
+0x07,7,00111,⚫⚫ooo,Power UP manual override switch error,OFF,OFF,FAULT,,,,,,FAULT: Switch error at power-up
+0x08,8,01000,⚫o⚫⚫⚫,System LOCKED,OFF,OFF,FAULT,,,,,,FAULT: Software lock active
+0x09,9,01001,⚫o⚫⚫o,Watchdog Stop,OFF,OFF,FAULT,,,,,,FAULT: Watchdog timeout
+0x0A,10,01010,⚫o⚫o⚫,Safety Link Error,OFF,OFF,FAULT,,,,,,FAULT: Safety chain broken
+0x0B,11,01011,⚫o⚫oo,Guard Open Stop - Guards open spindle not stopped,OFF,OFF,STOP,OPEN,OPEN,NO,NO,,STOP: Spindle running with guards open
+0x0C,12,01100,⚫oo⚫⚫,Guard Open Stop - Guards open not in safe zone,OFF,OFF,STOP,OPEN,OPEN,NO,,,STOP: Not in safe zone
+0x0D,13,01101,⚫oo⚫o,Guard Open Stop - Manual override without Enable button held,OFF,OFF,STOP,OPEN,OPEN,,,,STOP: Enable button not held
+0x0E,14,01110,⚫ooo⚫,Guard contact fault (one or more contacts malfunctioning),Prior,Prior,FAULT,,,,,,FAULT: Contact malfunction
+0x0F,15,01111,⚫oooo,Limit Switch Stop,OFF,OFF,STOP,,,,,,STOP: Limit switch triggered
+0x10,16,10000,o⚫⚫⚫⚫,Emergency Stop,OFF,OFF,EMERGENCY_STOP,,,,,,E-STOP: Active
+0x11,17,10001,o⚫⚫⚫o,Emergency Stop contact fault or Monitor Loop Open,OFF,OFF,EMERGENCY_STOP,,,,,,E-STOP FAULT: Contact error or monitor loop
+0x12,18,10010,o⚫⚫o⚫,Busy (≤6s) or Power button short/Monitor Loop Open (>6s),OFF,OFF,POWER_FAULT,,,,,,BUSY if <6s; FAULT if >6s
+0x13,19,10011,o⚫⚫oo,Motor Power Supply under-voltage,ON,ON,POWER_FAULT,,,,,,POWER ON but under-voltage
+0x14,20,10100,o⚫o⚫⚫,Guard-1 Open; Guard-2 Open (ready to power),OFF,OFF,READY_TO_POWER,OPEN,OPEN,,,NO,Ready to accept power command
+0x15,21,10101,o⚫o⚫o,Guard-1 Closed; Guard-2 Open (ready to power),OFF,OFF,READY_TO_POWER,CLOSED,OPEN,,,NO,Ready to accept power command
+0x16,22,10110,o⚫oo⚫,Guard-1 Open; Guard-2 Closed (ready to power),OFF,OFF,READY_TO_POWER,OPEN,CLOSED,,,NO,Ready to accept power command
+0x17,23,10111,o⚫ooo,Guard-1 Closed; Guard-2 Closed (ready to power),OFF,OFF,READY_TO_POWER,CLOSED,CLOSED,,,NO,Ready to accept power command
+0x18,24,11000,oo⚫⚫⚫,Guard-1 Open; Guard-2 Open; Manual override,ON,ON,MANUAL_OVERRIDE,OPEN,OPEN,,NO,YES,Manual override mode active
+0x19,25,11001,oo⚫⚫o,Guard-1 Closed; Guard-2 Open; Manual override,ON,ON,MANUAL_OVERRIDE,CLOSED,OPEN,,NO,YES,Manual override mode active
+0x1A,26,11010,oo⚫o⚫,Guard-1 Open; Guard-2 Closed; Manual override,ON,ON,MANUAL_OVERRIDE,OPEN,CLOSED,,NO,YES,Manual override mode active
+0x1B,27,11011,oo⚫oo,Guard-1 Closed; Guard-2 Closed; Manual override,ON,ON,MANUAL_OVERRIDE,CLOSED,CLOSED,,NO,YES,Manual override mode active
+0x1C,28,11100,ooo⚫⚫,Guard-1 Open; Guard-2 Open; Safe zone; Spindle stopped,ON,ON,SAFE_ZONE,OPEN,OPEN,YES,YES,NO,In safe zone with spindle stopped
+0x1D,29,11101,ooo⚫o,Guard-1 Closed; Guard-2 Open; Safe zone; Spindle stopped,ON,ON,SAFE_ZONE,CLOSED,OPEN,YES,YES,NO,In safe zone with spindle stopped
+0x1E,30,11110,oooo⚫,Guard-1 Open; Guard-2 Closed; Safe zone; Spindle stopped,ON,ON,SAFE_ZONE,OPEN,CLOSED,YES,YES,NO,In safe zone with spindle stopped
+0x1F,31,11111,ooooo,Normal operation - All guards closed,ON,ON,NORMAL_OPERATION,CLOSED,CLOSED,YES,YES,NO,All systems ready for production
