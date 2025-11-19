@@ -68,6 +68,8 @@ The first byte of every response packet contains drive state and error flags:
 
 **Sticky Bits**: Bits 2 (current_limit) and 4 (pos_error) remain set once triggered and must be explicitly cleared using the Clear Bits command (0xE).
 
+**HomeSEL Signal Mapping**: Bits 5 and 6 are dynamically mapped to different physical inputs based on HomeSEL output bits (OUTbit4, OUTbit8). The resolver in `servo_mappings.py` translates raw bit values to physical signal names (`home_source_signal`, `limit2_signal`) based on the current HomeSEL configuration stored in `servo.state.home_selection`. See [LS-231SE_IO.md](LS-231SE_IO.md#home-source-selection) for the complete mapping table.
+
 ### 2. Status Items
 
 The data to include in status responses is encoded into a 16-bit bitmap. Set a bit to include the item, clear a bit to omit the item. Status items are always returned in the order listed below.
@@ -107,6 +109,8 @@ When bit 3 is set in the status configuration, the auxiliary status byte is retu
 | **7** | Reserved | - |
 
 **Sticky Bits**: Bits 1 (pos_wrap) and 5 (servo_overrun) remain set once triggered and must be explicitly cleared.
+
+**Signal Resolution**: Status bit flags are decoded by `ls231se_status_resolver()` which applies HomeSEL context to provide physical signal names instead of raw bit numbers.
 
 ### 4. Checksum Byte
 
@@ -203,248 +207,47 @@ checksum = response[7]
 
 ### Efficient Status Configuration
 
-For fast position polling, minimize status response size by requesting only position:
+Minimize status response size by requesting only needed items:
 
 ```python
-# Define persistent status: position only
-status_bits = 0x0001  # bit 0
+# Position only for fast polling
+status_bits = 0x0001
 send_command(addr, 0x02, [status_bits])
-
-# Efficient polling loop
-while True:
-    response = send_command(addr, 0x00)  # NOP
-    # Response is 6 bytes: [status, pos0, pos1, pos2, pos3, checksum]
-    status_byte = response[0]
-    position = struct.unpack('<i', bytes(response[1:5]))[0]
-
-    # Check for faults
-    if status_byte & 0x02:  # cksum_error
-        print("Checksum error detected")
-    if status_byte & 0x04:  # current_limit (sticky)
-        print("Current limit exceeded - clearing fault")
-        send_command(addr, 0x0E, [0x15])  # Clear Bits command
-```
-
-### Reading Multiple Status Items
-
-Configure multiple items for comprehensive status monitoring:
-
-```python
-# Define comprehensive status
-status_bits = (
-    0x0001 |  # position
-    0x0004 |  # velocity
-    0x0008 |  # aux status
-    0x0040    # position error
-)  # = 0x004D
-
-send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-
-# Read status
-response = send_command(addr, 0x00)  # NOP
-# Response is 12 bytes: [status, pos(4), vel(2), aux(1), pos_err(2), checksum]
-
-status_byte = response[0]
-position = struct.unpack('<i', bytes(response[1:5]))[0]
-velocity = struct.unpack('<h', bytes(response[5:7]))[0]
-aux_status = response[7]
-pos_error = struct.unpack('<h', bytes(response[8:10]))[0]
-checksum = response[10]
-
-# Decode auxiliary status
-servo_on = bool(aux_status & 0x04)
-servo_overrun = bool(aux_status & 0x20)
-path_mode = bool(aux_status & 0x40)
-
-# Check for sticky faults
-if status_byte & 0x04:  # current_limit
-    print("Current limit fault (sticky)")
-if status_byte & 0x10:  # pos_error
-    print(f"Position error fault: {pos_error} counts (sticky)")
-if aux_status & 0x02:  # pos_wrap
-    print("Position counter wrapped (sticky)")
 ```
 
 ### Clearing Sticky Bits
 
-Certain status bits remain set until explicitly cleared:
-
 ```python
-# Clear all sticky bits using Clear Bits command (0xE, sub-command 0x15)
-# Clears: current_limit, pos_error, pos_wrap, servo_overrun
+# Clear sticky bits: current_limit, pos_error, pos_wrap, servo_overrun
 send_command(addr, 0x0E, [0x15])
-
-# Verify faults cleared
-response = send_command(addr, 0x00)  # NOP
-status_byte = response[0]
-if status_byte & 0x14 == 0:  # bits 2 and 4
-    print("Sticky faults cleared successfully")
-```
-
-### Variable-Length Response Parsing
-
-The pyldcn library includes a `_parse_status()` method to handle variable-length responses:
-
-```python
-def _parse_status(response: bytes, status_bits: int) -> dict:
-    """Parse variable-length servo status response."""
-    if len(response) < 2:
-        return {}
-
-    status_byte = response[0]
-    data = response[1:-1]  # Everything except status and checksum
-
-    result = {'status': status_byte, 'flags': decode_status_flags(status_byte)}
-    idx = 0
-
-    # Parse each item in order based on status_bits configuration
-    if status_bits & 0x0001 and len(data) >= idx + 4:  # Position
-        result['position'] = struct.unpack('<i', bytes(data[idx:idx+4]))[0]
-        idx += 4
-
-    if status_bits & 0x0002 and len(data) >= idx + 1:  # A/D value
-        result['ad_value'] = data[idx]
-        idx += 1
-
-    if status_bits & 0x0004 and len(data) >= idx + 2:  # Velocity
-        result['velocity'] = struct.unpack('<h', bytes(data[idx:idx+2]))[0]
-        idx += 2
-
-    if status_bits & 0x0008 and len(data) >= idx + 1:  # Aux status
-        result['aux_status'] = data[idx]
-        result['servo_on'] = bool(data[idx] & 0x04)
-        result['servo_overrun'] = bool(data[idx] & 0x20)
-        result['path_mode'] = bool(data[idx] & 0x40)
-        idx += 1
-
-    if status_bits & 0x0040 and len(data) >= idx + 2:  # Position error
-        result['pos_error'] = struct.unpack('<h', bytes(data[idx:idx+2]))[0]
-        idx += 2
-
-    return result
 ```
 
 ---
 
-## Examples
+## Usage with pyldcn
 
-### Basic Servo Initialization
-
-```python
-def initialize_servo(addr):
-    """Initialize LS-231SE servo drive with status reporting."""
-
-    # Step 1: Hard reset (see ldcn_protocol.md)
-    send_command(addr, 0x0F, [0x5A])
-
-    # Step 2: Define status reporting (position, velocity, aux, pos_error)
-    status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040  # 0x004D
-    send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-
-    # Step 3: Set gains (KP, KD, KI, IL, OL, CL, EL, SR, DB)
-    # Minimal requirements: KP != 0, EL != 0, SR != 0
-    send_command(addr, 0x06, [kp, kd, ki, il, ol, cl, el, sr, db])
-
-    # Step 4: Initialize trajectory registers (Load Trajectory)
-    # Minimal requirements: acceleration != 0, target position = 0
-    send_command(addr, 0x04, [...])  # See servo_commands.md
-
-    # Step 5: Close servo loop (Stop Motor: Pic_ae=1, Stop abruptly=1)
-    send_command(addr, 0x01, [0x05])  # AMP_ENABLE | STOP_ABRUPT
-
-    # Step 6: Read and verify status
-    response = send_command(addr, 0x00)  # NOP
-    return parse_servo_status(response, status_bits)
-```
-
-### Motion Monitoring
+The pyldcn library provides high-level abstractions for status reporting:
 
 ```python
-def monitor_motion(addr):
-    """Monitor servo motion until move completes."""
+from pyldcn import LDCNNetwork, InitMode
 
-    # Define status: position, aux status
-    status_bits = 0x0001 | 0x0008
-    send_command(addr, 0x02, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+with LDCNNetwork("/dev/ttyUSB0") as network:
+    network.initialize(mode=InitMode.AUTO)
+    servo = network.find_device_by_type("LS-231SE")
 
-    move_complete = False
-    while not move_complete:
-        response = send_command(addr, 0x00)  # NOP
-        status_byte = response[0]
-        position = struct.unpack('<i', bytes(response[1:5]))[0]
-        aux_status = response[5]
+    # Configure status items
+    servo.configure_status(0x0001 | 0x0004 | 0x0008)  # pos, vel, aux
 
-        # Check move_done flag (bit 0)
-        move_done = bool(status_byte & 0x01)
-
-        # Check accel_done and slew_done (aux status bits 3 and 4)
-        accel_done = bool(aux_status & 0x08)
-        slew_done = bool(aux_status & 0x10)
-
-        # Check servo_on (aux status bit 2)
-        servo_on = bool(aux_status & 0x04)
-
-        print(f"Position: {position}, Move Done: {move_done}, "
-              f"Accel Done: {accel_done}, Slew Done: {slew_done}, "
-              f"Servo On: {servo_on}")
-
-        if move_done and slew_done:
-            move_complete = True
-
-        time.sleep(0.01)  # 10ms polling
-
-    print("Move complete!")
+    # Read status
+    status = servo.read_status()
+    print(f"Position: {status['position']}")
+    print(f"Velocity: {status['velocity']}")
 ```
 
-### Fault Detection and Recovery
-
-```python
-def check_and_clear_faults(addr):
-    """Check for faults and clear sticky bits."""
-
-    # Read comprehensive status
-    status_bits = 0x0001 | 0x0008 | 0x0040  # position, aux, pos_error
-    response = send_command(addr, 0x03, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
-
-    status_byte = response[0]
-    position = struct.unpack('<i', bytes(response[1:5]))[0]
-    aux_status = response[5]
-    pos_error = struct.unpack('<h', bytes(response[6:8]))[0]
-
-    faults = []
-
-    # Check status byte faults
-    if status_byte & 0x02:
-        faults.append("Checksum error")
-    if status_byte & 0x04:
-        faults.append(f"Current limit exceeded (sticky)")
-    if status_byte & 0x10:
-        faults.append(f"Position error: {pos_error} counts (sticky)")
-
-    # Check auxiliary status faults
-    if aux_status & 0x02:
-        faults.append(f"Position counter wrapped (sticky)")
-    if aux_status & 0x20:
-        faults.append(f"Servo overrun (sticky)")
-
-    if faults:
-        print("Faults detected:")
-        for fault in faults:
-            print(f"  - {fault}")
-
-        # Clear sticky bits
-        print("Clearing sticky faults...")
-        send_command(addr, 0x0E, [0x15])  # Clear Bits command
-
-        # Verify cleared
-        response = send_command(addr, 0x00)  # NOP
-        if response[0] & 0x14 == 0:  # bits 2 and 4
-            print("Sticky faults cleared successfully")
-    else:
-        print("No faults detected")
-
-    return faults
-```
+See implementation examples:
+- `examples/simple_init.py` - Basic initialization
+- `examples/monitor_ls231se_status.py` - Real-time I/O monitoring
+- `pyldcn/devices/servo_status.py` - Status parsing implementation
 
 ---
 
