@@ -8,10 +8,7 @@ I/O/diagnostic pin meaning table from docs/servo_diagnostics.md.
 
 from __future__ import annotations
 
-import argparse
-import time
-from itertools import cycle
-from typing import Iterable, Optional, Dict
+from typing import Optional, Dict
 
 from pyldcn import InitMode
 from pyldcn.network import LDCNNetwork
@@ -19,62 +16,31 @@ from pyldcn.devices import LS231SE
 from pyldcn.devices import servo_diagnostics as diag
 
 
-INIT_MODE_MAP = {
-    "auto": InitMode.AUTO,
-    "soft": InitMode.SOFT,
-    "full": InitMode.FULL,
-    "validate": InitMode.VALIDATE,
-    "readdress": InitMode.READDRESS,
-}
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Monitor LS-231SE status bytes, auxiliary status, and key I/O states."
-    )
-    parser.add_argument(
-        "--port",
-        default="/dev/ttyUSB0",
-        help="Serial port connected to the LDCN network (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=INIT_MODE_MAP.keys(),
-        default="auto",
-        help="Initialization mode to use before monitoring (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--interval",
-        type=float,
-        default=0.25,
-        help="Polling interval in seconds (default: %(default)s)",
-    )
-    return parser.parse_args()
-
-
-def find_servo(devices: Iterable[object]) -> Optional[LS231SE]:
-    for device in devices:
-        if isinstance(device, LS231SE):
-            return device
-    return None
+# Configuration constants
+PORT = "/dev/ttyUSB0"
+INIT_MODE = InitMode.AUTO
+STATUS_MASK = 0x0001 | 0x0004 | 0x0008 | 0x0040  # pos, vel, aux, pos_err
 
 
 def format_inputs(flags: Dict[str, bool], servo: LS231SE) -> str:
-    """Format a comprehensive summary of digital inputs."""
-    selection = servo.state.home_selection
-    homesel_str = f"{selection[0]}{selection[1]}"
+    """Format a comprehensive summary of digital inputs with physical signal names."""
+    # Get physical signal mapping based on HomeSEL configuration
+    signals = servo.get_mapped_signals()
 
     # Get actual input states from IO subsystem
     inputs = servo.io.read_inputs()
 
-    parts = [
-        f"HomeSEL={homesel_str}",
-        f"Home={'HIGH' if inputs['home_source'] else 'LOW'}",
-        f"Limit2={'ACT' if inputs['limit2'] else 'OK'}",
-        f"Index={'HIGH' if inputs['index'] else 'LOW'}",
-    ]
+    parts = []
 
-    # Add flags from status decoding
+    # Show mapped physical signals with their states
+    home_signal = signals['home_source_signal']
+    limit_signal = signals['limit2_signal']
+
+    parts.append(f"{home_signal}={'HIGH' if inputs['home_source'] else 'LOW'}")
+    parts.append(f"{limit_signal}={'ACT' if inputs['limit2'] else 'OK'}")
+    parts.append(f"Index={'HIGH' if inputs['index'] else 'LOW'}")
+
+    # Add key status flags
     if flags.get('power'):
         parts.append("Power=ON")
     if flags.get('servo_on'):
@@ -105,42 +71,42 @@ def format_outputs(
 
 
 def main() -> None:
-    args = parse_args()
-    init_mode = INIT_MODE_MAP[args.mode]
-
     try:
-        with LDCNNetwork(args.port) as network:
-            print(f"Opening {args.port}...")
-            print(f"Initializing network (mode={args.mode})...")
-            num_devices, _ = network.initialize(mode=init_mode)
+        with LDCNNetwork(PORT) as network:
+            print(f"Opening {PORT}...")
+            print(f"Initializing network (mode={INIT_MODE.name})...")
+            num_devices, _ = network.initialize(mode=INIT_MODE)
             print(f"Found {num_devices} device(s).")
 
-            servo = find_servo(network.devices)
-            if not servo:
+            device = network.find_device_by_type("LS-231SE")
+            if not device or not isinstance(device, LS231SE):
                 print("No LS-231SE device found on the network.")
                 return
 
-            print("Resetting position counter (CMD_RESET_POS)...")
+            servo: LS231SE = device
+
+            # Configure status reporting
+            print("Configuring status reporting...")
+            servo.configure_status(STATUS_MASK)
+
+            print("Resetting position counter...")
             servo.motion.reset_position()
 
             print(f"Monitoring LS-231SE at address {servo.address} (Ctrl+C to stop)\n")
 
             while True:
-                status = servo.read_status()
-                status_byte = status.get("status", 0)
-                aux_byte = status.get("aux_status", servo.state.aux_status or 0)
-                state = diag.get_servo_state(
-                    status_byte,
-                    aux_byte,
-                    stop_cmd=servo.state.stop_cmd,
-                    pic_ae=servo.state.pic_ae,
-                )
+                # Get comprehensive state with all context applied
+                state = servo.get_state()
 
                 flags = state["flags"]
                 condition = state["condition"]
-                position = status.get("position")
-                velocity = status.get("velocity")
-                pos_error = status.get("pos_error")
+                status_byte = state["status_byte"]
+                aux_byte = state["aux_byte"]
+
+                position = state.get("position")
+                velocity = state.get("velocity")
+                pos_error = state.get("pos_error")
+
                 motion = (
                     f"Pos={position if position is not None else 'N/A':>8}"
                     f"  Vel={velocity if velocity is not None else 'N/A':>6}"

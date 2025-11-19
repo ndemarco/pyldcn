@@ -361,6 +361,54 @@ class LS231SE(LDCNDevice):
             'limit2_signal': entry.status_bit6 if entry else 'Unknown'
         }
 
+    def get_state(self) -> Dict[str, Any]:
+        """
+        Get comprehensive servo state with full context.
+
+        Reads current status and applies HomeSEL mapping, mode, and diagnostic
+        context automatically. This is the recommended high-level method for
+        status monitoring.
+
+        Returns:
+            Dictionary containing:
+                - 'status_byte': Raw status byte value
+                - 'aux_byte': Raw auxiliary status byte value
+                - 'flags': Decoded flag dictionary with physical signal names
+                - 'condition': Diagnostic condition (brake, LED, relay states)
+                - 'position': Current position (if configured)
+                - 'velocity': Current velocity (if configured)
+                - 'pos_error': Position error (if configured)
+
+        Example:
+            >>> state = servo.get_state()
+            >>> print(f"Servo on: {state['flags']['servo_on']}")
+            >>> print(f"Brake: {state['condition'].brake_state}")
+        """
+        from . import servo_diagnostics as diag
+
+        status = self.read_status()
+        status_byte = status.get("status", 0)
+        aux_byte = status.get("aux_status", self.state.aux_status or 0)
+
+        # Get diagnostic state with full context
+        state = diag.get_servo_state(
+            status_byte,
+            aux_byte,
+            stop_cmd=self.state.stop_cmd,
+            pic_ae=self.state.pic_ae,
+            mode=self.state.current_mode,
+        )
+
+        # Merge motion data from status
+        if "position" in status:
+            state["position"] = status["position"]
+        if "velocity" in status:
+            state["velocity"] = status["velocity"]
+        if "pos_error" in status:
+            state["pos_error"] = status["pos_error"]
+
+        return state
+
     def check_faults(self, status_byte: int) -> List[str]:
         """
         Check status byte for fault conditions.
