@@ -29,11 +29,11 @@ CMD_SET_HOME_MODE = 0x09
 # Motor Control Flags (STOP_MOTOR command)
 # =============================================================================
 
-AMP_ENABLE = 0x01      # Bit 0: Pic_ae (Power Driver enable)
-MOTOR_OFF = 0x02       # Bit 1: Turn motor off
-STOP_ABRUPT = 0x04     # Bit 2: Stop abruptly
-STOP_SMOOTH = 0x08     # Bit 3: Stop smoothly
-STOP_HERE = 0x10       # Bit 4: Stop here
+AMP_ENABLE = 0x01  # Bit 0: Pic_ae (Power Driver enable)
+MOTOR_OFF = 0x02  # Bit 1: Turn motor off
+STOP_ABRUPT = 0x04  # Bit 2: Stop abruptly
+STOP_SMOOTH = 0x08  # Bit 3: Stop smoothly
+STOP_HERE = 0x10  # Bit 4: Stop here
 
 
 class Motion:
@@ -47,7 +47,7 @@ class Motion:
     - Position reset
     """
 
-    def __init__(self, state: ServoState, device: 'LS231SE'):
+    def __init__(self, state: ServoState, device: "LS231SE"):
         """
         Initialize Motion subsystem.
 
@@ -62,7 +62,9 @@ class Motion:
     # Motion Commands
     # -------------------------------------------------------------------------
 
-    def move_to(self, position: float, velocity: float, accel: float, scale: float = 1.0) -> None:
+    def move_to(
+        self, position: float, velocity: float, accel: float, scale: float = 1.0
+    ) -> None:
         """
         Command motion to absolute position.
 
@@ -88,16 +90,19 @@ class Motion:
             accel: Acceleration (counts per tick²)
         """
         traj_ctrl = 0x80 | 0x10  # start_now=1, servo_mode=1
-        traj_data = struct.pack('<Biii', traj_ctrl, position, velocity, accel)
+        traj_data = struct.pack("<Biii", traj_ctrl, position, velocity, accel)
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
     # -------------------------------------------------------------------------
     # Homing
     # -------------------------------------------------------------------------
 
-    def set_home_mode(self, limit_switch: Optional[int] = None,
-                      use_index: bool = False,
-                      stop_mode: str = 'abrupt') -> None:
+    def set_home_mode(
+        self,
+        limit_switch: Optional[int] = None,
+        use_index: bool = False,
+        stop_mode: str = "abrupt",
+    ) -> None:
         """
         Configure homing mode to capture home position.
 
@@ -126,19 +131,27 @@ class Motion:
             control_byte |= 0x08  # Bit 3: Index
 
         # Stop mode (only one should be set)
-        if stop_mode == 'off':
+        if stop_mode == "off":
             control_byte |= 0x04  # Bit 2: Turn motor off
-        elif stop_mode == 'abrupt':
+        elif stop_mode == "abrupt":
             control_byte |= 0x10  # Bit 4: Stop abruptly
-        elif stop_mode == 'smooth':
+        elif stop_mode == "smooth":
             control_byte |= 0x20  # Bit 5: Stop smoothly
         else:
-            raise ValueError(f"Invalid stop_mode: {stop_mode}. Must be 'abrupt', 'smooth', or 'off'")
+            raise ValueError(
+                f"Invalid stop_mode: {stop_mode}. Must be 'abrupt', 'smooth', or 'off'"
+            )
 
         self._device.send_command(CMD_SET_HOME_MODE, [control_byte])
 
-    def home_to_limit(self, limit_switch: int, velocity: int, accel: int,
-                      use_index: bool = False, index_velocity: Optional[int] = None) -> None:
+    def home_to_limit(
+        self,
+        limit_switch: int,
+        velocity: int,
+        accel: int,
+        use_index: bool = False,
+        index_velocity: Optional[int] = None,
+    ) -> None:
         """
         Perform complete homing sequence to a limit switch.
 
@@ -167,13 +180,13 @@ class Motion:
         print(f"Homing to Limit {limit_switch}...")
 
         # Set home mode
-        self.set_home_mode(limit_switch=limit_switch, stop_mode='abrupt')
+        self.set_home_mode(limit_switch=limit_switch, stop_mode="abrupt")
 
         # Load velocity trajectory
         # Direction: forward for Limit 2, reverse for Limit 1
         direction_bit = 0 if limit_switch == 2 else 0x40
         traj_ctrl = 0x36 | direction_bit  # Bits: 1,2,4,5 + optional direction bit
-        traj_data = struct.pack('<Biii', traj_ctrl, 0, velocity, accel)
+        traj_data = struct.pack("<Biii", traj_ctrl, 0, velocity, accel)
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
         # Start motion
@@ -183,7 +196,7 @@ class Motion:
         print("Waiting for limit switch...")
         while True:
             status = self._device.read_status()
-            if not status.get('flags', {}).get('home_in_progress', False):
+            if not status.get("flags", {}).get("home_in_progress", False):
                 break
             time.sleep(0.05)
 
@@ -197,12 +210,12 @@ class Motion:
             print("Fine-tuning to index pulse...")
 
             # Set home mode for index
-            self.set_home_mode(use_index=True, stop_mode='abrupt')
+            self.set_home_mode(use_index=True, stop_mode="abrupt")
 
             # Load velocity trajectory in opposite direction
             reverse_direction_bit = 0x40 if limit_switch == 2 else 0
             traj_ctrl = 0x36 | reverse_direction_bit
-            traj_data = struct.pack('<Biii', traj_ctrl, 0, index_velocity, accel)
+            traj_data = struct.pack("<Biii", traj_ctrl, 0, index_velocity, accel)
             self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
             # Start motion
@@ -212,7 +225,7 @@ class Motion:
             print("Waiting for index pulse...")
             while True:
                 status = self._device.read_status()
-                if not status.get('flags', {}).get('home_in_progress', False):
+                if not status.get("flags", {}).get("home_in_progress", False):
                     break
                 time.sleep(0.05)
 
@@ -229,6 +242,7 @@ class Motion:
         Enable amplifier (STOP_MOTOR with AMP_ENABLE flag).
         """
         from .servo import CMD_STOP_MOTOR
+
         stop_ctrl = STOP_ABRUPT | AMP_ENABLE
         self._device.send_command(CMD_STOP_MOTOR, [stop_ctrl])
 
@@ -237,6 +251,7 @@ class Motion:
         Disable amplifier and position servo.
         """
         from .servo import CMD_STOP_MOTOR
+
         self._device.send_command(CMD_STOP_MOTOR, [0x00])
 
     def stop(self, smooth: bool = False) -> None:
@@ -247,6 +262,7 @@ class Motion:
             smooth: If True, use smooth stop; if False, use abrupt stop (default)
         """
         from .servo import CMD_STOP_MOTOR
+
         if smooth:
             stop_ctrl = STOP_SMOOTH | AMP_ENABLE
         else:
@@ -275,7 +291,7 @@ class Motion:
             position & 0xFF,
             (position >> 8) & 0xFF,
             (position >> 16) & 0xFF,
-            (position >> 24) & 0xFF
+            (position >> 24) & 0xFF,
         ]
         self._device.send_command(CMD_RESET_POS, pos_bytes)
 
@@ -306,12 +322,7 @@ class Motion:
     # Path Mode (Coordinated Motion)
     # -------------------------------------------------------------------------
 
-    def add_path_point(
-        self,
-        position: int,
-        velocity: int,
-        accel: int
-    ) -> None:
+    def add_path_point(self, position: int, velocity: int, accel: int) -> None:
         """
         Add path point to motion buffer (CMD 0x0D).
 
@@ -330,7 +341,7 @@ class Motion:
         from .servo import CMD_ADD_PATHPOINT
 
         # Pack path point: position_delta (2 bytes), velocity (2 bytes), accel (2 bytes)
-        point_data = struct.pack('<hhh', position, velocity, accel)
+        point_data = struct.pack("<hhh", position, velocity, accel)
         self._device.send_command(CMD_ADD_PATHPOINT, list(point_data))
 
     def start_path_mode(self) -> None:
@@ -342,7 +353,9 @@ class Motion:
         """
         # Use LOAD_TRAJECTORY with path mode flag
         traj_ctrl = 0x80 | 0x20  # start_now=1, path_mode=1
-        traj_data = struct.pack('<Biii', traj_ctrl, 0, 0, 0)  # Position/vel/accel unused in path mode
+        traj_data = struct.pack(
+            "<Biii", traj_ctrl, 0, 0, 0
+        )  # Position/vel/accel unused in path mode
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
     def clear_path_buffer(self) -> None:
@@ -393,7 +406,7 @@ class Trajectory:
     # Trajectory Building
     # -------------------------------------------------------------------------
 
-    def add_linear(self, start: float, end: float, points: int) -> 'Trajectory':
+    def add_linear(self, start: float, end: float, points: int) -> "Trajectory":
         """
         Add linear trajectory segment.
 
@@ -417,8 +430,15 @@ class Trajectory:
 
         return self
 
-    def add_circular(self, center_x: float, center_y: float, radius: float,
-                     start_angle: float, end_angle: float, points: int) -> 'Trajectory':
+    def add_circular(
+        self,
+        center_x: float,
+        center_y: float,
+        radius: float,
+        start_angle: float,
+        end_angle: float,
+        points: int,
+    ) -> "Trajectory":
         """
         Add circular trajectory segment (2D interpolation).
 
@@ -442,6 +462,7 @@ class Trajectory:
             raise ValueError(f"Trajectory exceeds buffer size ({self._buffer_size})")
 
         import math
+
         angle_delta = (end_angle - start_angle) / points
 
         for i in range(points):
@@ -454,7 +475,7 @@ class Trajectory:
 
         return self
 
-    def clear(self) -> 'Trajectory':
+    def clear(self) -> "Trajectory":
         """
         Clear trajectory buffer.
 
@@ -490,7 +511,7 @@ class Trajectory:
 
         # Calculate deltas between consecutive positions
         for i in range(1, len(self._buffer)):
-            delta = self._buffer[i] - self._buffer[i-1]
+            delta = self._buffer[i] - self._buffer[i - 1]
 
             # Split into integer and fractional parts
             int_part = int(delta)
@@ -519,7 +540,7 @@ class Trajectory:
         """Get path point timing value."""
         return self._timing
 
-    def set_timing(self, timing: int) -> 'Trajectory':
+    def set_timing(self, timing: int) -> "Trajectory":
         """
         Set path point timing.
 
