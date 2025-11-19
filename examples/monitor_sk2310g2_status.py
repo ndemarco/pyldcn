@@ -8,6 +8,7 @@ and condition description in one line.
 
 import time
 from itertools import cycle
+from pyldcn import InitMode
 from pyldcn.network import LDCNNetwork
 from pyldcn.devices.sk2310g2 import SK2310g2, format_led_pattern, DIAGNOSTIC_CODES
 
@@ -18,7 +19,7 @@ def main():
 
     # Auto-initialize devices
     print("Initializing devices...")
-    num_devices, _ = network.initialize()
+    num_devices, _ = network.initialize(mode=InitMode.FULL)
     print(f"Found {num_devices} device(s)")
 
     devices = network.devices
@@ -51,12 +52,12 @@ def main():
 
             # Display in one line (overwrite previous)
             print(
-                f"\r{next(spinner)} Code: 0x{diagnostic:02X}  LED: {led_pattern}  {condition}                    ",
+                f"\r{next(spinner)} Code: 0x{diagnostic:02X}  LED: {led_pattern}  {condition} {' ':40}",
                 end="",
                 flush=True,
             )
 
-            time.sleep(0.1)
+            # time.sleep(0.1)
 
     except KeyboardInterrupt:
         print("\n\nMonitoring stopped")
