@@ -332,6 +332,35 @@ class LS231SE(LDCNDevice):
         """Return the cached operating mode key."""
         return self.state.current_mode
 
+    def get_mapped_signals(self) -> Dict[str, str]:
+        """
+        Return physical signal names for status bits 5/6 based on HomeSEL.
+
+        Status bits 5 and 6 are dynamically mapped to different physical inputs
+        depending on the HomeSEL output bit configuration. This method returns
+        the current mapping.
+
+        Returns:
+            Dictionary with keys:
+                - 'home_source_signal': Physical signal mapped to status bit 5
+                - 'limit2_signal': Physical signal mapped to status bit 6
+
+        Example:
+            >>> servo.io.set_home_selection_state(homesel2=0, homesel1=1)
+            >>> signals = servo.get_mapped_signals()
+            >>> print(signals)
+            {'home_source_signal': 'HomeIN', 'limit2_signal': 'Input10'}
+        """
+        from .servo_mappings import LS231SE_HOME_SOURCE_TABLE
+
+        lookup = {(e.homesel2, e.homesel1): e for e in LS231SE_HOME_SOURCE_TABLE}
+        entry = lookup.get(self.state.home_selection)
+
+        return {
+            'home_source_signal': entry.status_bit5 if entry else 'Unknown',
+            'limit2_signal': entry.status_bit6 if entry else 'Unknown'
+        }
+
     def check_faults(self, status_byte: int) -> List[str]:
         """
         Check status byte for fault conditions.
