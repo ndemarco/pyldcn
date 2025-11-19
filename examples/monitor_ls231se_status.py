@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import time
 from itertools import cycle
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Dict
 
 from pyldcn import InitMode
 from pyldcn.network import LDCNNetwork
@@ -59,36 +59,53 @@ def find_servo(devices: Iterable[object]) -> Optional[LS231SE]:
     return None
 
 
-def format_condition(condition: Optional[diag.DiagnosticCondition]) -> str:
-    if not condition:
-        return "Condition: UNKNOWN"
-    prefix = "FAULT" if condition.is_faulted else "OK"
-    return f"{condition.condition} ({prefix})"
+def format_inputs(flags: Dict[str, bool], servo: LS231SE) -> str:
+    """Format a comprehensive summary of digital inputs."""
+    selection = servo.state.home_selection
+    homesel_str = f"{selection[0]}{selection[1]}"
+
+    # Get actual input states from IO subsystem
+    inputs = servo.io.read_inputs()
+
+    parts = [
+        f"HomeSEL={homesel_str}",
+        f"Home={'HIGH' if inputs['home_source'] else 'LOW'}",
+        f"Limit2={'ACT' if inputs['limit2'] else 'OK'}",
+        f"Index={'HIGH' if inputs['index'] else 'LOW'}",
+    ]
+
+    # Add flags from status decoding
+    if flags.get('power'):
+        parts.append("Power=ON")
+    if flags.get('servo_on'):
+        parts.append("ServoOn=YES")
+
+    return " | ".join(parts)
 
 
-def format_io(flags: dict, condition: Optional[diag.DiagnosticCondition]) -> str:
-    """Only show I/O states when something notable is happening."""
+def format_outputs(
+    condition: Optional[diag.DiagnosticCondition], servo: LS231SE
+) -> str:
+    """Format a comprehensive summary of digital outputs."""
     parts = []
 
-    if flags["home_source"]:
-        parts.append("Home=HIGH")
-    if flags["limit2"]:
-        parts.append("Limit2=ACTIVE")
-    if not flags["index"]:
-        parts.append("Index=LOW")
+    # Brake and fault relay from diagnostic condition
+    if condition:
+        brake_short = condition.brake_state.replace("Released", "RLS").replace("Engaged", "ENG")
+        parts.append(f"Brake={brake_short}")
 
-    brake = condition.brake_state if condition else None
-    if brake and brake not in {"Released", "CN8pin9 Low", "Unknown"}:
-        parts.append(f"Brake={brake}")
+        relay_short = "CLS" if condition.fault_relay == "Closed" else "OPN"
+        parts.append(f"FaultRelay={relay_short}")
 
-    if not parts:
-        return "IO nominal"
-    return "IO: " + ", ".join(parts)
+    # Operating mode
+    mode = servo.state.current_mode
+    parts.append(f"Mode={mode}")
+
+    return " | ".join(parts)
 
 
 def main() -> None:
     args = parse_args()
-    spinner = cycle("⣾⣽⣻⢿⡿⣟⣯⣷")
     init_mode = INIT_MODE_MAP[args.mode]
 
     try:
@@ -130,40 +147,47 @@ def main() -> None:
                     f"  Err={pos_error if pos_error is not None else 'N/A':>6}"
                 )
 
-                alerts = []
-                if flags["power"]:
-                    alerts.append("Power")
-                if flags["servo_on"]:
-                    alerts.append("Servo")
-                if flags["limit2"]:
-                    alerts.append("Limit2")
-                if flags["home_in_progress"]:
-                    alerts.append("Homing")
-                if flags["pos_error"]:
-                    alerts.append("PosErr")
-                if flags["current_limit"]:
-                    alerts.append("CurrentLimit")
-                if flags["cksum_error"]:
-                    alerts.append("Checksum")
-                if flags["servo_overrun"]:
-                    alerts.append("ServoOverrun")
-                if flags["pos_wrap"]:
-                    alerts.append("PosWrap")
-                if condition and condition.fault_relay == "Closed":
-                    alerts.append("FaultRelay")
+                # Build status summary with I/O prominence
+                summary_lines = [
+                    "=" * 80,
+                    f"Status: 0x{status_byte:02X}  Aux: 0x{aux_byte:02X}  {motion}",
+                    "",
+                    f"INPUTS:  {format_inputs(flags, servo)}",
+                    f"OUTPUTS: {format_outputs(condition, servo)}",
+                    "",
+                ]
 
-                alert_text = ", ".join(alerts) if alerts else "None"
-                summary = (
-                    # f"\r{next(spinner)} "
-                    f"Stat=0x{status_byte:02X} Aux=0x{aux_byte:02X}  "
-                    # f"{format_condition(condition)}  "
-                    f"{motion}  "
-                    f"Active[{alert_text}]  "
-                    f"{format_io(flags, condition)}      "
-                )
-                print(summary)
-                # print(summary, end="", flush=True)
-                time.sleep(args.interval)
+                # Add any active alerts
+                alerts = []
+                if flags.get("move_done"):
+                    alerts.append("MoveDone")
+                if flags.get("home_in_progress"):
+                    alerts.append("Homing")
+                if flags.get("pos_error"):
+                    alerts.append("PosError")
+                if flags.get("current_limit"):
+                    alerts.append("CurrentLimit")
+                if flags.get("cksum_error"):
+                    alerts.append("ChecksumErr")
+                if flags.get("servo_overrun"):
+                    alerts.append("ServoOverrun")
+                if flags.get("pos_wrap"):
+                    alerts.append("PosWrap")
+
+                if alerts:
+                    summary_lines.append(f"ALERTS:  {', '.join(alerts)}")
+                else:
+                    summary_lines.append("ALERTS:  None")
+
+                # Add LED status if available
+                if condition:
+                    leds = f"LEDs: O={condition.orange_led} G={condition.green_led} R={condition.red_led}"
+                    summary_lines.append(leds)
+
+                summary_lines.append("=" * 80)
+
+                print("\n".join(summary_lines))
+                _ = input("\nPress Enter to refresh, Ctrl+C to stop...")
 
     except KeyboardInterrupt:
         print("\nMonitoring stopped.")
