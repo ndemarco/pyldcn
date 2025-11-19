@@ -17,12 +17,12 @@ Usage:
 from pyldcn import LDCNNetwork, InitMode
 from pyldcn.devices.sk2310g2 import format_status
 
-# Initialize network with soft init (no reset)
+# Start network
 network = LDCNNetwork("/dev/ttyUSB0")
 network.open()
 
 print("Initializing network (soft mode - no reset)...")
-num_devices, device_info = network.initialize(mode=InitMode.AUTO)
+num_devices, device_info = network.initialize(mode=InitMode.FULL)
 print(f"Found {num_devices} devices\n")
 
 # Get SK-2310g2 by device type
