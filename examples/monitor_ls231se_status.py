@@ -154,14 +154,15 @@ def main() -> None:
 
                 alert_text = ", ".join(alerts) if alerts else "None"
                 summary = (
-                    f"\r{next(spinner)} "
+                    # f"\r{next(spinner)} "
                     f"Stat=0x{status_byte:02X} Aux=0x{aux_byte:02X}  "
-                    f"{format_condition(condition)}  "
+                    # f"{format_condition(condition)}  "
                     f"{motion}  "
                     f"Active[{alert_text}]  "
                     f"{format_io(flags, condition)}      "
                 )
-                print(summary, end="", flush=True)
+                print(summary)
+                # print(summary, end="", flush=True)
                 time.sleep(args.interval)
 
     except KeyboardInterrupt:

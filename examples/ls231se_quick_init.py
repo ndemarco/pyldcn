@@ -1,65 +1,60 @@
 #!/usr/bin/env python3
 """
-Quick LS-231SE initialization helper.
+LS-231SE quick initialization and monitoring launcher.
 
-Edit the constants below to experiment with different defaults without
-touching the rest of the script. All device interaction uses the LS231SE
-API—never call send_command directly here.
+This script relies solely on pyldcn abstractions: it initializes the network,
+locates the first LS-231SE via find_device_by_type(), applies configuration,
+executes the requested motion/STOP_MOTOR sequence, then launches the
+monitor_ls231se_status.py helper for live diagnostics.
 """
 
 from __future__ import annotations
 
+import subprocess
+import time
 from dataclasses import dataclass
-from typing import Iterable, Optional
 
 from pyldcn import InitMode
-from pyldcn.devices import LS231SE
 from pyldcn.network import LDCNNetwork
 
 # -----------------------------------------------------------------------------
-# User-tunable defaults
+# Tunables
 # -----------------------------------------------------------------------------
 
 PORT = "/dev/ttyUSB0"
 INIT_MODE = InitMode.AUTO
-
-# Configure which status items every NOP/command should return.
-STATUS_MASK = 0x0001 | 0x0004 | 0x0008 | 0x0040  # position, velocity, aux, pos_error
+STATUS_MASK = 0x0001 | 0x0004 | 0x0008 | 0x0040  # pos, vel, aux, pos_err
 
 
 @dataclass
 class GainSettings:
-    kp: int = 0
-    kd: int = 0
-    ki: int = 0
-    il: int = 0
-    ol: int = 0
-    cl: int = 0
-    el: int = 0
-    sr: int = 0
+    kp: int = 10
+    kd: int = 1000
+    ki: int = 20
+    il: int = 40
+    ol: int = 255
+    cl: int = 129
+    el: int = 2000
+    sr: int = 1
     db: int = 0
 
 
 GAINS = GainSettings()
+
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 
 
-def find_servo(devices: Iterable[object]) -> Optional[LS231SE]:
-    for device in devices:
-        if isinstance(device, LS231SE):
-            return device
-    return None
+def apply_initialization(network: LDCNNetwork) -> None:
+    """Configure the first LS-231SE found on the network."""
+    servo = network.find_device_by_type("LS-231SE")
+    if servo is None:
+        raise RuntimeError("No LS-231SE detected on the network.")
 
-
-def apply_initialization(servo: LS231SE) -> None:
-    """Perform repeatable LS-231SE setup steps using helper APIs only."""
-    print(f"Configuring status mask: 0x{STATUS_MASK:04X}")
     servo.configure_status(STATUS_MASK)
 
-    print("Loading PID gains:", GAINS)
     servo.set_gains(
         kp=GAINS.kp,
         kd=GAINS.kd,
@@ -72,41 +67,25 @@ def apply_initialization(servo: LS231SE) -> None:
         db=GAINS.db,
     )
 
-    print("Resetting position counter to zero.")
     servo.motion.reset_position()
-
-    print("Clearing sticky bits (CMD_CLEAR_BITS).")
     servo.clear_faults()
 
-    print("Stage 2: Loading trapezoidal trajectory (pos=0, accel=1000).")
-    servo.motion.move_to_counts(position=0, velocity=0, accel=1000)
+    # Load trajectory: target=0, velocity=0, accel=1. move_to_counts sets the
+    # trapezoidal, start-now bits for us.
+    servo.motion.move_to_counts(position=0, velocity=0, accel=1)
 
-    confirm = (
-        input(
-            "Stage 3: Close servo loop via STOP_MOTOR (AMP_ENABLE|STOP_ABRUPT)? [y/N]: "
-        )
-        .strip()
-        .lower()
-    )
-    if confirm == "y":
-        print(
-            "Enabling amplifier using STOP_MOTOR bits "
-            "AMP_ENABLE=0x01 and STOP_ABRUPT=0x04 "
-            "(see pyldcn/devices/servo_motion.pyyy"
-            "y)."
-        )
-        servo.motion.enable()
-    else:
-        print("Skipping servo enable stage (operator declined).")
+    # Close the servo loop via STOP_MOTOR (AMP_ENABLE | STOP_ABRUPT).
+    servo.motion.enable()
 
-    servo.clear_faults()
+    # Give hardware a moment to settle before we switch to the monitor script.
+    time.sleep(0.1)
 
-    status = servo.read_status()
-    print(
-        "Status byte: 0x{0:02X}, aux: 0x{1:02X}".format(
-            status.get("status", 0),
-            status.get("aux_status", 0),
-        )
+
+def launch_monitor() -> None:
+    """Spawn the LS-231SE monitor script on the configured port."""
+    subprocess.run(
+        ["python3", "examples/monitor_ls231se_status.py", "--port", PORT],
+        check=False,
     )
 
 
@@ -115,14 +94,11 @@ def main() -> None:
         print(f"Opening {PORT} and initializing in {INIT_MODE.name} mode...")
         num_devices, _ = network.initialize(mode=INIT_MODE)
         print(f"Found {num_devices} device(s).")
+        apply_initialization(network)
+        print("Initialization sequence complete.")
 
-        servo = find_servo(network.devices)
-        if not servo:
-            raise RuntimeError("No LS-231SE detected—connect one and rerun.")
-
-        print(f"Applying initialization to LS-231SE at address {servo.address}")
-        apply_initialization(servo)
-        print("Initialization complete.")
+    print("\nLaunching monitor_ls231se_status.py (Ctrl+C to stop)...\n")
+    launch_monitor()
 
 
 if __name__ == "__main__":
