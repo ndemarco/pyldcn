@@ -8,7 +8,7 @@ License: GPL v2 or later
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 
 @dataclass
@@ -72,6 +72,10 @@ class ServoState:
     ad_value: Optional[int] = None      # A/D converter value (0-255)
     home_position: Optional[int] = None # Captured home position
     path_count: Optional[int] = None    # Path buffer count (motion queue depth)
+    home_selection: Tuple[int, int] = (0, 0)  # (HomeSEL2, HomeSEL1)
+    home_source_signal: Optional[str] = None  # Textual mapping of StatusBit5
+    limit2_signal: Optional[str] = None       # Textual mapping of StatusBit6
+    current_mode: str = "LDCN_SINGLE_LOOP"    # Active mode descriptor key
 
     # -------------------------------------------------------------------------
     # PID Gains

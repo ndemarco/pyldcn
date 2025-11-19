@@ -7,9 +7,10 @@ Author: NickyDoes
 License: GPL v2 or later
 """
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Tuple
 
 from .servo_state import ServoState
+from .servo_mappings import IOMapping, LS231SE_IO_MAPPING
 
 if TYPE_CHECKING:
     from .servo import LS231SE
@@ -26,7 +27,7 @@ class IO:
     - General digital I/O
     """
 
-    def __init__(self, state: ServoState, device: 'LS231SE'):
+    def __init__(self, state: ServoState, device: 'LS231SE', mapping: IOMapping = LS231SE_IO_MAPPING):
         """
         Initialize IO subsystem.
 
@@ -36,6 +37,7 @@ class IO:
         """
         self._state = state
         self._device = device
+        self._mapping = mapping
 
     # -------------------------------------------------------------------------
     # Brake Control
@@ -151,3 +153,21 @@ class IO:
             True if home switch active, False otherwise
         """
         return self._state.home_source
+
+    # -------------------------------------------------------------------------
+    # Home Source Selection Tracking
+    # -------------------------------------------------------------------------
+
+    def set_home_selection_state(self, homesel2: int, homesel1: int) -> None:
+        """
+        Record the currently selected HomeSEL bits.
+
+        Note: This does NOT write to hardware; callers must issue the appropriate
+        I/O control command separately. This method simply updates shared state
+        so status decoding can reflect the correct physical mapping.
+        """
+        self._state.home_selection = (homesel2 & 0x01, homesel1 & 0x01)
+
+    def get_home_selection_state(self) -> Tuple[int, int]:
+        """Return the cached HomeSEL (homesel2, homesel1) tuple."""
+        return self._state.home_selection

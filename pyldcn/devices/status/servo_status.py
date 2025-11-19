@@ -8,11 +8,12 @@ License: GPL v2 or later
 """
 
 import struct
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, TYPE_CHECKING, Tuple
 
 from pyldcn.device_status import StatusManager
 from ..servo_state import ServoState
 from .. import servo_diagnostics as diag
+from ..servo_mappings import StatusProfile, LS231SE_STATUS_PROFILE
 
 if TYPE_CHECKING:
     from ..servo import LS231SE
@@ -73,7 +74,7 @@ class ServoStatus(StatusManager):
     - Updating shared ServoState
     """
 
-    def __init__(self, state: ServoState, device: 'LS231SE'):
+    def __init__(self, state: ServoState, device: 'LS231SE', profile: StatusProfile = LS231SE_STATUS_PROFILE):
         """
         Initialize ServoStatus subsystem.
 
@@ -83,7 +84,8 @@ class ServoStatus(StatusManager):
         """
         super().__init__(device)
         self._state = state
-        self.status_items = LS231SE_STATUS_ITEMS
+        self.profile = profile
+        self.status_items = profile.status_items
 
     # -------------------------------------------------------------------------
     # Status Reading
@@ -181,12 +183,12 @@ class ServoStatus(StatusManager):
         # Update status byte flag properties in shared state
         self._update_status_flags(status_byte)
 
-        result = {
+        result: Dict[str, Any] = {
             'status': status_byte,
-            'flags': self.decode_status_flags(status_byte)
         }
 
         idx = 0
+        aux_byte: Optional[int] = None
 
         # Position (4 bytes, bit 0)
         if status_bits & 0x0001 and len(data) >= idx + 4:
@@ -208,9 +210,9 @@ class ServoStatus(StatusManager):
 
         # Auxiliary status (1 byte, bit 3)
         if status_bits & 0x0008 and len(data) >= idx + 1:
-            aux = data[idx]
-            result['aux_status'] = aux
-            self._update_aux_flags(aux)
+            aux_byte = data[idx]
+            result['aux_status'] = aux_byte
+            self._update_aux_flags(aux_byte)
 
             # Also add to result dict for backwards compatibility
             result['servo_on'] = self._state.servo_on
@@ -235,6 +237,18 @@ class ServoStatus(StatusManager):
             result['path_count'] = data[idx]
             self._state.path_count = result['path_count']
             idx += 1
+
+        if aux_byte is None:
+            aux_byte = self._state.aux_status or 0
+
+        context = {
+            "homesel": getattr(self._state, "home_selection", (0, 0)),
+            "mode": getattr(self._state, "current_mode", self.profile.default_mode),
+        }
+        flags = self.profile.resolver(status_byte, aux_byte, context)
+        self._state.home_source_signal = flags.get("home_source_signal")
+        self._state.limit2_signal = flags.get("limit2_signal")
+        result['flags'] = flags
 
         return result
 
@@ -265,7 +279,7 @@ class ServoStatus(StatusManager):
     # Status Decoding
     # -------------------------------------------------------------------------
 
-    def decode_status_flags(self, status_byte: int) -> Dict[str, bool]:
+    def decode_status_flags(self, status_byte: int, aux_byte: Optional[int] = None) -> Dict[str, bool]:
         """
         Decode status byte into flag dictionary.
 
@@ -275,16 +289,13 @@ class ServoStatus(StatusManager):
         Returns:
             Dictionary of flag names to boolean values
         """
-        return {
-            'move_done': bool(status_byte & STATUS_MOVE_DONE),
-            'cksum_error': bool(status_byte & STATUS_CKSUM_ERROR),
-            'current_limit': bool(status_byte & STATUS_CURRENT_LIMIT),
-            'power': bool(status_byte & STATUS_POWER),
-            'pos_error': bool(status_byte & STATUS_POS_ERROR),
-            'home_source': bool(status_byte & STATUS_HOME_SOURCE),
-            'limit2': bool(status_byte & STATUS_LIMIT2),
-            'home_in_progress': bool(status_byte & STATUS_HOME_IN_PROG),
+        if aux_byte is None:
+            aux_byte = self._state.aux_status or 0
+        context = {
+            "homesel": getattr(self._state, "home_selection", (0, 0)),
+            "mode": getattr(self._state, "current_mode", self.profile.default_mode),
         }
+        return self.profile.resolver(status_byte, aux_byte, context)
 
     # -------------------------------------------------------------------------
     # Fault Detection

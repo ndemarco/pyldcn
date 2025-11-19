@@ -21,6 +21,7 @@ from .servo_state import ServoState
 from .status import ServoStatus
 from .servo_motion import Motion, Trajectory
 from .servo_io import IO
+from .servo_mappings import LS231SE_STATUS_PROFILE
 
 
 # =============================================================================
@@ -101,6 +102,7 @@ class LS231SE(LDCNDevice):
 
         # Shared state - single source of truth
         self.state = ServoState()
+        self.state.current_mode = LS231SE_STATUS_PROFILE.default_mode
 
         # Subsystems share state reference
         self._status = ServoStatus(self.state, self)
@@ -307,6 +309,28 @@ class LS231SE(LDCNDevice):
             Dictionary of flag names to boolean values
         """
         return self._status.decode_status_flags(status_byte)
+
+    # -------------------------------------------------------------------------
+    # Mode Management
+    # -------------------------------------------------------------------------
+
+    def set_mode(self, mode_name: str) -> None:
+        """
+        Record the current servo operating mode.
+
+        Note: Setting the software state does not automatically send the
+        hardware command to switch modes. Callers must issue the appropriate
+        device command separately (e.g., via the LDCN mode change sequence),
+        then invoke this helper so status/IO decoding reflects the new mode.
+        """
+        if mode_name not in self._status.profile.mode_lookup:
+            valid = ", ".join(self._status.profile.mode_lookup.keys())
+            raise ValueError(f"Unknown mode '{mode_name}'. Valid modes: {valid}")
+        self.state.current_mode = mode_name
+
+    def get_mode(self) -> str:
+        """Return the cached operating mode key."""
+        return self.state.current_mode
 
     def check_faults(self, status_byte: int) -> List[str]:
         """
