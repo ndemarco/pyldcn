@@ -209,7 +209,7 @@ See [CN3 Safety Bus Connector](#cn3---safety-bus-connector) for signal details.
 
 ### Zero Speed Automation Mode
 
-Alternative safe state detection without physical home switch. Machine is in safe state when all motion has stopped:
+Alternative safe state detection without physical home switch. Machine is in safe state when all motion has stopped. Requires drives with 'Ze' feature. LS-231SE drives do not have this feature.
 
 **Safe state active when:**
 - All motors stopped >2 seconds (Zero Speed signal ON), AND
@@ -222,8 +222,6 @@ Alternative safe state detection without physical home switch. Machine is in saf
 
 ## Manual Override (Test Mode)
 Manual override allows certain actions when guards are not safe.
-
-The 
 
 **Operation:** manual override capability is enabled by clearing output 11 (byte 1, bit 3). The operator then activates the physical manual override switch. The controller enters manual override mode. The software can disable manual override at any time by setting Byte 1, bit 3 to 1, providing programmatic control over when manual intervention is permitted.
 
@@ -492,13 +490,17 @@ device.set_output_bit(OUTPUT_TOOL_CLAMP, True)
 
 ## Status Response Format
 
-The SK-2310g2 inherits the LS-773 status response format. When CMD_READ_STATUS (0x03) is sent with data byte `[0xFF, 0xFF]` to request all status fields, the response contains:
+The SK-2310g2 inherits the LS-773 status request process. When command `READ_STATUS` is sent with data byte `[0xFF]` to request all status fields, the response contains:
 
 ```
 [status_byte] [byte0] [byte1] [position] [velocity] [home] [checksum]
 ```
 
-### Status Byte (First Response Byte)
+Note 1: When multiple conflicting diagnostic states are active, the lowest value state will be emitted.
+
+### Status Byte
+
+Response byte 0
 
 The status byte uses the LS-773 format:
 
@@ -511,7 +513,9 @@ The status byte uses the LS-773 format:
 
 **Important:** The diagnostic code is **NOT** transmitted in the status byte. It is transmitted in Byte1.
 
-### Byte0 - Digital Inputs (Second Response Byte)
+### Byte0 - Digital Inputs
+
+Response byte 1
 
 | Bit | Signal |
 |-----|--------|
@@ -524,7 +528,9 @@ The status byte uses the LS-773 format:
 | 1 | Input 2 |
 | 0 | Input 1 |
 
-### Byte1 - Internal Status (Third Response Byte)
+### Byte1 - Internal Status
+
+Response byte 2
 
 | Bit | Signal | Description |
 |-----|--------|-------------|
@@ -533,7 +539,7 @@ The status byte uses the LS-773 format:
 | 1 | Manual Override | 1 = Manual override mode active |
 | 0 | Safe State | 1 = System in safe state |
 
-**Diagnostic Code Extraction:**
+**Diagnostic Code**
 ```python
 diagnostic = (byte1 >> 3) & 0x1F
 ```
