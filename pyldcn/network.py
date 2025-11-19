@@ -63,6 +63,8 @@ class LDCNNetwork:
         devices: List of discovered LDCNDevice objects
         protocol: LDCNProtocol instance for low-level communication
         discovery: DeviceDiscovery instance for device operations
+        _expected_devices: Internal storage of discovered devices from FULL/SOFT
+                          initialization for future validation
     """
 
     def __init__(self, port: str, timeout: float = 0.015):
@@ -363,11 +365,61 @@ class LDCNNetwork:
         return [device for device in self.devices if device.device_type == device_type]
 
     # -------------------------------------------------------------------------
+    # Helper Methods
+    # -------------------------------------------------------------------------
+
+    def _verify_device_set(
+        self,
+        found_devices: List[Dict],
+        expected_devices: List[Dict]
+    ) -> None:
+        """
+        Verify found devices match expected devices.
+
+        Args:
+            found_devices: List of discovered device info dicts
+            expected_devices: List of expected device info dicts
+
+        Raises:
+            LDCNInitializationError: If device sets don't match or IDs differ
+        """
+        expected_addrs = {d['address'] for d in expected_devices}
+        found_addrs = {d['address'] for d in found_devices}
+
+        # Check for address mismatches
+        if expected_addrs != found_addrs:
+            missing = expected_addrs - found_addrs
+            unexpected = found_addrs - expected_addrs
+            msg_parts = [
+                f"missing devices at {sorted(missing)}" if missing else None,
+                f"unexpected devices at {sorted(unexpected)}" if unexpected else None,
+            ]
+            raise LDCNInitializationError(
+                f"Device set mismatch: {', '.join(filter(None, msg_parts))}"
+            )
+
+        # Build lookup dict for faster access
+        found_by_addr = {d['address']: d for d in found_devices}
+
+        # Verify device IDs match
+        for expected in expected_devices:
+            found = found_by_addr.get(expected['address'])
+            if found and found['device_id'] != expected['device_id']:
+                raise LDCNInitializationError(
+                    f"Device ID mismatch at address {expected['address']}: "
+                    f"expected 0x{expected['device_id']:02X}, "
+                    f"found 0x{found['device_id']:02X}"
+                )
+
+    # -------------------------------------------------------------------------
     # High-Level Initialization
     # -------------------------------------------------------------------------
 
     def soft_initialize(
-        self, create_objects: bool = True, baud_list: Optional[List[int]] = None
+        self,
+        create_objects: bool = True,
+        baud_list: Optional[List[int]] = None,
+        expected_devices: Optional[List[Dict]] = None,
     ) -> Tuple[int, List[Dict]]:
         """
         Soft initialization without reset (InitMode.SOFT).
@@ -383,21 +435,24 @@ class LDCNNetwork:
         2. Scan addresses for responding devices
         3. Query device types and versions
         4. Verify communication
-        5. Optionally create device objects
+        5. Optionally verify against expected device list
+        6. Optionally create device objects
 
         Args:
             create_objects: If True, create device objects and populate self.devices
             baud_list: List of baud rates to try (default: COMMON_BAUDS)
+            expected_devices: Optional list of expected devices to validate against
 
         Returns:
             Tuple of (num_devices, device_info_list)
 
         Raises:
-            LDCNInitializationError: If no devices found or baud detection fails
+            LDCNInitializationError: If no devices found, baud detection fails,
+                                    or device set doesn't match expected
         """
         try:
             # Auto-detect baud rate
-            detected_baud = self.auto_detect_baud(baud_list)
+            self.auto_detect_baud(baud_list)
 
             # Discover devices at current addresses (no reset)
             device_info = self.discover_devices(start_address=1)
@@ -405,8 +460,15 @@ class LDCNNetwork:
             # Filter to only responding devices
             responding_devices = [d for d in device_info if d["responding"]]
 
-            if len(responding_devices) == 0:
+            if not responding_devices:
                 raise LDCNInitializationError("No devices found during soft discovery")
+
+            # Verify against expected devices if provided
+            if expected_devices:
+                self._verify_device_set(responding_devices, expected_devices)
+
+            # Store as expected devices for future use
+            self._expected_devices = responding_devices
 
             # Create device objects if requested
             if create_objects:
@@ -416,6 +478,8 @@ class LDCNNetwork:
 
         except LDCNDetectionError as e:
             raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
+        except LDCNInitializationError:
+            raise
         except Exception as e:
             raise LDCNInitializationError(f"Soft initialization failed: {e}") from e
 
@@ -435,13 +499,15 @@ class LDCNNetwork:
         - VALIDATE: Fast validation (~100ms) - verify existing connections
         - SOFT: Soft discovery (~500ms) - preserve device state
         - READDRESS: Reset and re-address (~1s) - current baud only
-        - FULL: Full reset (~2s+) - reset at all bauds (default)
+        - FULL: Full reset (~2s+) - reset at all bauds
         - AUTO: Adaptive - tries VALIDATE -> SOFT -> READDRESS -> FULL
 
         Args:
-            mode: Initialization mode (default: InitMode.FULL)
+            mode: Initialization mode (default: InitMode.AUTO)
             create_objects: If True, create device objects and populate self.devices
-            expected_devices: Optional list for VALIDATE/AUTO modes
+            expected_devices: Optional list for VALIDATE/AUTO/SOFT modes.
+                            If not provided, uses stored _expected_devices from
+                            previous FULL/SOFT initialization.
 
         Returns:
             Tuple of (num_devices, device_info_list)
@@ -450,18 +516,22 @@ class LDCNNetwork:
             LDCNInitializationError: If initialization fails
 
         Examples:
-            # Default: Automatic adaptive initialization
-            network.initialize()
+            # First power-on: Full reset stores device list
+            network.initialize(mode=InitMode.FULL)
+
+            # Later reconnections: Auto uses stored device list
+            network.initialize(mode=InitMode.AUTO)
 
             # Fast validation of existing connection
             network.initialize(mode=InitMode.VALIDATE)
 
             # Soft discovery (preserves servo positions/gains)
             network.initialize(mode=InitMode.SOFT)
-
-            # Full reset (explicit)
-            network.initialize(mode=InitMode.FULL)
         """
+        # Use stored expected devices if not explicitly provided
+        if expected_devices is None and self._expected_devices is not None:
+            expected_devices = self._expected_devices
+
         # Handle AUTO mode - try progressively more invasive approaches
         if mode == InitMode.AUTO:
             # Level 0: Try VALIDATE if devices exist and expected list provided
@@ -482,14 +552,17 @@ class LDCNNetwork:
 
             # Level 1: Try SOFT initialization
             try:
-                return self.soft_initialize(create_objects=create_objects)
+                return self.soft_initialize(
+                    create_objects=create_objects,
+                    expected_devices=expected_devices
+                )
             except LDCNInitializationError:
                 pass  # Fall through to next level
 
             # Level 2: Try READDRESS (reset at detected baud only)
             try:
-                detected_baud = self.auto_detect_baud()
-                self.protocol._open_port(detected_baud)
+                self.auto_detect_baud()
+                self.protocol._open_port(self.protocol.baud_rate)
 
                 # Reset at detected baud only
                 packet = bytes(
@@ -537,13 +610,16 @@ class LDCNNetwork:
                 raise LDCNInitializationError("Validation failed")
 
         elif mode == InitMode.SOFT:
-            return self.soft_initialize(create_objects=create_objects)
+            return self.soft_initialize(
+                create_objects=create_objects,
+                expected_devices=expected_devices
+            )
 
         elif mode == InitMode.READDRESS:
             # Detect baud, reset at that baud, re-address
             try:
-                detected_baud = self.auto_detect_baud()
-                self.protocol._open_port(detected_baud)
+                self.auto_detect_baud()
+                self.protocol._open_port(self.protocol.baud_rate)
 
                 # Reset at detected baud only
                 packet = bytes(

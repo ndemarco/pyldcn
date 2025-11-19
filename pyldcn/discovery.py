@@ -67,11 +67,12 @@ class InitMode(Enum):
     """
     Re-addressing (~1s, node quantity dependent)
     - Detect current baud rate
-    - Hard reset at detected baud only
+    - Hard reset at detected baud only (faster than FULL)
     - Re-address devices sequentially (1, 2, 3, ...)
     - Full discovery
     - Loses: Device state, positions, gains
-    - Use when: Addressing is corrupted but baud rate is known
+    - Use when: Edge case where baud is stable but addressing corrupted
+    - Note: Less commonly used; AUTO mode handles most recovery scenarios
     """
 
     FULL = 3
@@ -286,10 +287,11 @@ class DeviceDiscovery:
 
         Args:
             devices: List of LDCNDevice objects to validate
-            expected_devices: Optional list of expected device info dicts
+            expected_devices: Optional list of expected device info dicts.
+                             If provided, validates complete set matches.
 
         Returns:
-            True if all devices respond correctly
+            True if all devices respond correctly and match expected set
         """
         if not devices and not expected_devices:
             return False
@@ -297,28 +299,47 @@ class DeviceDiscovery:
         if expected_devices and not devices:
             return False
 
+        # If expected devices provided, verify count matches
+        if expected_devices and len(devices) != len(expected_devices):
+            return False
+
         try:
+            # Build lookup structures for expected devices
+            if expected_devices:
+                expected_by_addr = {d['address']: d for d in expected_devices}
+                expected_addresses = set(expected_by_addr.keys())
+            else:
+                expected_by_addr = None
+                expected_addresses = None
+
+            # Check each device in our list
+            device_addresses = {device.address for device in devices}
+
             for device in devices:
                 response = self.protocol.send_command(device.address, CMD_NOP)
                 if len(response) < 2:
                     return False
 
                 # Verify device ID if expected devices provided
-                if expected_devices:
-                    expected = next(
-                        (d for d in expected_devices if d['address'] == device.address),
-                        None
+                if expected_by_addr:
+                    expected = expected_by_addr.get(device.address)
+                    if not expected:
+                        # Device exists but wasn't expected
+                        return False
+
+                    id_response = self.protocol.send_command(
+                        device.address,
+                        CMD_READ_STATUS,
+                        [STATUS_BIT_DEVICE_ID & 0xFF, (STATUS_BIT_DEVICE_ID >> 8) & 0xFF]
                     )
-                    if expected:
-                        id_response = self.protocol.send_command(
-                            device.address,
-                            CMD_READ_STATUS,
-                            [STATUS_BIT_DEVICE_ID & 0xFF, (STATUS_BIT_DEVICE_ID >> 8) & 0xFF]
-                        )
-                        if len(id_response) >= 7:
-                            device_id = id_response[5]
-                            if device_id != expected['device_id']:
-                                return False
+                    if len(id_response) >= 7:
+                        device_id = id_response[5]
+                        if device_id != expected['device_id']:
+                            return False
+
+            # Verify we have all expected devices (complete set check)
+            if expected_addresses and device_addresses != expected_addresses:
+                return False
 
             return True
 
