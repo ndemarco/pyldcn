@@ -10,7 +10,7 @@ License: GPL v2 or later
 
 import time
 import struct
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 # Import from parent package (modular architecture)
 from pyldcn.device import LDCNDevice
