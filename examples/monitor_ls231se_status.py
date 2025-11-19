@@ -36,9 +36,9 @@ def format_inputs(flags: Dict[str, bool], servo: LS231SE) -> str:
     home_signal = signals['home_source_signal']
     limit_signal = signals['limit2_signal']
 
-    parts.append(f"{home_signal}={'HIGH' if inputs['home_source'] else 'LOW'}")
-    parts.append(f"{limit_signal}={'ACT' if inputs['limit2'] else 'OK'}")
-    parts.append(f"Index={'HIGH' if inputs['index'] else 'LOW'}")
+    parts.append(f"{home_signal}={'ACTIVE' if inputs['home_source'] else 'INACTIVE'}")
+    parts.append(f"{limit_signal}={'ACTIVE' if inputs['limit2'] else 'INACTIVE'}")
+    parts.append(f"Index={'ACTIVE' if inputs['index'] else 'INACTIVE'}")
 
     # Add key status flags
     if flags.get('power'):
