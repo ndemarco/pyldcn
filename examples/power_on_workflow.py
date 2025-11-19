@@ -223,7 +223,9 @@ def main():
         supervisors = network.find_devices_by_type("SK-2310g2")
         if not supervisors:
             raise LDCNError("SK2310g2 supervisor not found on network")
-        supervisor = supervisors[0]
+
+        # Type assertion: we know this is SK2310g2 from find_devices_by_type()
+        supervisor: SK2310g2 = supervisors[0]  # type: ignore
         print(f"✓ Found supervisor: {supervisor}")
 
         # Step 3: Configure supervisor
