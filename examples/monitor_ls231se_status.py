@@ -143,13 +143,18 @@ def main() -> None:
                 if condition:
                     summary_lines.append(f"LEDs: Orange={condition.orange_led} Green={condition.green_led} Red={condition.red_led}")
 
-                # Show status byte as bits (● = 1, ○ = 0)
-                bit_display = ''.join('●' if status_byte & (1 << i) else '○' for i in range(7, -1, -1))
-                summary_lines.append(f"Status bits: {bit_display}  [7:MoveDone Cksum CurLim Pwr PosErr HomeSrc Lim2 HomeIP:0]")
+                # Show bits in Logosol manual order: s6 s5 s4 s3 s0 a2 a0 sc0
+                # s = status byte, a = aux byte, sc = stop_cmd
+                s6 = '●' if status_byte & 0x40 else '○'   # bit 6 - limit2
+                s5 = '●' if status_byte & 0x20 else '○'   # bit 5 - home_source
+                s4 = '●' if status_byte & 0x10 else '○'   # bit 4 - pos_error
+                s3 = '●' if status_byte & 0x08 else '○'   # bit 3 - power
+                s0 = '●' if status_byte & 0x01 else '○'   # bit 0 - move_done
+                a2 = '●' if aux_byte & 0x04 else '○'      # bit 2 - servo_on
+                a0 = '●' if aux_byte & 0x01 else '○'      # bit 0 - index
+                sc0 = '●' if servo.state.stop_cmd else '○'  # stop_cmd
 
-                # Show aux byte as bits
-                aux_bit_display = ''.join('●' if aux_byte & (1 << i) else '○' for i in range(7, -1, -1))
-                summary_lines.append(f"Aux bits:    {aux_bit_display}  [7:PathMode SrvOvr SlewDn AccelDn SrvOn PosWrap Index:0]")
+                summary_lines.append(f"Diag bits: {s6} {s5} {s4} {s3} {s0} {a2} {a0} {sc0}  [s6 s5 s4 s3 s0 a2 a0 sc0]")
 
                 summary_lines.append("=" * 80)
 
