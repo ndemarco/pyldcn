@@ -139,10 +139,13 @@ def main() -> None:
                 else:
                     summary_lines.append("ALERTS:  None")
 
-                # Add LED status if available
-                if condition:
-                    leds = f"LEDs: O={condition.orange_led} G={condition.green_led} R={condition.red_led}"
-                    summary_lines.append(leds)
+                # Show status byte as bits (● = 1, ○ = 0)
+                bit_display = ''.join('●' if status_byte & (1 << i) else '○' for i in range(7, -1, -1))
+                summary_lines.append(f"Status bits: {bit_display}  [7:MoveDone Cksum CurLim Pwr PosErr HomeSrc Lim2 HomeIP:0]")
+
+                # Show aux byte as bits
+                aux_bit_display = ''.join('●' if aux_byte & (1 << i) else '○' for i in range(7, -1, -1))
+                summary_lines.append(f"Aux bits:    {aux_bit_display}  [7:PathMode SrvOvr SlewDn AccelDn SrvOn PosWrap Index:0]")
 
                 summary_lines.append("=" * 80)
 
