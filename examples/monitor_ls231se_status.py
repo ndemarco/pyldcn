@@ -139,6 +139,10 @@ def main() -> None:
                 else:
                     summary_lines.append("ALERTS:  None")
 
+                # Show LED states from diagnostic condition
+                if condition:
+                    summary_lines.append(f"LEDs: Orange={condition.orange_led} Green={condition.green_led} Red={condition.red_led}")
+
                 # Show status byte as bits (● = 1, ○ = 0)
                 bit_display = ''.join('●' if status_byte & (1 << i) else '○' for i in range(7, -1, -1))
                 summary_lines.append(f"Status bits: {bit_display}  [7:MoveDone Cksum CurLim Pwr PosErr HomeSrc Lim2 HomeIP:0]")
