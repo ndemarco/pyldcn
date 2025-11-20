@@ -111,26 +111,87 @@ class IO:
 
     def read_inputs(self) -> Dict[str, bool]:
         """
-        Read all digital input states.
+        Read all digital input states (raw bit values).
 
         Returns:
-            Dictionary with input names and states:
+            Dictionary with generic bit names and boolean states:
             {
-                'home_source': bool,  # Home switch state
-                'limit2': bool,       # Forward limit state
-                'index': bool,        # Index signal state
-                ...
+                'home_source': bool,  # Status bit 5
+                'limit2': bool,       # Status bit 6
+                'index': bool,        # Aux bit 0
             }
 
         Note:
-            Input states are available in the status byte and aux status byte.
-            This method reads the current cached values from state.
+            For physical signal names mapped via HomeSEL, use read_mapped_inputs().
         """
         return {
             'home_source': self._state.home_source,
             'limit2': self._state.limit2,
             'index': self._state.index,
         }
+
+    def read_mapped_inputs(self) -> Dict[str, Dict[str, str]]:
+        """
+        Read digital inputs with physical signal names and label-style states.
+
+        Applies HomeSEL mapping to show actual physical inputs being monitored.
+
+        Returns:
+            Dictionary with physical signal names as keys, each containing:
+            {
+                'signal_name': {
+                    'label': str,      # Display label (e.g., "Limit1", "HomeIN")
+                    'state': str,      # Label-style state ("ACTIVE" or "INACTIVE")
+                    'raw_value': bool  # Raw boolean value
+                }
+            }
+
+        Example:
+            >>> inputs = servo.io.read_mapped_inputs()
+            >>> print(inputs)
+            {
+                'bit5': {'label': 'Limit1', 'state': 'INACTIVE', 'raw_value': False},
+                'bit6': {'label': 'Limit2', 'state': 'INACTIVE', 'raw_value': False},
+                'index': {'label': 'Index', 'state': 'ACTIVE', 'raw_value': True}
+            }
+        """
+        from .servo_mappings import LS231SE_HOME_SOURCE_TABLE
+
+        # Get current HomeSEL configuration
+        homesel = self._state.home_selection
+        lookup = {(e.homesel2, e.homesel1): e for e in LS231SE_HOME_SOURCE_TABLE}
+        entry = lookup.get(homesel)
+
+        # Read raw values
+        raw = self.read_inputs()
+
+        # Build mapped output
+        result = {}
+
+        # Bit 5 (home_source) - mapped via HomeSEL
+        bit5_label = entry.status_bit5 if entry else 'Unknown'
+        result['bit5'] = {
+            'label': bit5_label,
+            'state': 'ACTIVE' if raw['home_source'] else 'INACTIVE',
+            'raw_value': raw['home_source']
+        }
+
+        # Bit 6 (limit2) - mapped via HomeSEL
+        bit6_label = entry.status_bit6 if entry else 'Unknown'
+        result['bit6'] = {
+            'label': bit6_label,
+            'state': 'ACTIVE' if raw['limit2'] else 'INACTIVE',
+            'raw_value': raw['limit2']
+        }
+
+        # Index - always the same signal
+        result['index'] = {
+            'label': 'Index',
+            'state': 'ACTIVE' if raw['index'] else 'INACTIVE',
+            'raw_value': raw['index']
+        }
+
+        return result
 
     # -------------------------------------------------------------------------
     # Limit Switch Monitoring
