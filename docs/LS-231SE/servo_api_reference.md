@@ -23,6 +23,60 @@ servo.print_status()
 
 ---
 
+## Device Configuration and Initialization
+
+### Device Mode
+
+The LS-231SE must be configured for **LDCN Single Loop Mode** before use with pyldcn. The device mode is set using the LDCN Utility (which uses undocumented commands).
+
+**Available Modes:**
+
+| D | C | B | A | Mode Description |
+|---|---|---|---|------------------|
+| 0 | 0 | 0 | 0 | **LDCN single loop** (required for pyldcn) |
+| X | 0 | 0 | 1 | LDCN dual loop |
+| X | 0 | 1 | 0 | Analog input single/dual loop |
+| X | 0 | 1 | 1 | Analog input with direction invert input |
+| X | 1 | 0 | 0 | Enable positive / enable negative analog input |
+| X | 1 | 0 | 1 | Quadrature encoder |
+| X | 1 | 1 | 0 | Step & dir |
+| X | 1 | 1 | 1 | Step positive / step negative |
+
+The selected mode defines status and auxiliary bit meanings.
+
+**Verify Current Mode:**
+Read output bits to determine the mode: Out.12 = A, Out.13 = B, Out.14 = C, Out.15 = D.
+
+It is good practice to confirm the mode upon initializing the device.
+
+### NVRAM Persistent Storage
+
+LS-231SE NVRAM storage, commands, and data structures are undocumented by Logosol Inc. Most NVRAM settings are configured via the LDCN Utility.
+
+The LS-231SE stores certain parameters in non-volatile storage:
+- Device mode (LDCN single/dual, analog, encoder, step/dir modes)
+- Servo tuning parameters (KP, KD, KI, etc.)
+
+**Important:** When configured in any LDCN device mode, these stored tuning parameters are **not used**. All gains and servo parameters are reset to defaults at power-on or hard reset. Servo tuning parameters may be stored as backups to be recalled later, but the storage and recall commands are undocumented.
+
+### Initialization Sequence
+
+Complete 7-step initialization sequence for LS-231SE servo drives:
+
+1. **Define status reporting** - Configure which status items to return
+2. **Set PID gains** - Load KP, KD, KI, IL, OL, CL, EL, SR, DB
+3. **Load initial trajectory** - Position 0, minimal acceleration
+4. **Enable amplifier and close servo loop** - Stop Motor command with enable flags
+5. **Reset position counter** - Reset to known zero position
+6. **Clear sticky status bits** - Clear any fault flags from power-up
+7. **Read and verify status** - Confirm drive is ready
+
+See [Quick Start](#quick-start) above for example implementation using pyldcn.
+
+For detailed command information, see [LS-231SE_commands](LS-231SE_commands).
+
+---
+
 ## Architecture Overview
 
 | Layer | Component | Purpose |
@@ -100,30 +154,32 @@ servo.print_status()
 
 ## Status Byte Flags (Layer 1)
 
-### Primary Status Byte (8 bits)
+For complete status byte definitions, see [LS-231SE_status](LS-231SE_status#status-byte).
 
-| Bit | Flag | Property | Type | Description |
-|-----|------|----------|------|-------------|
-| 0 | `STATUS_MOVE_DONE` | `move_done` | bool | Trapezoidal move complete |
-| 1 | `STATUS_CKSUM_ERROR` | `cksum_error` | bool | Checksum error (sticky) |
-| 2 | `STATUS_CURRENT_LIMIT` | `current_limit` | bool | Current limit exceeded (sticky) |
-| 3 | `STATUS_POWER` | `power` | bool | Amplifier power enabled |
-| 4 | `STATUS_POS_ERROR` | `pos_error_flag` | bool | Position error exceeded (sticky) |
-| 5 | `STATUS_HOME_SOURCE` | `home_source` | bool | Home switch state |
-| 6 | `STATUS_LIMIT2` | `limit2` | bool | Forward limit switch |
-| 7 | `STATUS_HOME_IN_PROG` | `home_in_progress` | bool | Homing in progress |
+### Primary Status Byte (8 bits) - Quick Reference
 
-### Auxiliary Status Byte (7 bits)
+| Bit | Flag | Property | Description |
+|-----|------|----------|-------------|
+| 0 | `STATUS_MOVE_DONE` | `move_done` | Trapezoidal move complete |
+| 1 | `STATUS_CKSUM_ERROR` | `cksum_error` | Checksum error (sticky) |
+| 2 | `STATUS_CURRENT_LIMIT` | `current_limit` | Current limit exceeded (sticky) |
+| 3 | `STATUS_POWER` | `power` | Amplifier power enabled |
+| 4 | `STATUS_POS_ERROR` | `pos_error_flag` | Position error exceeded (sticky) |
+| 5 | `STATUS_HOME_SOURCE` | `home_source` | Home switch state |
+| 6 | `STATUS_LIMIT2` | `limit2` | Forward limit switch |
+| 7 | `STATUS_HOME_IN_PROG` | `home_in_progress` | Homing in progress |
 
-| Bit | Flag | Property | Type | Description |
-|-----|------|----------|------|-------------|
-| 0 | `AUX_INDEX` | `index` | bool | Encoder index input |
-| 1 | `AUX_POS_WRAP` | `pos_wrap` | bool | Position counter wrapped (sticky) |
-| 2 | `AUX_SERVO_ON` | `servo_on` | bool | Servo loop enabled |
-| 3 | `AUX_ACCEL_DONE` | `accel_done` | bool | Acceleration phase complete |
-| 4 | `AUX_SLEW_DONE` | `slew_done` | bool | Slew phase complete |
-| 5 | `AUX_SERVO_OVERRUN` | `servo_overrun` | bool | Servo tick overrun (sticky) |
-| 6 | `AUX_PATH_MODE` | `path_mode` | bool | Executing path buffer |
+### Auxiliary Status Byte (7 bits) - Quick Reference
+
+| Bit | Flag | Property | Description |
+|-----|------|----------|-------------|
+| 0 | `AUX_INDEX` | `index` | Encoder index input |
+| 1 | `AUX_POS_WRAP` | `pos_wrap` | Position counter wrapped (sticky) |
+| 2 | `AUX_SERVO_ON` | `servo_on` | Servo loop enabled |
+| 3 | `AUX_ACCEL_DONE` | `accel_done` | Acceleration phase complete |
+| 4 | `AUX_SLEW_DONE` | `slew_done` | Slew phase complete |
+| 5 | `AUX_SERVO_OVERRUN` | `servo_overrun` | Servo tick overrun (sticky) |
+| 6 | `AUX_PATH_MODE` | `path_mode` | Executing path buffer |
 
 ---
 

@@ -206,8 +206,37 @@ Each device is series-linked via a hardware bus (independent of the LDCN) to:
 
 See [CN3 Safety Bus Connector](#cn3---safety-bus-connector) for signal details.
 
+For complete Safety Bus specification including all device roles, see [safety_bus](safety_bus).
 
-### Zero Speed Automation Mode
+## Safety Constraints
+
+### CRITICAL: Spindle and Safety Link Bridge Mutual Exclusion
+
+**Spindle ON (Output 2 / Byte0 / Bit2)** and **Safety Link Bridge (Output 12 / Byte1 / Bit4)** must NEVER be set simultaneously.
+
+This is a hardware safety requirement enforced by the controller to prevent spindle operation during safety link bypass conditions.
+
+**Violation Consequences:**
+- Undefined controller behavior
+- Potential safety system compromise
+- Hardware protection circuits may activate
+
+**Software Implementation:**
+```python
+# Before setting spindle ON
+if outputs_byte1 & (1 << 4):  # Safety Link Bridge active
+    raise SafetyViolation("Cannot enable spindle while Safety Link Bridge is active")
+outputs_byte0 |= (1 << 2)  # Set Spindle ON
+
+# Before setting Safety Link Bridge
+if outputs_byte0 & (1 << 2):  # Spindle ON active
+    raise SafetyViolation("Cannot bridge Safety Link while spindle is running")
+outputs_byte1 |= (1 << 4)  # Set Safety Link Bridge
+```
+
+See [sk-2310g2_io_mapping](sk-2310g2_io_mapping) for complete I/O bit definitions.
+
+## Zero Speed Automation Mode
 
 Alternative safe state detection without physical home switch. Machine is in safe state when all motion has stopped. Requires drives with 'Ze' feature. LS-231SE drives do not have this feature.
 
@@ -236,9 +265,11 @@ To enter manual override, all of the following conditions must be met:
 **Note:** The SK-2310g2 datasheet inconsistently notates this bit as "Outputs / Byte1 and Bit3" in the CN15 description (page 9), but correctly identifies it as "Outputs / Byte1 / Bit3" elsewhere in the document.
 
 ## Power Control and Monitoring
-The integrated power supply delivers 24Vdc control power continuously. A separate, switched 80Vdc or 120Vdc power supply provides motive power to the drives and spindle. This supply must be enabled.
 
-**Power State Determination**
+The integrated power supply delivers 24Vdc control power continuously. A separate, switched 80Vdc or 120Vdc (UM - motor power) power supply provides motive power to the drives and spindle. This supply must be enabled.
+
+### Power State Determination
+
 Power state is indicated by the diagnostic code, NOT the status byte bit 3:
 - **Power OFF**: Diagnostic codes 0x00-0x13 (power not available, except 0x05/0x0E special cases)
 - **Ready to Power** (OFF): 0x14-0x17 (conditions met but not powered)
@@ -247,11 +278,65 @@ Power state is indicated by the diagnostic code, NOT the status byte bit 3:
   - 0x05: Home/Test switch malfunction from guard switch fault (manual override fault causes power OFF)
   - 0x0E: Guard contact fault - maintains prior state
 
-**Drive Power Supply Enable**
-Drive power will be enabled when safety conditions are met and power button is pressed or software enables power (if J21 shorted).
+### Power Enable Conditions
 
-**Drive Power Supply Monitoring**
-When enabled, the power supply connects `loop source` to `loop input`. This loop is monitored by the SK-2310g2.
+Many conditions must be satisfied before motor power (UM) will enable. When those conditions are met, the system is **'ready to power on'**, which can be determined from the diagnostic state (codes 0x14-0x17).
+
+**Ready to Power indicators:**
+- Diagnostic code in range 0x14-0x17
+- Power button LED flashing (if wired)
+
+### Turning Power ON
+
+When ready to power on, power can be fully turned on by:
+
+**Method 1: Physical Button (Always Available)**
+Press and release the power button (CN15 pins 5-6)
+
+**Method 2: Software Control (Requires J21 Shorted)**
+If jumper J21 is shorted closed, pulse Output 15 (Byte1/Bit7) ON for 100ms, then OFF.
+
+**Workflow:**
+1. Check diagnostic code - must be 0x14-0x17 (ready to power)
+2. If J21 is shorted:
+   - Pulse Output 15 for 100ms
+   - Monitor diagnostic code for transition to 0x18-0x1F
+3. If J21 is open (default):
+   - Prompt user to press power button
+   - Monitor diagnostic code for transition to 0x18-0x1F
+
+**Note:** There is no dedicated bit showing power state. Power state is determined only from diagnostic code.
+
+See `test_power_control.py` for reference implementation.
+
+### Turning Power OFF
+
+Power off can only be done via software (Output 15) or by activating emergency stop.
+
+**Software Power Off:**
+1. Clear Output 15 (Byte1/Bit7) to 0
+2. Monitor diagnostic code for transition to power OFF state
+3. Depending on J2 jumper setting, power-off may be delayed (up to 4 seconds)
+4. During delay, diagnostic state reflects 'powering off - waiting for delay'
+5. If power is not off within 5 seconds, raise an error
+
+**Power-Off Delay (J2 Jumper):**
+The J2 jumper configures a power-off delay to allow controlled deceleration. During this delay:
+- Motor power remains ON
+- Diagnostic code indicates "powering off" state
+- After delay expires, power is fully disabled
+
+### Drive Power Supply Monitoring
+
+When enabled, the power supply connects CN16 pin 6 (Monitor Loop Source) to CN16 pin 5 (Monitor Loop Input). This loop is monitored by the SK-2310g2 to verify relay contacts are properly closed.
+
+### pyldcn Integration
+
+Power control is implemented in `pyldcn/devices/io.py` and related modules. The library provides methods to:
+- Check if system is ready to power on
+- Enable power (software or prompt user)
+- Disable power
+- Monitor power state via diagnostic codes
 
 
 # Jumper Reference

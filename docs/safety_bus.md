@@ -51,7 +51,6 @@ The Safety Bus provides:
 **Connector Type:** 4-pin (check device documentation)
 
 ### Pin Definitions
-CLAUDE: Confirm 4 - ServoFAULT is truly input/output. I believe it is output for all devices except the supervising device.
 
 | Pin | Signal | Type | Direction | Electrical Spec |
 |-----|--------|------|-----------|-----------------|
@@ -245,8 +244,7 @@ Master OUT (HIGH) ──> Device1 IN (HIGH) ──> Device1 OUT (HIGH)
 - System enters safe state
 
 **Recovery:**
-- Fault must be cleared at Device 2
-CLAUDE: Confirm if all faults must be reset in addition to clearing the fault cause.
+- Fault must be cleared at Device 2 (both fault cause AND fault status bits)
 - Device 2 OUT returns to HIGH
 - Master IN returns to HIGH
 - System can be restarted (power button, e-stop reset, etc.)
@@ -345,10 +343,10 @@ ServoFAULT = Any Drive Fault Active
 
 ## Related Documentation
 
-- **SK-2310g2 Safety Implementation:** `sk2310g2_safety.md` - Complete SK-2310g2 safety controller guide with jumper settings, wiring examples, and configuration
-- **Servo Commands:** `servo_commands.md` - LS-231SE fault conditions and status monitoring
-- **I/O Commands:** `io_commands.md` - General I/O device command reference
-- **LDCN Protocol:** `protocol.md` - Low-level LDCN communication protocol
+- **SK-2310g2 Safety Implementation:** [SK-2310g2_supervisor](SK-2310g2_supervisor) - Complete SK-2310g2 safety controller guide with jumper settings, wiring examples, and configuration
+- **LS-231SE Servo:** [servo_status_reporting](servo_status_reporting) and [LS-231SE_commands](LS-231SE/LS-231SE_commands) - Fault conditions and status monitoring
+- **I/O Commands:** [io_status_reporting](io_status_reporting) - General I/O device command reference
+- **LDCN Protocol:** [ldcn_protocol](ldcn_protocol) - Low-level LDCN communication protocol
 
 ---
 

@@ -24,6 +24,8 @@ See [SK-2310g2_supervisor.md](SK-2310g2_supervisor.md) for complete safety syste
 
 Complete reference for all I/O assignments on the SK-2310g2. Use this to implement high-level methods in [pyldcn/devices/io.py](../pyldcn/devices/io.py) SK2310g2 class.
 
+For LDCN protocol commands to read/write these I/O bits, see [io_status_reporting](io_status_reporting).
+
 ---
 
 ## Quick Reference: I/O Categories
@@ -154,7 +156,6 @@ Outputs use dry contact relays:
 |---------------|-------|-------|
 | **V_max** | 40VDC | Dry contact relay outputs |
 | **I_max** | 0.5A | Per output |
-$H_2O$
 
 ### Byte0 - Application Outputs (Bits 0-7)
 
@@ -172,6 +173,8 @@ $H_2O$
 **Note 3: CRITICAL SAFETY CONSTRAINT**
 
 **Spindle ON (Bit 2)** and **Safety Link Bridge (Bit 12)** must not be set simultaneously. This is a hardware safety requirement enforced by the controller.
+
+See [SK-2310g2_supervisor - Safety Constraints](SK-2310g2_supervisor#safety-constraints) for complete details and software implementation guidance.
 
 **Note 4: Spindle Control Configuration**
 

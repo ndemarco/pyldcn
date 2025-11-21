@@ -12,6 +12,8 @@ This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-
 
 These are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
 
+For SK-2310g2 specific I/O bit assignments (spindle control, safety guarding, etc.), see [sk-2310g2_io_mapping](sk-2310g2_io_mapping).
+
 
 ## Specific Models
 

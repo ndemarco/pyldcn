@@ -10,7 +10,7 @@ TBD - not used in current implementation
 
 ## Limit Switches
 
-Limit switches are explained in [LS-231SE I/O](LS-231SE_IO.md#digital-inputs)
+Limit switches are explained in [LS-231SE I/O](LS-231SE_IO#digital-inputs)
 
 # Index Pulse
 

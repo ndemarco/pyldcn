@@ -68,6 +68,8 @@ HomeSEL 1 & 2 determine which sources drive status bits per the table below.
 - Limit1 input is CN9.4 or CN5.7
 - Limit2 input is CN9.2 or CN5.15
 
+For status bit interpretation based on HomeSEL configuration, see [servo_status_reporting - Status Byte](../servo_status_reporting#status-byte).
+
 ## Limit Relay Control
 
 `Bridge` (OUTbit5), `UserREL` (OUTbit6), and Input11 (INbit11) jointly determine the state of the limit relay and user relay. BridgeSTA (INbit6) mirrors whether the limit relay is forced closed.

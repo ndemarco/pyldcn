@@ -325,6 +325,8 @@ Configures homing mode to capture home position on specified conditions.
 4. Wait while `home_in_progress` status bit = 1
 5. Home position captured when condition is met
 
+For complete homing procedures, signal definitions, and multi-step workflows, see [LS-231SE_homing](LS-231SE_homing).
+
 **Example - Home to Limit 2**:
 ```
 AA 01 19 12 2C     # Set home mode: Limit 2 + stop abruptly
@@ -442,7 +444,8 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 - **Interpretation**: Incremental velocity applied for each path segment
 - **Little-endian**: LSB first, MSB second
 
-TODO: Add reference and link to LS-231SE_path_point.md file
+For complete path point usage including timing configuration, buffer management, and coordinated motion, see [LS-231SE_path_point](LS-231SE_path_point).
+
 ---
 
 ### No Operation (NOP)

@@ -112,6 +112,8 @@ send_command(addr=0xF0, cmd=0x5, data=[0x00])  # Start motion on group 0xF0
 # All three axes begin moving within ±25 microseconds
 ```
 
+For LS-231SE trajectory loading and motion control details, see [LS-231SE_commands - Load Trajectory](LS-231SE/LS-231SE_commands#load-trajectory) and [Start Motion](LS-231SE/LS-231SE_commands#start-motion).
+
 ### Important Notes
 
 - **No response collision**: Group commands never generate responses (except from group leader)
@@ -186,6 +188,10 @@ Selects data to return in status packets.
 | 9   | Analog inputs (2 bytes) |
 | 12  | Watchdog status (2 bytes) |
 | 13  | Motor position and error (6 bytes) |
+
+For device-specific status item interpretations, see:
+- **LS-231SE Servo:** [servo_status_reporting](servo_status_reporting) and [LS-231SE_status](LS-231SE/LS-231SE_status)
+- **SK-2310g2 Supervisor:** [io_status_reporting](io_status_reporting)
 
 **Example**:
 ```

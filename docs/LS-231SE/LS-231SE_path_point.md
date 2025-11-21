@@ -18,7 +18,7 @@ Operation details
 
 **Path Point Mechanics**:
 1. Each 2-byte value is added to the desired position every servo tick
-2. The value is applied **Path Point Buffer Timer** times (set via I/O Control command (TODO: Add heading link))
+2. The value is applied **Path Point Buffer Timer** times (set via [I/O Control command](LS-231SE_commands#io-control))
 3. This creates a linear segment from current position to next path point
 4. Multiple points create a continuous trajectory
 
@@ -46,12 +46,57 @@ Operation details
 
 ## Related Commands
 
-TODO: Make this a bulleted list.
+### Add Path Points (0x0D)
 
-TODO: Add super short summary of relevant I/O control command as it relates to path points and a link to I/O Control command in the commands file with a header link.
+Adds 1-7 path points to the 256-entry path buffer. Each point is a 2-byte signed integer (int8.frac8 format) representing incremental velocity.
 
-TODO: Also add a summary and link.
+See [LS-231SE_commands - Add Path Points](LS-231SE_commands#add-path-points) for complete details.
+
+### I/O Control (0x08)
+
+Sets the Path Point Buffer Clock rate, which determines the time interval between path points. This must be configured before starting path execution.
+
+**Path Point Buffer Clock:**
+- Range: 0x0000 to 0x7FFF
+- Time per point = clock rate × 51.2 µs
+- Example: clock rate = 100 → 5.12 ms between points
+
+See [LS-231SE_commands - I/O Control](LS-231SE_commands#io-control) for complete details.
+
+### Start Motion (0x05)
+
+Starts path execution when path buffer contains points and servo is enabled.
+
+See [LS-231SE_commands - Start Motion](LS-231SE_commands#start-motion) for complete details.
+
+### Load Trajectory (0x04) / Stop Motor (0x07)
+
+Either command will terminate path mode execution and clear the path_mode flag.
+
+See [LS-231SE_commands](LS-231SE_commands) for complete details.
+
+---
 
 ## Related Status
 
-TODO 
+### Path Count (Status Item Bit 7)
+
+Returns the number of points remaining in the path buffer (0-255). Monitor this value to refill the buffer before it empties.
+
+See [LS-231SE_status - Status Items](LS-231SE_status#status-items) for complete details.
+
+### Path Mode Flag (Auxiliary Status Bit 6)
+
+Set when path execution is active, cleared when buffer empties or path mode is terminated.
+
+See [LS-231SE_status - Auxiliary Status Byte](LS-231SE_status#auxiliary-status-byte) for complete details.
+
+---
+
+## Example Usage
+
+TODO: Create example in `examples/path_mode_example.py` demonstrating:
+- Configure path point timing
+- Add path points in batches
+- Start path execution
+- Monitor buffer and refill during execution

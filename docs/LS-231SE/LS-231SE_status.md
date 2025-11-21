@@ -56,14 +56,14 @@ The status byte is returned by every command, and is not configurable. For LS-23
 |-----|------|-------------|
 | 0   | move_done | Clear during trapezoidal move or velocity acceleration, set otherwise (including when servo disabled) |
 | 1   | cksum_error | Checksum error in received command packet |
-| 2   | current_limit | Current limiting exceeded (sticky - clear with Clear Bits command) |
+| 2   | current_limit | Current limiting exceeded (sticky - clear with [Clear Bits](LS-231SE_commands#clear-bits) command) |
 | 3   | power_on/diag | Amplifier power enabled or diagnostic bit |
-| 4   | pos_error | Position error exceeded limit (sticky - clear with Clear Bits command). Also set when servo disabled (power_on=0) |
+| 4   | pos_error | Position error exceeded limit (sticky - clear with [Clear Bits](LS-231SE_commands#clear-bits) command). Also set when servo disabled (power_on=0) |
 | 5   | home_source/diag | Home switch input state or diagnostic bit |
 | 6   | limit2/diag | Forward limit switch or diagnostic bit |
 | 7   | home_in_progress | Set while searching for home position, cleared when home captured |
 
-**Fault Conditions** (sticky bits - must be cleared with Clear Bits command):
+**Fault Conditions** (sticky bits - must be cleared with [Clear Bits](LS-231SE_commands#clear-bits) command):
 - Bit 1: Checksum error - resend command
 - Bit 2: Current limit - reduce load or check motor, then clear
 - Bit 4: Position error - motor stalled or load too high, resolve issue then clear
@@ -73,7 +73,7 @@ The status byte is returned by every command, and is not configurable. For LS-23
 - Bit 3 = 0: Amplifier power is OFF
 
 **Notes**:
-- Sticky bits remain set until explicitly cleared with Clear Bits (0x0B) command
+- Sticky bits remain set until explicitly cleared with [Clear Bits](LS-231SE_commands#clear-bits) command
 - Bits 3, 5, 6 may function as diagnostic bits (see LS-231SE Diagnostic and I/O section)
 
 ---
@@ -85,17 +85,17 @@ When configured via Define Status (bit 3), an auxiliary status byte is returned:
 | Bit | Name | Description |
 |-----|------|-------------|
 | 0   | index/diag | Complement of index input or diagnostic bit |
-| 1   | pos_wrap | 32-bit position counter wrapped (sticky - clear with Clear Bits command TODO: Add link to commands md file with anchor to appropriate heading) |
+| 1   | pos_wrap | 32-bit position counter wrapped (sticky - clear with [Clear Bits](LS-231SE_commands#clear-bits) command) |
 | 2   | servo_on | Position servo loop enabled |
 | 3   | accel_done | Acceleration phase of trapezoidal move complete, cleared on next move |
 | 4   | slew_done | Constant velocity phase of trapezoidal move complete, cleared on next move |
-| 5   | servo_overrun | Servo calculation exceeded 51.2µs (sticky - clear with Clear Bits command TODO: Add link again.) |
+| 5   | servo_overrun | Servo calculation exceeded 51.2µs (sticky - clear with [Clear Bits](LS-231SE_commands#clear-bits) command) |
 | 6   | path_mode | Currently executing a path (cleared when buffer empty or Load Trajectory/Stop Motor sent) |
 | 7   | (unused) | Not defined in datasheet |
 
 **Notes**:
 - Bit 0 may function as diagnostic bit (see LS-231SE Diagnostic and I/O section)
-- Sticky bits (1, 5) remain set until cleared with Clear Bits (0x0B) command
+- Sticky bits (1, 5) remain set until cleared with [Clear Bits](LS-231SE_commands#clear-bits) command
 - On power-up/reset: pos_wrap, servo_on, accel_done, slew_done, servo_overrun all clear to 0
 
 ---
