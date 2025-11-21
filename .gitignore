@@ -145,3 +145,8 @@ LS-*.txt
 /axis_config_*.json
 /configured_devices.json
 /configured_devices_*.json
+
+# Codex AI agent files
+node_modules/
+package.json
+package-lock.json
