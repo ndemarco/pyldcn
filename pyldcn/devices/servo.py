@@ -10,7 +10,7 @@ License: GPL v2 or later
 
 import time
 import struct
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 
 # Import from parent package (modular architecture)
 from pyldcn.device import LDCNDevice
@@ -127,6 +127,7 @@ class LS231SE(LDCNDevice):
         status_bits: int = 0x0001 | 0x0004 | 0x0008 | 0x0040,
         supervisor: Optional[Any] = None,
         require_power_on_supervisor: bool = True,
+        require_mode_single_loop: bool = True,
     ) -> bool:
         """
         Initialize the servo drive following the documented LDCN sequence.
@@ -165,6 +166,12 @@ class LS231SE(LDCNDevice):
                         f"Supervisor not power-enabled (diagnostic=0x{diag if diag is not None else 0:02X})"
                     )
 
+            # Mode check: only support LDCN single loop (0000)
+            if require_mode_single_loop:
+                mode_name = self.get_mode_name()
+                if mode_name != "LDCN single loop":
+                    raise RuntimeError(f"Unsupported mode '{mode_name}' (expected LDCN single loop)")
+
             # 1. Define status (persistent)
             self.define_status(status_bits)
 
@@ -175,7 +182,7 @@ class LS231SE(LDCNDevice):
             self.clear_faults()
 
             # 4. Reset position counter
-            self.reset_position()
+            self._motion.reset_position()
 
             # 5. Enable amplifier (hold position)
             self.enable()
@@ -358,6 +365,31 @@ class LS231SE(LDCNDevice):
     def get_mode(self) -> str:
         """Return the cached operating mode key."""
         return self.state.current_mode
+
+    def get_mode_bits(self) -> Tuple[int, int, int, int]:
+        """
+        Return MODEbit(D,C,B,A) tuple if known, else (0,0,0,0).
+
+        Mode bits correspond to OUTbit15..12 (see LS-231SE_IO.md).
+        """
+        return getattr(self.state, "mode_bits", (0, 0, 0, 0))
+
+    def get_mode_name(self) -> str:
+        """
+        Return human-readable mode name from mode bits per servo_api_reference.md.
+        """
+        d, c, b, a = self.get_mode_bits()
+        mode_lookup = {
+            (0, 0, 0, 0): "LDCN single loop",
+            (0, 0, 0, 1): "LDCN dual loop",
+            (0, 0, 1, 0): "Analog input single/dual loop",
+            (0, 0, 1, 1): "Analog input with direction invert input",
+            (0, 1, 0, 0): "Enable positive / enable negative analog input",
+            (0, 1, 0, 1): "Quadrature encoder",
+            (0, 1, 1, 0): "Step & dir",
+            (0, 1, 1, 1): "Step positive / step negative",
+        }
+        return mode_lookup.get((d, c, b, a), "Unknown")
 
     def get_mapped_signals(self) -> Dict[str, str]:
         """
