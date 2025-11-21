@@ -4,6 +4,16 @@
 
 The LS-231SE servo drive supports automated homing sequences using the SET_HOME_MODE command (0x09) combined with velocity-mode motion.
 
+## Home Switches
+
+TBD - not used in current implementation
+
+## Limit Switches
+
+Limit switches are explained in [LS-231SE I/O](LS-231SE_IO.md#digital-inputs)
+
+# Index Pulse
+
 ## SET_HOME_MODE Command (0x09)
 
 **Command:** `0x09`

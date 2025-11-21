@@ -1,45 +1,156 @@
-# LS-231SE Diagnostic and I/O
+# LS-231SE Status
 
 **Author:** NickyDoes
 **Source:** LS-231SE Multifunctional Servo Drive Datasheet (Doc # 712231004 / Rev. A, 05/05/2011)
 **Date:** 2025-11-13
 
----
-
 ## General Introduction
 
-This document describes the diagnostic and I/O functionality of the LS-231SE servo drive in LDCN mode.
+This document describes the status byte, the status packet and how those form diagnostic capabilities of the LS-231SE servo drive in LDCN mode.
+
+The **status byte** is returned in response to every command. The **status packet** returns more information, and must be requested using a Nop command or read_status command.
+
+*Notes*:
+- Verify the servo drive is in LDCN single loop mode at initialization.
+- LDCN data is little endian. LSB precedes MSB.
+
+## Status Packet
+
+The status packet contains multi-byte operational value items. The items returned are configurable in two ways:
+1. The define_status command. This defines the items to return in response to subsequent Nop (status request) commands.
+2. The read_status command. The items to return are sent as the payload of 'read_status'. In response, the drive sends only these items.
+
+After a read_status, Nop commands revert to returning the item set previously defined by define_status.
+
+**Status Packet Details**
+The **bit** is the bit position in the confiugration byte sent with define_status and read_status.
+
+| Bit | Data Item | Size | Description |
+|-----|-----------|------|-------------|
+| 0 | position | 4 bytes | Current encoder position (int32, little-endian) |
+| 1 | ad_value | 1 byte | Analog-to-digital converter value (0-255) |
+| 2 | velocity | 2 bytes | Actual velocity (int16, no fractional component) |
+| 3 | auxiliary | 1 byte | Auxiliary status byte (see below) |
+| 4 | home | 4 bytes | Captured home position (int32) |
+| 5 | device_id | 2 bytes | Device ID (0) + Version (20-29 decimal) |
+| 6 | pos_error | 2 bytes | Current position following error (int16) |
+| 7 | path_count | 1 byte | Number of points in path buffer (0-255) |
+| 8 | digital_in | 2 bytes | Digital input states |
+| 9 | analog_in | 2 bytes | Analog input values |
+| 10-11 | (reserved) | - | Clear to 0 |
+| 12 | watchdog | 2 bytes | Watchdog status (0xFFFF=disabled, 0x0000=expired) |
+| 13 | motor_pos | 6 bytes | Motor position and position error |
+| 14-15 | (reserved) | - | Clear to 0 |
+
+**Notes**:
+- Status data is always sent in bit order (0, 1, 2, 3, ...)
+- Setting bits causes corresponding data to be appended after status byte
+- Power-up or `hard reset` resets to return only status byte + checksum
+
+
+# Status Byte
+
+The status byte is returned by every command, and is not configurable. For LS-231SE drives, this byte has the following bit definitions:
+
+| Bit | Name | Description |
+|-----|------|-------------|
+| 0   | move_done | Clear during trapezoidal move or velocity acceleration, set otherwise (including when servo disabled) |
+| 1   | cksum_error | Checksum error in received command packet |
+| 2   | current_limit | Current limiting exceeded (sticky - clear with Clear Bits command) |
+| 3   | power_on/diag | Amplifier power enabled or diagnostic bit |
+| 4   | pos_error | Position error exceeded limit (sticky - clear with Clear Bits command). Also set when servo disabled (power_on=0) |
+| 5   | home_source/diag | Home switch input state or diagnostic bit |
+| 6   | limit2/diag | Forward limit switch or diagnostic bit |
+| 7   | home_in_progress | Set while searching for home position, cleared when home captured |
+
+**Fault Conditions** (sticky bits - must be cleared with Clear Bits command):
+- Bit 1: Checksum error - resend command
+- Bit 2: Current limit - reduce load or check motor, then clear
+- Bit 4: Position error - motor stalled or load too high, resolve issue then clear
+
+**Power Detection**:
+- Bit 3 = 1: Amplifier power is ON
+- Bit 3 = 0: Amplifier power is OFF
+
+**Notes**:
+- Sticky bits remain set until explicitly cleared with Clear Bits (0x0B) command
+- Bits 3, 5, 6 may function as diagnostic bits (see LS-231SE Diagnostic and I/O section)
 
 ---
 
-## LDCN Mode (MODEbit[C,B,A] = 000)
+## Auxiliary Status Byte
 
-The LS-231SE operates in LDCN mode when the mode selection bits are set to `000`. This is the standard configuration for LDCN protocol communication.
+When configured via Define Status (bit 3), an auxiliary status byte is returned:
 
-### Mode Selection
-- **MODEbit[C,B,A] = 000**: LDCN Dual loop mode (standard LDCN mode)
-- Other mode bit combinations (001-111) select different operational modes (Analog, PWM, Step & Direction, etc.)
+| Bit | Name | Description |
+|-----|------|-------------|
+| 0   | index/diag | Complement of index input or diagnostic bit |
+| 1   | pos_wrap | 32-bit position counter wrapped (sticky - clear with Clear Bits command TODO: Add link to commands md file with anchor to appropriate heading) |
+| 2   | servo_on | Position servo loop enabled |
+| 3   | accel_done | Acceleration phase of trapezoidal move complete, cleared on next move |
+| 4   | slew_done | Constant velocity phase of trapezoidal move complete, cleared on next move |
+| 5   | servo_overrun | Servo calculation exceeded 51.2µs (sticky - clear with Clear Bits command TODO: Add link again.) |
+| 6   | path_mode | Currently executing a path (cleared when buffer empty or Load Trajectory/Stop Motor sent) |
+| 7   | (unused) | Not defined in datasheet |
+
+**Notes**:
+- Bit 0 may function as diagnostic bit (see LS-231SE Diagnostic and I/O section)
+- Sticky bits (1, 5) remain set until cleared with Clear Bits (0x0B) command
+- On power-up/reset: pos_wrap, servo_on, accel_done, slew_done, servo_overrun all clear to 0
 
 ---
+
+
+
+
+
+
+
 
 ## Diagnostic Bit Definitions
+
+
 
 ### Status Byte Bits (Primary Status)
 
 | Bit | Name | Description |
-|-----|------|-------------|
-| **0** | Move_done | Clear during trapezoidal move or velocity acceleration |
-| **3** | Power/DE | Drive Enable status (PIC_AE bit). High when power driver is enabled |
-| **4** | Pos_error | Position error exceeded limit or servo disabled |
-| **5** | Home Source | Home switch input or diagnostic indicator |
-| **6** | Limit2 | Forward limit switch or diagnostic indicator |
+|-----|--------------|-------------|
+| 7   | Reserved     | disregard |
+| 6   | Limit2       | Forward limit switch or diagnostic indicator (see note)|
+| 5   | Limit1       | Reverse limit switch or diagnostic indicator (see note)|
+| 4   | Pos_error    | Position error exceeded limit or servo disabled |
+| 3   | Drive_enable | Drive Enable status (PIC_AE bit). High when power driver is enabled (See note) |
+| 2-1 | Reserved     | disregard |
+| 0   | Move_done    | Clear during trapezoidal move or velocity acceleration |
+
+
+**NOTE**: The state of the 'stop_motor' commanded value changes the meaning of various drive parameters. 
+
+Setting `stop_motor` bit 0 (drive enable) controls the meaning of status bit 3 (power on), bit 5 (reverse Limit1), and bit 6 (forward Limit2).
+
+Setting bit 1 (turn motor off) causes:
+- disable (turn motor off)
+- PWM current set to 0
+- ignore *stop motor* bits 2,3,4.
+
+Setting bit 2 (stop abruptly) causes:
+- command velocity set to 0
+- goal velocity set to 0
+- enable position loop
+- enable velocity mode
+
+Notes:
+1. If velocity mode was disabled previously, the servo loop will hold the current position.
+2. If the motor was moving per a profile mode, it will stop abruptly and hold position.
 
 ### Auxiliary Status Byte Bits
 
 | Bit | Name | Description |
-|-----|------|-------------|
-| **0** | Index | Complement of encoder index input or diagnostic indicator |
-| **2** | Servo | Position servo loop enabled |
+|-----|----------|-------------|
+| 7-3 | Reserved | disregard |
+| 2   | Servo    | Position servo loop enabled |
+| 1   | Reserved | disregard |
+| 0   | Index    | Complement of encoder index input or diagnostic indicator |
 
 ### Stop Command Bit
 
@@ -89,6 +200,8 @@ The following tables show the relationship between status bits and drive conditi
 | **Limit2** | Forward limit switch triggered | 1 | X | 1 | 1 | 0 | 0 | X | 0 | 1 |
 | **Home Source** | Home switch triggered during homing | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
 | **Encoder** | Encoder-related status condition | X | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 1 |
+
+Note: This document only addresses LDCN device mode `000`. In the LS-231SE PDF datasheet pg 31, the *amplifier mode state and diagnostics table* does not apply to LDCN modes.
 
 ### Part 2: LED Indicators and Physical Outputs
 
@@ -216,7 +329,6 @@ The FAULT relay closes during most error conditions and is used to signal extern
 
 ---
 
-## Implementation Notes
 
 ### Reading Diagnostic State
 

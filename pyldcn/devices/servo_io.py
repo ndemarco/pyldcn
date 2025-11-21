@@ -56,20 +56,23 @@ class IO:
 
         Note:
             Uses I/O Control command (CMD 0x08) to control OUTbit0.
-            BrakeMODE (OUTbit0 bit) must be set to 1 for manual control.
+            Bit 0: Mode select (0=automatic, 1=manual control)
+            Bit 1: Brake state when manual (0=brake OFF/released, 1=brake ON/engaged)
         """
         from .servo import CMD_IO_CTRL
 
-        # I/O Control byte format:
-        # Bit 0 (OUTbit0): Brake output
-        # Bit 1-7: Other outputs
-        # When BrakeMODE=1: Bit 0 controls brake directly
-        # Bit=0: Brake engaged, Bit=1: Brake released
+        # I/O Control byte format (from servo_commands.md):
+        # Bit 0: Brake mode (0=automatic, 1=manual)
+        # Bit 1: Brake output (0=brake OFF/released, 1=brake ON/engaged)
+        # For manual control, bit 0 must be 1
+        #
+        # released=True  → brake OFF/released → 0x01 (bit0=1 manual, bit1=0 OFF)
+        # released=False → brake ON/engaged   → 0x03 (bit0=1 manual, bit1=1 ON)
 
-        io_byte = 0x01 if released else 0x00
+        io_byte = 0x01 if released else 0x03
 
         # Send I/O control command
-        # Note: This sets OUTbit0 only. To control multiple outputs,
+        # Note: This sets bits 0-1 only. To control multiple outputs,
         # would need to read current state and merge
         self._device.send_command(CMD_IO_CTRL, [io_byte])
 

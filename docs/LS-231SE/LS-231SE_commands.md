@@ -14,19 +14,19 @@ For generic LDCN network commands, see [ldcn_protocol.md](ldcn_protocol.md).
 |-----|------|------------|-------------|
 | 0x0 | Reset Position | 0 | Reset 32-bit encoder counter to zero |
 | 0x1 | Set Address | 2 | See [ldcn_protocol.md](ldcn_protocol.md) |
-| 0x2 | Define Status | 1-2 | Configure persistent status reporting |
-| 0x3 | Read Status | 1-2 | Request status data (one-time) |
+| 0x2 | Define Status | 1-2 | Configure persistent status reporting. See [LDCN protocol](ldcn_protocol.md) and [LS-231SE diagnostics](LS-231SE_diagnostics.md)|
+| 0x3 | Read Status | 1-2 | Request status data (one-time). See [LDCN protocol](ldcn_protocol.md) and [LS-231SE diagnostics](LS-231SE_diagnostics.md)|
 | 0x4 | Load Trajectory | 1-15 | Load motion parameters (position, velocity, accel, PWM) |
 | 0x5 | Start Motion | 0 | Execute previously loaded trajectory |
 | 0x6 | Set Gain | 14 | Set PID gains and servo parameters |
 | 0x7 | Stop Motor | 1 or 5 | Stop motor with various modes (abrupt, smooth, etc.) |
-| 0x8 | I/O Control | 1 or 3 | Control brake output and set path point timing |
-| 0x9 | Set Homing Mode | 1 | Configure homing capture conditions |
+| 0x8 | I/O Control | 1 or 3 | Control brake output. Set path point timing |
+| 0x9 | Set Homing Mode | 1 | Configure homing capture conditions. See [LS-231SE homing](LS-231SE_homing.md) |
 | 0xA | Set Baud Rate | 1 | See [ldcn_protocol.md](ldcn_protocol.md) |
 | 0xB | Clear Sticky Bits | 0 | Clear latched fault status bits |
 | 0xC | Save Current Position as Home | 0 | Store current position as home position |
 | 0xD | Add Path Points | 0-14 | Add points to path buffer (up to 7 points per command) |
-| 0xE | No Operation (NOP) | 0 | See [ldcn_protocol.md](ldcn_protocol.md) |
+| 0xE | No Operation (NOP) | 0 | Reports status. See [LDCN protocol](ldcn_protocol.md) and [LS-231SE diagnostics](LS-231SE_diagnostics.md) |
 | 0xE | Extended Commands | 1-n | Sub-commands for advanced features (see table below) |
 | 0xF | Hard Reset | 0 | See [ldcn_protocol.md](ldcn_protocol.md) |
 
@@ -87,7 +87,7 @@ Defines what additional data will be sent in status packets along with the statu
 
 **Default**: `0x0000` (no additional status data)
 
-**Status Configuration Bits** (Servo Devices):
+**Status Configuration Bits**:
 
 | Bit | Data Item | Size | Description |
 |-----|-----------|------|-------------|
@@ -257,11 +257,11 @@ AA 01 17 02 1A  # Turn motor off (disable servo)
 **Data bytes:** 1 or 3 bytes<br>
 **Returns:** Yes - Standard status packet
 
-Controls brake output and configures path point buffer timing.
+Controls brake output. Configures timing between path points.
 
 **Data**:
 - Byte 0: Control byte
-- Bytes 1-2: Path point buffer counter (optional, only if bit 6 set)
+- Bytes 1-2: Path point buffer clock rate (required only if bit 6 set)
 
 **Control Byte**:
 | Bit | Function |
@@ -269,19 +269,19 @@ Controls brake output and configures path point buffer timing.
 | 0 | Brake output mode: 0 = automatic (status-controlled), 1 = manual (bit 1 control) |
 | 1 | Brake output control (only if bit 0 = 1): 0 = brake off, 1 = brake on |
 | 2-5 | Not used (must be 0) |
-| 6 | Set path point buffer counter: 0 = no change, 1 = set to bytes 1-2 value |
+| 6 | Set path point buffer clock: 0 = no change, 1 = set to bytes 1-2 value |
 | 7 | Not used (must be 0) |
 
-**Path Point Buffer Counter**:
+**Path Point Buffer Clock**:
 - Range: 0x0000 to 0x7FFF
 - Purpose: Sets time interval between path points
-- Calculation: `time_between_points = counter × 51.2 µs`
-- Example: counter = 100 → 5.12 ms between points
+- Calculation: `time_between_points = clock rate × 51.2 µs`
+- Example: clock rate = 100 → 5.12 ms between points
 
 **Notes**:
 - Brake output is typically controlled automatically based on drive status
 - Manual brake control useful for testing or special applications
-- Path point timing must be set before executing path mode
+- Path point clock must be set before executing path mode
 - See "Status bits and LEDs" section in datasheet for automatic brake behavior
 
 ---
@@ -442,33 +442,7 @@ Adds incremental path points to the 256-entry path buffer for continuous motion 
 - **Interpretation**: Incremental velocity applied for each path segment
 - **Little-endian**: LSB first, MSB second
 
-**Path Point Mechanics**:
-1. Each 2-byte value is added to the desired position every servo tick
-2. The value is applied **Path Point Buffer Counter** times (set via 0x8 command)
-3. This creates a linear segment from current position to next path point
-4. Multiple points create a continuous trajectory
-
-**Buffer Capacity**: 256 path points maximum
-
-**Timing**:
-- Time per point = Path Point Buffer Counter × 51.2 µs
-- Example: Counter = 100 → 5.12 ms per point
-- Must be set via I/O Control (0x8) command before path execution
-
-**Status Monitoring**:
-- Use Status bit 7 (path_count) to monitor buffer usage
-- Use Auxiliary Status bit 6 (path_mode) to check if path is executing
-- Buffer refill when path_count drops below threshold
-
-**Notes**:
-- Path buffer holds 256 points total
-- Points are consumed at the rate set by Path Point Buffer Counter
-- Servo must be enabled before starting path execution
-- Path mode stops when buffer empties or Stop Motor/Load Trajectory command sent
-- Each point defines an incremental velocity, not absolute position
-- Fractional component (1/256 count) allows smooth motion at slow speeds
-- For multi-axis coordination, use group commands to start paths simultaneously
-
+TODO: Add reference and link to LS-231SE_path_point.md file
 ---
 
 ### No Operation (NOP)
@@ -667,87 +641,6 @@ See [ldcn_protocol.md](ldcn_protocol.md) for complete documentation.
 
 **Summary**: Performs a complete reset of the device.
 
----
-
-## Servo Status Byte
-
-The status byte returned by servo drives has the following bit definitions:
-
-| Bit | Name | Description |
-|-----|------|-------------|
-| 0   | move_done | Clear during trapezoidal move or velocity acceleration, set otherwise (including when servo disabled) |
-| 1   | cksum_error | Checksum error in received command packet |
-| 2   | current_limit | Current limiting exceeded (sticky - clear with Clear Bits command) |
-| **3** | **power_on/diag** | **Amplifier power enabled or diagnostic bit** |
-| 4   | pos_error | Position error exceeded limit (sticky - clear with Clear Bits command). Also set when servo disabled (power_on=0) |
-| 5   | home_source/diag | Home switch input state or diagnostic bit |
-| 6   | limit2/diag | Forward limit switch or diagnostic bit |
-| 7   | home_in_progress | Set while searching for home position, cleared when home captured |
-
-**Fault Conditions** (sticky bits - must be cleared with Clear Bits command):
-- Bit 1: Checksum error - resend command
-- Bit 2: Current limit - reduce load or check motor, then clear
-- Bit 4: Position error - motor stalled or load too high, resolve issue then clear
-
-**Power Detection**:
-- Bit 3 = 1: Amplifier power is ON
-- Bit 3 = 0: Amplifier power is OFF
-
-**Notes**:
-- Sticky bits remain set until explicitly cleared with Clear Bits (0x0B) command
-- Bits 3, 5, 6 may function as diagnostic bits (see LS-231SE Diagnostic and I/O section)
-
----
-
-## Auxiliary Status Byte
-
-When configured via Define Status (bit 3), an auxiliary status byte is returned:
-
-| Bit | Name | Description |
-|-----|------|-------------|
-| 0   | index/diag | Complement of index input or diagnostic bit |
-| 1   | pos_wrap | 32-bit position counter wrapped (sticky - clear with Clear Bits command) |
-| 2   | servo_on | Position servo loop enabled |
-| 3   | accel_done | Acceleration phase of trapezoidal move complete, cleared on next move |
-| 4   | slew_done | Constant velocity phase of trapezoidal move complete, cleared on next move |
-| 5   | servo_overrun | Servo calculation exceeded 51.2µs (sticky - clear with Clear Bits command) |
-| 6   | path_mode | Currently executing a path (cleared when buffer empty or Load Trajectory/Stop Motor sent) |
-| 7   | (unused) | Not defined in datasheet |
-
-**Notes**:
-- Bit 0 may function as diagnostic bit (see LS-231SE Diagnostic and I/O section)
-- Sticky bits (1, 5) remain set until cleared with Clear Bits (0x0B) command
-- On power-up/reset: pos_wrap, servo_on, accel_done, slew_done, servo_overrun all clear to 0
-
----
-
-## Servo Initialization Sequence
-
-Complete 7-step initialization sequence for servo drives:
-
-1. Define status reporting
-2. Set PID gains (KP, KD, KI, IL, OL, CL, EL, SR, DB)
-3. Load initial trajectory (position 0, minimal acceleration)
-4. Enable amplifier and close servo loop
-5. Reset position counter
-6. Clear sticky status bits
-7. Read and verify status
-
----
-
-## Position Scaling
-
-Convert between physical units and encoder counts using a scale factor.
-
-**Common Scales**:
-- Direct-drive: 2000-10000 counts/mm
-- Ballscrew (5mm pitch): 4000 counts/rev → 800 counts/mm
-- Ballscrew (10mm pitch): 4000 counts/rev → 400 counts/mm
-
----
-
 ## References
 
 - Logosol LS-231SE Datasheet (Doc # 712231004)
-- `utils/test_servo_init.py` - Working initialization code
-- `utils/test_position_command.py` - Motion command examples
