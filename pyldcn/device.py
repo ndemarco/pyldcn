@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, TYPE_CHECKING
 from .protocol import (
     CMD_NOP,
     CMD_DEFINE_STATUS,
+    CMD_SET_ADDRESS,
 )
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ class LDCNDevice(ABC):
     Attributes:
         network: Reference to parent LDCNNetwork
         address: Device address (1-127)
+        group_address: Group address (128-255), default 0xFF (broadcast)
+        is_group_leader: True if this device is the leader for its group
         device_type: Device type string (e.g., "LS-231SE", "SK-2310g2")
         model_id: Device model ID from hardware (if known)
         version: Firmware version from hardware (if known)
@@ -44,6 +47,8 @@ class LDCNDevice(ABC):
         """
         self.network = network
         self.address = address
+        self.group_address = 0xFF  # Default broadcast group
+        self.is_group_leader = False  # Default not a leader
         self.device_type = "Unknown"
         self.model_id: Optional[int] = None
         self.version: Optional[int] = None
@@ -90,6 +95,40 @@ class LDCNDevice(ABC):
         else:
             # 2 bytes needed for bits 8-15 (servo extended status)
             self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
+
+    def set_address(self, individual_address: int, group_address: int) -> bytes:
+        """
+        Set device's individual and group addresses.
+
+        Updates both the hardware device and the local device object.
+        After calling this method, the device will respond at the new addresses.
+
+        Args:
+            individual_address: Individual address (1-127)
+            group_address: Group address (128-255)
+
+        Returns:
+            Response bytes from device
+
+        Raises:
+            ValueError: If addresses are out of range
+
+        Example:
+            device.set_address(1, 0xF0)  # Device 1, group 0xF0
+        """
+        if not (1 <= individual_address <= 127):
+            raise ValueError(f"Individual address must be 1-127, got {individual_address}")
+        if not (128 <= group_address <= 255):
+            raise ValueError(f"Group address must be 128-255, got {group_address}")
+
+        # Send SET_ADDRESS command
+        response = self.send_command(CMD_SET_ADDRESS, [individual_address, group_address])
+
+        # Update local state
+        self.address = individual_address
+        self.group_address = group_address
+
+        return response
 
     @abstractmethod
     def read_status(self) -> Dict:

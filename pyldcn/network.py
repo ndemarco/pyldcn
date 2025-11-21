@@ -65,6 +65,7 @@ class LDCNNetwork:
         discovery: DeviceDiscovery instance for device operations
         _expected_devices: Internal storage of discovered devices from FULL/SOFT
                           initialization for future validation
+        _group_leaders: Dict mapping group addresses to leader device addresses
     """
 
     def __init__(self, port: str, timeout: float = 0.015):
@@ -86,6 +87,12 @@ class LDCNNetwork:
         # Device management
         self.devices: List[LDCNDevice] = []
         self._expected_devices: Optional[List[Dict]] = None
+
+        # Group leader tracking: {group_address: leader_device_address}
+        self._group_leaders: Dict[int, int] = {}
+
+        # Register group leader callback with protocol layer
+        self.protocol._group_leader_callback = self.has_group_leader
 
         # Expose commonly used attributes for convenience
         self.port = port
@@ -194,8 +201,12 @@ class LDCNNetwork:
         Tries sending reset at every known baud rate to ensure devices
         are reset regardless of their current baud rate. After reset,
         devices return to address 0x00 and 19200 baud.
+
+        All group leader configurations are cleared as devices lose their
+        addressing configuration during reset.
         """
         self.discovery.reset()
+        self.clear_group_leaders()
 
     def address_devices(self, max_devices: int = 127) -> int:
         """
@@ -363,6 +374,78 @@ class LDCNNetwork:
                 print(f"Servo at address {servo.address}")
         """
         return [device for device in self.devices if device.device_type == device_type]
+
+    # -------------------------------------------------------------------------
+    # Group Leader Management
+    # -------------------------------------------------------------------------
+
+    def set_group_leader(self, device: LDCNDevice, is_leader: bool = True) -> None:
+        """
+        Set or clear a device as the leader for its group.
+
+        When a device is set as a group leader:
+        - Commands to its group address will expect a response from this device
+        - Only one device per group should be the leader (not enforced by this method)
+        - The is_group_leader attribute is updated on the device object
+
+        Args:
+            device: Device to set/clear as group leader
+            is_leader: True to set as leader, False to clear
+
+        Example:
+            servo1 = network.devices[0]
+            servo1.group_address = 0xF0
+            network.set_group_leader(servo1, True)  # servo1 is now leader of group 0xF0
+        """
+        device.is_group_leader = is_leader
+
+        if is_leader:
+            self._group_leaders[device.group_address] = device.address
+        else:
+            # Remove from group leaders if it was the leader
+            if self._group_leaders.get(device.group_address) == device.address:
+                del self._group_leaders[device.group_address]
+
+    def has_group_leader(self, group_address: int) -> bool:
+        """
+        Check if a group has a configured leader.
+
+        Args:
+            group_address: Group address (128-255)
+
+        Returns:
+            True if group has a leader configured
+        """
+        return group_address in self._group_leaders
+
+    def get_group_leader(self, group_address: int) -> Optional[LDCNDevice]:
+        """
+        Get the leader device for a group.
+
+        Args:
+            group_address: Group address (128-255)
+
+        Returns:
+            Leader device if configured, None otherwise
+        """
+        leader_address = self._group_leaders.get(group_address)
+        if leader_address is None:
+            return None
+
+        for device in self.devices:
+            if device.address == leader_address:
+                return device
+        return None
+
+    def clear_group_leaders(self) -> None:
+        """
+        Clear all group leader configurations.
+
+        This is called automatically during reset/initialization.
+        """
+        self._group_leaders.clear()
+        for device in self.devices:
+            device.is_group_leader = False
 
     # -------------------------------------------------------------------------
     # Helper Methods

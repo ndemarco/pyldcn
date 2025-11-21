@@ -60,7 +60,7 @@ COMMON_BAUDS = [125000, 19200, 115200, 57600, 9600]
 DELAY_AFTER_COMMAND = 0.001  # 1ms - devices respond within microseconds
 DELAY_AFTER_RESET = 2.0
 DELAY_AFTER_ADDRESS = 0.05  # Reduced from 0.3s
-DELAY_AFTER_BAUD_CHANGE = 0.1  # Reduced from 0.5s
+DELAY_AFTER_BAUD_CHANGE = 0.1  # Allow devices to switch baud (empirically sufficient)
 
 
 class LDCNProtocol:
@@ -75,6 +75,7 @@ class LDCNProtocol:
         baud_rate: Current baud rate
         serial: PySerial Serial object
         timeout: Serial read timeout in seconds
+        _group_leader_callback: Optional callback to check if group has a leader
     """
 
     def __init__(self, port: str, timeout: float = 0.015):
@@ -89,6 +90,7 @@ class LDCNProtocol:
         self.baud_rate = DEFAULT_BAUD
         self.serial: Optional[serial.Serial] = None
         self.timeout = timeout
+        self._group_leader_callback: Optional[callable] = None
 
     # -------------------------------------------------------------------------
     # Connection Management
@@ -197,9 +199,20 @@ class LDCNProtocol:
         response = self.serial.read(64)
 
         if len(response) < 2:
-            # Some commands (like SET_BAUD to group address) don't return responses
-            if address == ADDRESS_GROUP:
-                return b""
+            # Group addresses (128-255) don't return responses unless a group leader is configured
+            # Address 0xFF (broadcast) never returns a response
+            # Individual addresses (1-127) always respond
+            if address >= 128:
+                # Check if this group has a configured leader
+                has_leader = False
+                if self._group_leader_callback is not None:
+                    has_leader = self._group_leader_callback(address)
+
+                # If no leader configured, no response is expected (valid behavior)
+                if not has_leader:
+                    return b""
+                # If leader configured, fall through to raise timeout error
+
             raise LDCNTimeoutError(f"No response from address {address}")
 
         # Verify checksum
@@ -268,7 +281,12 @@ class LDCNProtocol:
             self.serial.write(packet)
             self.serial.flush()
 
-        # Close port, wait, reopen at new baud
+            # Close port to allow devices to switch baud, per docs
+            self.serial.close()
+        else:
+            raise LDCNError("Serial port not open")
+
+        # Wait before reopening at new baud
         time.sleep(DELAY_AFTER_BAUD_CHANGE)
         self._open_port(baud)
 
