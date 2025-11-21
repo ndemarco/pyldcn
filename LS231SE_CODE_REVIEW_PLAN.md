@@ -2,12 +2,12 @@
 
 Prepared after reading the LDCN and LS-231SE docs (ignore obsolete design docs). Focus: verify the driver matches the protocol and hardware behavior of the 231SE servo drive.
 
-## Context Snapshot (from docs)
-- LDCN packets: `0xAA` header, addr 1-127 (groups 128-255), cmd/len packed nibble, checksum = sum(addr..data) & 0xFF; group commands usually silent except group leader.
-- Critical commands: gains (0x06), trajectory load/start (0x04/0x05), stop (0x07), IO control (0x08 for path timer/brake/outputs), homing (0x09 bits choose limit/index + stop mode), clear sticky bits (0x0B), add path points (0x0D int8.frac8 deltas), extended 0x0E subcommands (limit-stop behavior, hall init, HW sync, watchdog, motor error limit).
-- Status: status byte bits (move_done, cksum_error, current_limit*, power_on/diag, pos_error*, home_source/diag, limit2/diag, home_in_progress); aux byte bits (index/diag, pos_wrap*, servo_on, accel_done, slew_done, servo_overrun*, path_mode). Status items bitmap controls appended data (pos, vel, aux, pos_err, path_count, device_id, home, watchdog, motor_pos, etc.). Sticky bits require Clear Bits.
-- IO mapping: HomeSEL (OUT4/OUT8) remaps status bits 5/6 to Limit1, Limit2, HomeIN, Input10/11; digital inputs include SafetyLINK, DE, limit relay bridging; outputs include brake mode, relays, SmartSTOP, mode bits.
-- Timing (per docs): 10 ms inter-command spacing, 2 s after hard reset, 300 ms after addressing, 500 ms around baud changes; default 19200 baud, recommend 125 kbps (BRD 0x27).
+## Context Snapshot (docs shorthand)
+- Packets: `0xAA` header, addr 1–127 (groups 128–255), cmd/len nibble, checksum sum(addr..data)&0xFF; group commands usually silent except leader.
+- Core commands: gains (0x06), trajectory load/start (0x04/0x05), stop (0x07), IO control (0x08), homing (0x09), clear sticky bits (0x0B), path points (0x0D int8.frac8), extended 0x0E (limit-stop, hall init, HW sync, watchdog, motor error limit).
+- Status: status/aux bits; status items bitmap selects appended data (pos, vel, aux, pos_err, path_count, device_id, home, watchdog, motor_pos, etc.); sticky bits require Clear Bits.
+- IO/Signals: HomeSEL (OUT4/OUT8) remaps bits 5/6 among Limit1/Limit2/HomeIN/Input10/11; inputs include SafetyLINK, DE; outputs include brake mode, relays, SmartSTOP, mode bits.
+- Timing (per docs): 10 ms between commands, 2 s after hard reset, 300 ms after addressing, 500 ms around baud changes; default 19200 baud, recommend 125 kbps (BRD 0x27).
 
 ## Review Goals
 - Confirm code encodes/decodes packets and status exactly per docs, including LSB order, path_count, watchdog, sticky bit clearing, checksum, and group command expectations.
