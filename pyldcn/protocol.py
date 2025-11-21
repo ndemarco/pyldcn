@@ -330,8 +330,8 @@ class LDCNProtocol:
         try:
             self._open_port(baud)
 
-            # Try common addresses
-            for addr in [1, 2, 3, 6]:
+            # Try a wider address range (1-31) to avoid false negatives
+            for addr in range(1, 32):
                 try:
                     response = self.send_command(addr, CMD_NOP)
                     if len(response) >= 2:
