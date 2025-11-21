@@ -305,11 +305,9 @@ Typical network initialization:
 
 ## Timing Requirements
 
-- **Command Spacing**: Minimum 10ms between commands
 - **Reset Wait**: 2000ms after Hard Reset
 - **Address Wait**: 300ms after Set Address
 - **Baud Change Wait**: 500ms before/after reopening serial port
-- **Status Read**: Poll at 10-20 Hz for power monitoring
 
 ## Error Handling
 
