@@ -8,7 +8,8 @@ License: GPL v2 or later
 """
 
 import struct
-from typing import Dict, List, Optional, Any, TYPE_CHECKING, Tuple
+from enum import IntFlag
+from typing import Dict, List, Optional, Any, TYPE_CHECKING, Tuple, Union
 
 from pyldcn.device_status import StatusManager
 from ..servo_state import ServoState
@@ -61,6 +62,55 @@ LS231SE_STATUS_ITEMS = [
     (0x2000, 'motor_pos', 6, 'Motor position and error (6 bytes)'),
 ]
 
+# =============================================================================
+# Status Item Flags (IntFlag Enum)
+# =============================================================================
+
+# Generate IntFlag enum from status items tuple (single source of truth)
+_status_item_members = {
+    item[1].upper(): item[0]  # 'position' -> 'POSITION': 0x0001
+    for item in LS231SE_STATUS_ITEMS
+}
+
+StatusItem = IntFlag('StatusItem', _status_item_members)
+StatusItem.__doc__ = """Status item flags for LS-231SE READ_STATUS/DEFINE_STATUS commands.
+
+Combine flags with bitwise OR (|) to request multiple items in a single command.
+
+Examples:
+    # Single item
+    servo.status.read(StatusItem.POSITION)
+
+    # Multiple items (efficient - one command)
+    servo.status.read(StatusItem.POSITION | StatusItem.VELOCITY | StatusItem.PATH_COUNT)
+
+    # Use presets for common combinations
+    servo.status.read(StatusItem.MOTION)     # position + velocity
+    servo.status.read(StatusItem.PATH_MODE)  # position + velocity + aux + path_count
+
+Available items:
+    POSITION (0x0001)   - Current position (4 bytes, int32)
+    AD_VALUE (0x0002)   - A/D converter value (1 byte, 0-255)
+    VELOCITY (0x0004)   - Current velocity (2 bytes, int16)
+    AUX (0x0008)        - Auxiliary status byte (servo_on, path_mode, etc.)
+    HOME (0x0010)       - Home position (4 bytes, int32)
+    DEVICE_ID (0x0020)  - Device ID + firmware version (2 bytes)
+    POS_ERROR (0x0040)  - Position following error (2 bytes, int16)
+    PATH_COUNT (0x0080) - Path buffer count (1 byte, 0-255)
+    WATCHDOG (0x1000)   - Watchdog timer status (2 bytes)
+    MOTOR_POS (0x2000)  - Motor position + error (6 bytes)
+
+Common presets:
+    MOTION              - POSITION | VELOCITY
+    FULL                - POSITION | VELOCITY | AUX | POS_ERROR
+    PATH_MODE           - POSITION | VELOCITY | AUX | PATH_COUNT
+"""
+
+# Add common presets as class attributes
+StatusItem.MOTION = StatusItem.POSITION | StatusItem.VELOCITY
+StatusItem.FULL = StatusItem.POSITION | StatusItem.VELOCITY | StatusItem.AUX | StatusItem.POS_ERROR
+StatusItem.PATH_MODE = StatusItem.POSITION | StatusItem.VELOCITY | StatusItem.AUX | StatusItem.PATH_COUNT
+
 
 class ServoStatus(StatusManager):
     """
@@ -91,17 +141,35 @@ class ServoStatus(StatusManager):
     # Status Reading
     # -------------------------------------------------------------------------
 
-    def read_status(self) -> Dict:
+    def read_status(self, items: Optional[Union[int, StatusItem]] = None) -> Dict:
         """
-        Read complete servo status.
+        Read servo status with optional item selection.
+
+        Args:
+            items: Status items to read (StatusItem flags, int mask, or None for default)
+
+        Examples:
+            # Default (position, velocity, aux, pos_error)
+            servo.status.read_status()
+
+            # Using enum flags (recommended)
+            servo.status.read_status(StatusItem.POSITION | StatusItem.VELOCITY)
+
+            # Using presets
+            servo.status.read_status(StatusItem.MOTION)
+            servo.status.read_status(StatusItem.PATH_MODE)
+
+            # Raw mask still works (for compatibility)
+            servo.status.read_status(0x0085)
 
         Returns:
             {
                 'status': status_byte,
-                'position': position_counts,
-                'velocity': velocity,
-                'aux_status': aux_byte,
-                'pos_error': following_error,
+                'position': position_counts,  # if requested
+                'velocity': velocity,         # if requested
+                'aux_status': aux_byte,       # if requested
+                'pos_error': following_error, # if requested
+                'path_count': count,          # if requested
                 'flags': {
                     'move_done': bool,
                     'cksum_error': bool,
@@ -114,8 +182,13 @@ class ServoStatus(StatusManager):
         """
         from pyldcn.protocol import CMD_READ_STATUS
 
-        # Request: position, velocity, aux, pos_error
-        status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040
+        # Default to FULL preset if no items specified
+        if items is None:
+            items = StatusItem.FULL
+
+        # Convert StatusItem enum to int if needed
+        status_bits = int(items)
+
         response = self._device.send_command(
             CMD_READ_STATUS,
             [status_bits & 0xFF, (status_bits >> 8) & 0xFF]
