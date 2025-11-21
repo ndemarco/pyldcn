@@ -141,17 +141,20 @@ class DeviceDiscovery:
         """
         Send hard reset to all devices at all possible baud rates.
 
-        Tries sending the reset command at every known baud rate to ensure
+        Tries sending the reset command at every valid LDCN baud rate to ensure
         devices are reset regardless of their current baud rate.
         After reset, devices return to address 0x00 and 19200 baud.
         Waits 2 seconds after final reset for devices to initialize.
+
+        Valid LDCN baud rates per protocol specification:
+        1250000, 625000, 312500, 125000, 115200, 57600, 19200, 9600
         """
         # Reset packet: HEADER, address, command, checksum
         checksum = (ADDRESS_GROUP + CMD_HARD_RESET) & 0xFF
         packet = bytes([HEADER, ADDRESS_GROUP, CMD_HARD_RESET, checksum])
 
-        # Try sending reset at all known baud rates
-        for baud in [230400, 125000, 57600, 38400, 19200, 9600]:
+        # Try sending reset at all valid LDCN baud rates (high to low)
+        for baud in [1250000, 625000, 312500, 125000, 115200, 57600, 19200, 9600]:
             try:
                 self.protocol._open_port(baud)
                 assert self.protocol.serial is not None
