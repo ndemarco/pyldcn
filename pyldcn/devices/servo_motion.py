@@ -93,6 +93,12 @@ class Motion:
         traj_data = struct.pack("<Biii", traj_ctrl, position, velocity, accel)
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
+        # Cache last commanded motion parameters
+        self._state.position = position
+        self._state.velocity = velocity
+        self._state.pos_error = None  # will be updated on read
+        setattr(self._state, "accel", accel)
+
     # -------------------------------------------------------------------------
     # Homing
     # -------------------------------------------------------------------------

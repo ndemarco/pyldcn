@@ -108,6 +108,8 @@ class LS231SE(LDCNDevice):
         self._status = ServoStatus(self.state, self)
         self._motion = Motion(self.state, self)
         self._io = IO(self.state, self)
+        # Cache acceleration when commands are sent (initialized to None)
+        setattr(self.state, "accel", None)
 
     # -------------------------------------------------------------------------
     # Initialization
