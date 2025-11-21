@@ -31,6 +31,7 @@ Prepared after reading the LDCN and LS-231SE docs (ignore obsolete design docs).
      - The `initialize()` helper hardcodes a 7-step sequence with 100 ms sleeps and fixed params; it doesn’t expose timing or status mask, and the delays don’t match the spec (docs: 300 ms after address, 500 ms around baud change). Consider making timing/config injectable or removing these sleeps in favor of caller-driven flows.
      - Gains/trajectory init values are baked in; defaults differ from some doc defaults (e.g., cl=0 vs 255 elsewhere), so callers may need explicit configuration rather than relying on `initialize()`.
      - State sharing relies on subsystems updating `ServoState` on reads/commands; ensure Motion/IO also update cached control bits (e.g., stop_cmd, pic_ae, HomeSEL) when commands are sent to keep diagnostics coherent.
+     - It would be good to allow passing the supervisor device into `initialize()` from the network init path so SafetyLINK readiness is enforced automatically.
 3) **Status Parsing & Diagnostics**  
    - Deep dive `devices/status/servo_status.py`, `servo_mappings.py`, `servo_diagnostics.py`: bit→field mapping accuracy (status + aux), HomeSEL resolution, path_count/order, watchdog/motor_pos parsing, sticky bit tracking/clearing, diagnostic pattern tables, and error-class reporting.
 4) **Motion & Trajectory**  
