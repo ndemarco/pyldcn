@@ -28,17 +28,17 @@ from .servo_mappings import LS231SE_STATUS_PROFILE
 # LS-231SE Servo Drive Commands (Motor/Servo Specific)
 # =============================================================================
 
-CMD_RESET_POS = 0x00        # Reset position counter
+CMD_RESET_POS = 0x00  # Reset position counter
 CMD_LOAD_TRAJECTORY = 0x04  # Load trajectory parameters
-CMD_START_MOTION = 0x05     # Start motion
-CMD_LOAD_GAINS = 0x06       # Set PID gains
-CMD_STOP_MOTOR = 0x07       # Stop motor
-CMD_IO_CTRL = 0x08          # I/O control
-CMD_SET_HOME_MODE = 0x09    # Configure homing mode
-CMD_CLEAR_BITS = 0x0B       # Clear sticky status bits
-CMD_SAVE_AS_HOME = 0x0C     # Save current position as home
-CMD_ADD_PATHPOINT = 0x0D    # Add path point to buffer
-CMD_EXT = 0x0E              # Extended commands (with subcommand byte)
+CMD_START_MOTION = 0x05  # Start motion
+CMD_LOAD_GAINS = 0x06  # Set PID gains
+CMD_STOP_MOTOR = 0x07  # Stop motor
+CMD_IO_CTRL = 0x08  # I/O control
+CMD_SET_HOME_MODE = 0x09  # Configure homing mode
+CMD_CLEAR_BITS = 0x0B  # Clear sticky status bits
+CMD_SAVE_AS_HOME = 0x0C  # Save current position as home
+CMD_ADD_PATHPOINT = 0x0D  # Add path point to buffer
+CMD_EXT = 0x0E  # Extended commands (with subcommand byte)
 
 
 class LS231SE(LDCNDevice):
@@ -113,21 +113,32 @@ class LS231SE(LDCNDevice):
     # Initialization
     # -------------------------------------------------------------------------
 
-    def initialize(self,
-                   kp: int = 2, kd: int = 50, ki: int = 0,
-                   il: int = 40, ol: int = 255, cl: int = 0,
-                   el: int = 2000, sr: int = 20, db: int = 0) -> bool:
+    def initialize(
+        self,
+        kp: int = 2,
+        kd: int = 50,
+        ki: int = 0,
+        il: int = 40,
+        ol: int = 255,
+        cl: int = 0,
+        el: int = 2000,
+        sr: int = 20,
+        db: int = 0,
+        status_bits: int = 0x0001 | 0x0004 | 0x0008 | 0x0040,
+        supervisor: Optional[Any] = None,
+        require_power_on_supervisor: bool = True,
+    ) -> bool:
         """
-        Complete 7-step servo initialization.
+        Initialize the servo drive following the documented LDCN sequence.
 
-        Steps:
-        1. Define status reporting (pos, vel, aux, pos_err)
-        2. Set PID gains
-        3. Load initial trajectory (position 0)
-        4. Enable amplifier
-        5. Reset position counter
-        6. Clear sticky status bits
-        7. Read and verify status
+        Sequence:
+            1. Ensure supervisor (SK-2310g2) is power-enabled if present.
+            2. Define status (default: pos, vel, aux, pos_err).
+            3. Load PID gains.
+            4. Clear sticky bits.
+            5. Reset position counter.
+            6. Enable amplifier (STOP_MOTOR with AMP_ENABLE).
+            7. Read and verify status (no active faults).
 
         Args:
             kp, kd, ki: PID gains
@@ -137,66 +148,74 @@ class LS231SE(LDCNDevice):
             el: Position error limit (encoder counts)
             sr: Servo rate divisor
             db: Deadband
+            status_bits: Status configuration bitmap (defaults to pos/vel/aux/pos_err)
+            supervisor: Optional SK-2310g2 device to verify SafetyLINK/power state
+            require_power_on_supervisor: Require supervisor diagnostic in power-on range
 
         Returns:
-            True if initialization successful
+            True if initialization succeeds, False otherwise.
         """
         try:
-            # Step 1: Define status reporting
-            # Request: position, velocity, aux, pos_error
-            status_bits = 0x0001 | 0x0004 | 0x0008 | 0x0040
+            sup = supervisor or self._find_supervisor()
+            if sup:
+                sup_status = sup.read_status()
+                diag = sup_status.get("diagnostic")
+                if require_power_on_supervisor and (diag is None or diag < 0x18 or diag > 0x1F):
+                    raise RuntimeError(
+                        f"Supervisor not power-enabled (diagnostic=0x{diag if diag is not None else 0:02X})"
+                    )
+
+            # 1. Define status (persistent)
             self.define_status(status_bits)
-            time.sleep(0.1)
 
-            # Step 2: Set PID gains
+            # 2. Load gains
             self.set_gains(kp, kd, ki, il, ol, cl, el, sr, db)
-            time.sleep(0.1)
 
-            # Step 3: Load initial trajectory (position 0)
-            traj_ctrl = 0x10  # servo_mode=1
-            traj_data = [traj_ctrl, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0]  # pos=0, vel=0, accel=100
-            self.send_command(CMD_LOAD_TRAJECTORY, traj_data)
-            time.sleep(0.1)
-
-            # Step 4: Enable amplifier
-            self.enable()
-            time.sleep(0.1)
-
-            # Step 5: Reset position counter
-            self.reset_position()
-            time.sleep(0.1)
-
-            # Step 6: Clear sticky status bits
+            # 3. Clear sticky bits
             self.clear_faults()
-            time.sleep(0.1)
 
-            # Step 7: Read and verify status
+            # 4. Reset position counter
+            self.reset_position()
+
+            # 5. Enable amplifier (hold position)
+            self.enable()
+
+            # 6. Verify status/faults
             status = self.read_status()
-
-            # Check for faults
-            faults = self._status.check_faults(status['status'])
-            if faults:
-                return False
-
-            return True
+            faults = self._status.check_faults(status.get("status", 0))
+            return not faults
 
         except Exception:
             return False
+
+    def _find_supervisor(self) -> Optional[Any]:
+        """
+        Locate an SK-2310g2 supervisor device on the same network, if present.
+        """
+        try:
+            for dev in getattr(self.network, "devices", []):
+                if getattr(dev, "device_type", "") == "SK-2310g2" or getattr(dev, "model_id", None) == 2:
+                    return dev
+        except Exception:
+            pass
+        return None
 
     # -------------------------------------------------------------------------
     # Configuration
     # -------------------------------------------------------------------------
 
-    def load_gains(self,
-                   kp: int,
-                   kd: int,
-                   ki: int,
-                   il: int = 255,
-                   ol: int = 255,
-                   cl: int = 255,
-                   el: int = 16000,
-                   sr: int = 1,
-                   db: int = 0) -> None:
+    def load_gains(
+        self,
+        kp: int,
+        kd: int,
+        ki: int,
+        il: int = 255,
+        ol: int = 255,
+        cl: int = 255,
+        el: int = 16000,
+        sr: int = 1,
+        db: int = 0,
+    ) -> None:
         """
         Load PID gains with sensible defaults (LOAD_GAINS command).
 
@@ -216,10 +235,18 @@ class LS231SE(LDCNDevice):
         """
         self.set_gains(kp, kd, ki, il, ol, cl, el, sr, db)
 
-    def set_gains(self,
-                  kp: int, kd: int, ki: int,
-                  il: int, ol: int, cl: int,
-                  el: int, sr: int, db: int) -> None:
+    def set_gains(
+        self,
+        kp: int,
+        kd: int,
+        ki: int,
+        il: int,
+        ol: int,
+        cl: int,
+        el: int,
+        sr: int,
+        db: int,
+    ) -> None:
         """
         Set PID gains (LOAD_GAINS command).
 
@@ -236,7 +263,7 @@ class LS231SE(LDCNDevice):
             sr: Servo rate divisor
             db: Deadband
         """
-        gain_data = struct.pack('<HHHBBBHB', kp, kd, ki, il, ol, cl, el, sr)
+        gain_data = struct.pack("<HHHBBBHB", kp, kd, ki, il, ol, cl, el, sr)
         self.send_command(CMD_LOAD_GAINS, list(gain_data) + [db])
 
         # Cache gains in shared state
@@ -357,8 +384,8 @@ class LS231SE(LDCNDevice):
         entry = lookup.get(self.state.home_selection)
 
         return {
-            'home_source_signal': entry.status_bit5 if entry else 'Unknown',
-            'limit2_signal': entry.status_bit6 if entry else 'Unknown'
+            "home_source_signal": entry.status_bit5 if entry else "Unknown",
+            "limit2_signal": entry.status_bit6 if entry else "Unknown",
         }
 
     def get_state(self) -> Dict[str, Any]:
@@ -427,7 +454,9 @@ class LS231SE(LDCNDevice):
     # Delegated Methods - Motion Subsystem
     # -------------------------------------------------------------------------
 
-    def move_to(self, position: float, velocity: float, accel: float, scale: float = 1.0) -> None:
+    def move_to(
+        self, position: float, velocity: float, accel: float, scale: float = 1.0
+    ) -> None:
         """
         Command motion to absolute position.
 
@@ -454,9 +483,12 @@ class LS231SE(LDCNDevice):
         """
         self._motion.move_to_counts(position, velocity, accel)
 
-    def set_home_mode(self, limit_switch: Optional[int] = None,
-                      use_index: bool = False,
-                      stop_mode: str = 'abrupt') -> None:
+    def set_home_mode(
+        self,
+        limit_switch: Optional[int] = None,
+        use_index: bool = False,
+        stop_mode: str = "abrupt",
+    ) -> None:
         """
         Configure homing mode to capture home position.
 
@@ -469,8 +501,14 @@ class LS231SE(LDCNDevice):
         """
         self._motion.set_home_mode(limit_switch, use_index, stop_mode)
 
-    def home_to_limit(self, limit_switch: int, velocity: int, accel: int,
-                      use_index: bool = False, index_velocity: Optional[int] = None) -> None:
+    def home_to_limit(
+        self,
+        limit_switch: int,
+        velocity: int,
+        accel: int,
+        use_index: bool = False,
+        index_velocity: Optional[int] = None,
+    ) -> None:
         """
         Perform complete homing sequence to a limit switch.
 
@@ -483,7 +521,9 @@ class LS231SE(LDCNDevice):
             use_index: If True, perform second stage homing to index pulse
             index_velocity: Velocity for index homing (default: velocity/4)
         """
-        self._motion.home_to_limit(limit_switch, velocity, accel, use_index, index_velocity)
+        self._motion.home_to_limit(
+            limit_switch, velocity, accel, use_index, index_velocity
+        )
 
     def enable(self) -> None:
         """
@@ -639,4 +679,4 @@ class LS231SE(LDCNDevice):
 
 
 # Export Trajectory class for external use
-__all__ = ['LS231SE', 'Trajectory']
+__all__ = ["LS231SE", "Trajectory"]
