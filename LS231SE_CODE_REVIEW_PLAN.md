@@ -7,7 +7,7 @@ Prepared after reading the LDCN and LS-231SE docs (ignore obsolete design docs).
 - Core commands: gains (0x06), trajectory load/start (0x04/0x05), stop (0x07), IO control (0x08), homing (0x09), clear sticky bits (0x0B), path points (0x0D int8.frac8), extended 0x0E (limit-stop, hall init, HW sync, watchdog, motor error limit).
 - Status: status/aux bits; status items bitmap selects appended data (pos, vel, aux, pos_err, path_count, device_id, home, watchdog, motor_pos, etc.); sticky bits require Clear Bits.
 - IO/Signals: HomeSEL (OUT4/OUT8) remaps bits 5/6 among Limit1/Limit2/HomeIN/Input10/11; inputs include SafetyLINK, DE; outputs include brake mode, relays, SmartSTOP, mode bits.
-- Timing (per docs): 10 ms between commands, 2 s after hard reset, 300 ms after addressing, 500 ms around baud changes; default 19200 baud, recommend 125 kbps (BRD 0x27).
+- Timing (per docs): 2 s after hard reset, 300 ms after addressing, 100 ms around baud changes; default 19200 baud, recommend 125000 baud for routine comms.
 
 ## Review Goals
 - Confirm code encodes/decodes packets and status exactly per docs, including LSB order, path_count, watchdog, sticky bit clearing, checksum, and group command expectations.
@@ -19,12 +19,11 @@ Prepared after reading the LDCN and LS-231SE docs (ignore obsolete design docs).
 1) **Protocol Layer**  
    - Inspect `pyldcn/protocol.py`, `network.py`, `device.py` for packet assembly, checksum, cmd/len nibble handling, group-address rules, baud change handling, inter-command spacing, and serial error handling.
    - Findings:
-     - Command pacing requirements from the docs aren’t enforced: `send_command` fires back-to-back with no ≥10 ms gap, and the timing constants are reduced (`DELAY_AFTER_COMMAND` 1 ms, `DELAY_AFTER_ADDRESS` 50 ms, `DELAY_AFTER_BAUD_CHANGE` 100 ms) and unused in `send_command`, so address/baud transitions risk violating spec (docs: 10 ms spacing, 300 ms after address, 500 ms around baud change).
      - Group commands only treat `0xFF` as “no response expected.” Group addresses 128–254 without a leader will raise timeouts even though silence is valid, breaking group-triggered multi-axis starts.
-     - Baud change flow is too aggressive: sends while port is open, waits 100 ms instead of the documented close→wait 500 ms→reopen, and doesn’t enforce a pre-send close. Could miss the baud switch or leave the port at the old baud.
+     - Baud change flow doesn’t enforce a pre-send close. Could miss the baud switch or leave the port at the old baud.
      - No clamp on data length (spec 0–16), and received status length is not validated beyond checksum, so malformed packets could slip through or be sent.
-     - Auto-detect uses tight timing and limited addresses (1/2/3/6); with devices needing the documented waits (2 s post-reset, 300 ms post-address) detection may falsely fail.
-     - Doc cites a 10 ms spacing guideline, but code neither enforces nor parameterizes it; spacing should be a configurable guardrail rather than baked-in magic numbers and should respect documented waits around addressing/baud changes.
+     - Auto-detect uses limited addresses (1/2/3/6); detection may falsely fail.
+
 2) **Servo Architecture Glue**  
    - Read `devices/servo.py` constructor/init flow vs the 7-step init in docs; check public API surface and how subsystems share `ServoState`.
 3) **Status Parsing & Diagnostics**  

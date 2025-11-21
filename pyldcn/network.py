@@ -379,11 +379,15 @@ class LDCNNetwork:
     # Group Leader Management
     # -------------------------------------------------------------------------
 
-    def set_group_leader(self, device: LDCNDevice, is_leader: bool = True) -> None:
+    def set_group_leader(self, device: LDCNDevice, is_leader: bool = True) -> bytes:
         """
         Set or clear a device as the leader for its group.
 
+        This method reconfigures the device hardware to be a group leader or member
+        by sending the SET_ADDRESS command with the appropriate leader bit.
+
         When a device is set as a group leader:
+        - Hardware is configured to respond to group commands
         - Commands to its group address will expect a response from this device
         - Only one device per group should be the leader (not enforced by this method)
         - The is_group_leader attribute is updated on the device object
@@ -392,19 +396,18 @@ class LDCNNetwork:
             device: Device to set/clear as group leader
             is_leader: True to set as leader, False to clear
 
+        Returns:
+            Response bytes from SET_ADDRESS command
+
         Example:
             servo1 = network.devices[0]
-            servo1.group_address = 0xF0
-            network.set_group_leader(servo1, True)  # servo1 is now leader of group 0xF0
-        """
-        device.is_group_leader = is_leader
+            servo1.set_address(1, 0xF0)  # First assign to group
+            network.set_group_leader(servo1, True)  # Make it the leader
 
-        if is_leader:
-            self._group_leaders[device.group_address] = device.address
-        else:
-            # Remove from group leaders if it was the leader
-            if self._group_leaders.get(device.group_address) == device.address:
-                del self._group_leaders[device.group_address]
+        Note: Group leader bit configuration will be documented in ldcn_protocol.md
+        """
+        # Use set_address to reconfigure hardware with leader bit
+        return device.set_address(device.address, device.group_address, is_leader=is_leader)
 
     def has_group_leader(self, group_address: int) -> bool:
         """

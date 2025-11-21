@@ -150,21 +150,30 @@ Device-specific commands (e.g., Load Trajectory, Load Gains for servos) are docu
 
 ### 0x1 - Set Address
 
-Sets individual and group addresses for a device.
+Sets individual and group addresses for a device, and optionally configures the device as a group leader.
 
 **Data**:
 - Byte 0: Individual address (1-127)
-- Byte 1: Group address (128-255)
+- Byte 1: Group address (128-255) with leader bit
 
-**Example**:
+**Group Leader Configuration**:
+- **Bit 7 cleared (0)**: Device becomes group leader - will respond to group commands
+- **Bit 7 set (1)**: Device is group member - will not respond to group commands
+- Device automatically sets bit 7 internally after becoming leader
+
+**Examples**:
 ```
-AA 00 21 01 FF 21  # Set device to address 1, group 0xFF
+AA 00 21 01 FF 21  # Device 1, group 0xFF member (bit 7 = 1)
+AA 00 21 01 70 91  # Device 1, group 0xF0 leader (bit 7 = 0, becomes 0xF0 internally)
+AA 00 21 02 F0 12  # Device 2, group 0xF0 member (bit 7 = 1)
 ```
 
 **Notes**:
-- Sent to address 0x00 (unaddressed)
+- Sent to address 0x00 (unaddressed) during initialization
+- Sent to device's current individual address when reconfiguring group membership
 - First Set Address after reset enables next device in chain
 - Used for auto-addressing during initialization
+- Only one device per group should be configured as leader
 
 ### 0x2 - Define Status
 

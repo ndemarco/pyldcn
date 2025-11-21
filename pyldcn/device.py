@@ -96,16 +96,22 @@ class LDCNDevice(ABC):
             # 2 bytes needed for bits 8-15 (servo extended status)
             self.send_command(CMD_DEFINE_STATUS, [status_bits & 0xFF, (status_bits >> 8) & 0xFF])
 
-    def set_address(self, individual_address: int, group_address: int) -> bytes:
+    def set_address(self, individual_address: int, group_address: int, is_leader: bool = False) -> bytes:
         """
         Set device's individual and group addresses.
 
         Updates both the hardware device and the local device object.
         After calling this method, the device will respond at the new addresses.
 
+        Group Leader Configuration (Hardware):
+        - If is_leader=True: Bit 7 of group_address is cleared before sending
+          The device will set bit 7 internally after becoming leader
+        - If is_leader=False: Bit 7 of group_address is set (default member)
+
         Args:
             individual_address: Individual address (1-127)
             group_address: Group address (128-255)
+            is_leader: True to make this device the group leader (default False)
 
         Returns:
             Response bytes from device
@@ -113,20 +119,39 @@ class LDCNDevice(ABC):
         Raises:
             ValueError: If addresses are out of range
 
-        Example:
-            device.set_address(1, 0xF0)  # Device 1, group 0xF0
+        Examples:
+            device.set_address(1, 0xF0)  # Device 1, group 0xF0 member
+            device.set_address(1, 0xF0, is_leader=True)  # Device 1, group 0xF0 leader
         """
         if not (1 <= individual_address <= 127):
             raise ValueError(f"Individual address must be 1-127, got {individual_address}")
         if not (128 <= group_address <= 255):
             raise ValueError(f"Group address must be 128-255, got {group_address}")
 
+        # Configure group leader bit in hardware
+        # Clear bit 7 to make device a leader, set bit 7 for member
+        if is_leader:
+            # Clear bit 7 - device becomes leader and will set it internally
+            group_byte = group_address & 0x7F
+        else:
+            # Ensure bit 7 is set - device is a member
+            group_byte = group_address | 0x80
+
         # Send SET_ADDRESS command
-        response = self.send_command(CMD_SET_ADDRESS, [individual_address, group_address])
+        response = self.send_command(CMD_SET_ADDRESS, [individual_address, group_byte])
 
         # Update local state
         self.address = individual_address
-        self.group_address = group_address
+        self.group_address = group_address  # Store actual group address (with bit 7)
+        self.is_group_leader = is_leader
+
+        # Update network's group leader tracking
+        if is_leader:
+            self.network._group_leaders[group_address] = individual_address
+        else:
+            # Remove from leaders if this device was previously the leader
+            if self.network._group_leaders.get(group_address) == individual_address:
+                del self.network._group_leaders[group_address]
 
         return response
 
