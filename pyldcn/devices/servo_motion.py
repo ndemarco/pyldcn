@@ -93,12 +93,6 @@ class Motion:
         traj_data = struct.pack("<Biii", traj_ctrl, position, velocity, accel)
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
-        # Cache last commanded motion parameters
-        self._state.position = position
-        self._state.velocity = velocity
-        self._state.pos_error = None  # will be updated on read
-        setattr(self._state, "accel", accel)
-
     # -------------------------------------------------------------------------
     # Homing
     # -------------------------------------------------------------------------
@@ -188,22 +182,44 @@ class Motion:
         # Set home mode
         self.set_home_mode(limit_switch=limit_switch, stop_mode="abrupt")
 
+        # Check if home_in_progress was set
+        status = self._device.read_status()
+        hip = status.get("flags", {}).get("home_in_progress", False)
+        status_byte = status.get("status", 0)
+        print(f"After SET_HOME_MODE: home_in_progress={hip}, status_byte=0x{status_byte:02X}")
+        if not hip:
+            print("WARNING: home_in_progress not set after SET_HOME_MODE!")
+            print(f"  Status flags: {status.get('flags', {})}")
+
         # Load velocity trajectory
         # Direction: forward for Limit 2, reverse for Limit 1
         direction_bit = 0 if limit_switch == 2 else 0x40
         traj_ctrl = 0x36 | direction_bit  # Bits: 1,2,4,5 + optional direction bit
         traj_data = struct.pack("<Biii", traj_ctrl, 0, velocity, accel)
+        print(f"Load velocity trajectory: ctrl=0x{traj_ctrl:02X}, vel={velocity}, accel={accel}, direction={'reverse' if direction_bit else 'forward'}")
         self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
         # Start motion
+        print("Starting motion...")
         self._device.send_command(CMD_START_MOTION, [])
 
         # Wait for homing to complete
         print("Waiting for limit switch...")
+        iteration = 0
         while True:
             status = self._device.read_status()
-            if not status.get("flags", {}).get("home_in_progress", False):
+            hip = status.get("flags", {}).get("home_in_progress", False)
+            status_byte = status.get("status", 0)
+            position = status.get("position", "N/A")
+
+            if iteration % 20 == 0:  # Print every second (20 * 0.05s)
+                print(f"  [{iteration*0.05:.1f}s] home_in_progress={hip}, status=0x{status_byte:02X}, pos={position}")
+
+            if not hip:
+                print(f"Homing flag cleared after {iteration*0.05:.1f}s")
                 break
+
+            iteration += 1
             time.sleep(0.05)
 
         print(f"Reached Limit {limit_switch}")
@@ -218,21 +234,43 @@ class Motion:
             # Set home mode for index
             self.set_home_mode(use_index=True, stop_mode="abrupt")
 
+            # Check if home_in_progress was set
+            status = self._device.read_status()
+            hip = status.get("flags", {}).get("home_in_progress", False)
+            status_byte = status.get("status", 0)
+            print(f"After SET_HOME_MODE (index): home_in_progress={hip}, status_byte=0x{status_byte:02X}")
+            if not hip:
+                print("WARNING: home_in_progress not set after SET_HOME_MODE for index!")
+                print(f"  Status flags: {status.get('flags', {})}")
+
             # Load velocity trajectory in opposite direction
             reverse_direction_bit = 0x40 if limit_switch == 2 else 0
             traj_ctrl = 0x36 | reverse_direction_bit
             traj_data = struct.pack("<Biii", traj_ctrl, 0, index_velocity, accel)
+            print(f"Load index trajectory: ctrl=0x{traj_ctrl:02X}, vel={index_velocity}, direction={'reverse' if reverse_direction_bit else 'forward'}")
             self._device.send_command(CMD_LOAD_TRAJECTORY, list(traj_data))
 
             # Start motion
+            print("Starting index search...")
             self._device.send_command(CMD_START_MOTION, [])
 
             # Wait for index capture
             print("Waiting for index pulse...")
+            iteration = 0
             while True:
                 status = self._device.read_status()
-                if not status.get("flags", {}).get("home_in_progress", False):
+                hip = status.get("flags", {}).get("home_in_progress", False)
+                status_byte = status.get("status", 0)
+                position = status.get("position", "N/A")
+
+                if iteration % 20 == 0:  # Print every second
+                    print(f"  [{iteration*0.05:.1f}s] home_in_progress={hip}, status=0x{status_byte:02X}, pos={position}")
+
+                if not hip:
+                    print(f"Index captured after {iteration*0.05:.1f}s")
                     break
+
+                iteration += 1
                 time.sleep(0.05)
 
             print("Homed to index pulse")
