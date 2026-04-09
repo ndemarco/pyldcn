@@ -1,54 +1,359 @@
+# TODO: NEEDS REVIEW
+# This file was merged from the nickydoes/pyldcn working branch (io.py expansion,
+# ~1420 lines added). It adds shadow state tracking, PWM output methods, and
+# SK2310g2/LS773 subclasses that were never reviewed against the primary implementation.
+# Review for correctness, conflicts with upstream changes, and integration with
+# the rest of the device layer before relying on it in production.
+
 """
-IOController Base Class
+I/O Controller Device Classes
 
-Abstract base class for LDCN I/O controllers (LS-773, SK-2310g2).
-
-Provides common functionality for I/O devices:
-- Digital output control with state tracking
-- PWM output control
-- Synchronized output operations
-- Counter/timer operations
-- Common bit manipulation utilities
+Base class for all I/O controllers and specific implementations
+(SK-2310g2, LS-773).
 
 Author: NickyDoes
 License: GPL v2 or later
 """
 
-from abc import ABC, abstractmethod
-from typing import List, Optional
+import time
+from abc import ABC
+from typing import Optional, Dict, Any
+
+# Import from parent package (modular architecture)
 from pyldcn.device import LDCNDevice
 from pyldcn.network import LDCNNetwork
+from pyldcn.protocol import CMD_READ_STATUS
+
+# Import SK-2310g2 specific status management
+from .status import SK2310g2Status
+from . import sk2310g2  # Keep for formatting utilities
 
 
 # =============================================================================
-# Common I/O Controller Commands
+# I/O Controller Base Class
 # =============================================================================
-
-CMD_SET_PWM_IO = 0x04  # Set PWM duty cycle
-CMD_SYNCH_OUTPUT = 0x05  # Apply staged outputs
-CMD_SET_OUTPUTS = 0x06  # Set all output states
-CMD_SET_SYNCH_OUTPUT = 0x07  # Stage outputs for sync
-CMD_SET_TIMER_MODE = 0x08  # Configure counter/timer
-CMD_SYNCH_INPUT = 0x0C  # Capture inputs atomically
-
 
 class IOController(LDCNDevice, ABC):
     """
-    Abstract base class for LDCN I/O controllers.
+    Generic I/O Controller Base Class
 
-    Provides common functionality for I/O devices like LS-773 and SK-2310g2:
-    - Digital output control with state persistence
-    - PWM output control
-    - Synchronized output operations
-    - Counter/timer operations
-    - Bit manipulation utilities
+    Provides common interface for all LDCN I/O controllers.
+    Specific I/O types (SK2310g2, LS773, etc.) inherit from this class.
 
-    Device-specific implementations must provide:
-    - PWM channel configuration
-    - Output validation logic
+    Common Features:
+    - Digital input reading
+    - Digital output control
+    - Analog I/O (device-specific)
+    - Status reporting
+    - Counter/timer functions (device-specific)
+
+    This base class establishes the interface that all I/O controllers
+    must implement, ensuring consistent API across different I/O types.
     """
 
-    DEVICE_ID = 0x02  # Common to all I/O controllers
+    def __init__(self, network: LDCNNetwork, address: int):
+        """
+        Initialize generic I/O controller.
+
+        Args:
+            network: Parent LDCNNetwork object
+            address: Device address (1-127)
+        """
+        super().__init__(network, address)
+        self.device_type = "IOController"
+
+        # Shadow state tracking (outputs are write-only, no hardware read support)
+        # "Shadow" = software copy of last written values, NOT readable from hardware
+        self._shadow_outputs = {'byte0': 0x00, 'byte1': 0x00}
+        self._shadow_pwm = {'pwm1': 255, 'pwm2': 255}  # Both OFF initially
+
+    def _reset_shadow_state(self) -> None:
+        """
+        Reset shadow state to initial values.
+
+        Called during initialization and after CMD_HARD_RESET.
+        Resets digital output shadows to 0x00 and PWM shadows to 255 (OFF).
+
+        Note: This is an internal method. "Shadow" refers to software tracking
+        of write-only hardware outputs.
+        """
+        self._shadow_outputs = {'byte0': 0x00, 'byte1': 0x00}
+        self._shadow_pwm = {'pwm1': 255, 'pwm2': 255}
+
+    def read_digital_outputs(self) -> Dict[str, int]:
+        """
+        Read shadow (tracked) digital output states.
+
+        IMPORTANT: Hardware does NOT support reading outputs. This returns
+        the shadow state - a software copy of the last written values.
+
+        Returns:
+            Dictionary with 'byte0' and 'byte1' keys containing shadow output states
+
+        Note:
+            For SK-2310g2, some outputs have special functions that may override
+            written values. Use SK2310g2.read_digital_outputs() for inferred states.
+        """
+        return self._shadow_outputs.copy()
+
+    def get_output_bit(self, bit: int) -> bool:
+        """
+        Get shadow state of a single output bit.
+
+        Args:
+            bit: Bit number (0-15)
+
+        Returns:
+            Boolean shadow state of the bit
+
+        Raises:
+            ValueError: If bit is out of range (0-15)
+        """
+        if not 0 <= bit <= 15:
+            raise ValueError(f"Bit must be 0-15, got {bit}")
+
+        if bit < 8:
+            return bool(self._shadow_outputs['byte0'] & (1 << bit))
+        else:
+            return bool(self._shadow_outputs['byte1'] & (1 << (bit - 8)))
+
+    def set_pwm_output(self, channel: int, value: int) -> None:
+        """
+        Set PWM output duty cycle.
+
+        Args:
+            channel: PWM channel (0 or 1)
+            value: PWM duty cycle (0-255, inverted: 0=100% ON, 255=OFF)
+
+        Raises:
+            ValueError: If channel is not 0 or 1, or value is not 0-255
+
+        Note:
+            PWM uses inverted logic:
+            - 0 = 100% duty cycle (full ON)
+            - 255 = 0% duty cycle (OFF)
+            - 128 = ~50% duty cycle
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Validate channel
+        if channel not in (0, 1):
+            raise ValueError(f"PWM channel must be 0 or 1, got {channel}")
+
+        # Validate value
+        if not 0 <= value <= 255:
+            raise ValueError(f"PWM value must be 0-255, got {value}")
+
+        # CMD_SET_PWM_IO always sends both channels
+        # Read current shadow state for the other channel
+        if channel == 0:
+            pwm1_value = value
+            pwm2_value = self._shadow_pwm['pwm2']
+        else:
+            pwm1_value = self._shadow_pwm['pwm1']
+            pwm2_value = value
+
+        # Send command with both PWM values
+        self.send_command(CMD_SET_PWM_IO, [pwm1_value, pwm2_value])
+
+        # Update shadow state
+        self._shadow_pwm['pwm1'] = pwm1_value
+        self._shadow_pwm['pwm2'] = pwm2_value
+
+    def read_pwm_output(self, channel: int) -> int:
+        """
+        Read shadow (tracked) PWM output state.
+
+        Args:
+            channel: PWM channel (0 or 1)
+
+        Returns:
+            PWM duty cycle shadow value (0-255, inverted: 0=100% ON, 255=OFF)
+
+        Raises:
+            ValueError: If channel is out of range (0-1)
+        """
+        if channel == 0:
+            return self._shadow_pwm['pwm1']
+        elif channel == 1:
+            return self._shadow_pwm['pwm2']
+        else:
+            raise ValueError(f"PWM channel must be 0 or 1, got {channel}")
+
+
+# =============================================================================
+# I/O Controller Commands
+# =============================================================================
+
+CMD_SET_PWM_IO = 0x04          # Set PWM duty cycle
+CMD_SYNCH_OUTPUT = 0x05        # Apply staged outputs
+CMD_SET_OUTPUTS = 0x06         # Set all output states
+CMD_SET_SYNCH_OUTPUT = 0x07    # Stage outputs for sync
+CMD_SET_TIMER_MODE = 0x08      # Configure counter/timer
+CMD_SYNCH_INPUT = 0x0C         # Capture inputs atomically
+
+
+# =============================================================================
+# Digital Input Bit Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+# Format: 16-bit word = Byte1:Byte0 (MSB:LSB)
+# CN6/CN7/CN14 physical inputs → Inputs/Byte0/Bits 0-7
+# Internal status signals → Inputs/Byte1/Bits 0-7
+
+# Byte0 - Application Inputs
+INPUT_PROGRAM_RUN = 0          # Bit 0: CN14 - Program run signal
+INPUT_PROGRAM_STOP = 1         # Bit 1: CN14 - Program stop signal
+INPUT_SPINDLE_OFF = 2          # Bit 2: CN6 - Spindle OFF (computed, see Note 1)
+INPUT_SPINDLE_FAULT = 3        # Bit 3: CN6 - Spindle fault status
+INPUT_SPINDLE_AT_SPEED = 4     # Bit 4: CN6 - Spindle at speed status
+INPUT_AIR_PRESSURE = 5         # Bit 5: CN7 - Air pressure OK
+INPUT_TOOL_LENGTH_SWITCH = 6   # Bit 6: CN7 - Tool length measurement switch
+INPUT_TOOL_CHANGER_CLOSED = 7  # Bit 7: CN7 - Tool changer cover closed
+
+# Byte1 - System Status Inputs
+INPUT_AT_HOME = 8              # Bit 0: System at home/safe zone
+INPUT_TEST_MODE = 9            # Bit 1: Test mode active
+INPUT_SERVO_FAULT = 10         # Bit 2: CN3 Safety Bus - Servo fault signal
+INPUT_STATUS_LED1 = 11         # Bit 3: LED1 status
+INPUT_STATUS_LED2 = 12         # Bit 4: LED2 status
+INPUT_STATUS_LED3 = 13         # Bit 5: LED3 status
+INPUT_STATUS_LED4 = 14         # Bit 6: LED4 status
+INPUT_STATUS_LED5 = 15         # Bit 7: LED5 status
+
+# Note 1: INPUT_SPINDLE_OFF computation (from manual page 19)
+# Spindle OFF = 1 when:
+#   - Spindle ON output (Outputs/Byte0/Bit2) = 0 AND
+#   - Spindle Stopped input (CN6 pin2) = HIGH
+
+
+# =============================================================================
+# Digital Output Bit Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+# Format: 16-bit word = Byte1:Byte0 (MSB:LSB)
+
+# Byte0 - Application Outputs
+OUTPUT_PROGRAM_RUNNING_LAMP = 0    # Bit 0: CN14 - Program running lamp
+OUTPUT_PROGRAM_STOPPED_LAMP = 1    # Bit 1: CN14 - Program stopped lamp
+OUTPUT_SPINDLE_ON = 2              # Bit 2: CN6/CN16 - Spindle ON (see Note 3, Note 4)
+OUTPUT_SPINDLE_DIRECTION = 3       # Bit 3: CN6 - Spindle direction (0=CW, 1=CCW)
+OUTPUT_SPINDLE_DC_BRAKE = 4        # Bit 4: CN6 - Spindle DC-braking or PWM
+OUTPUT_TOOL_CLAMP = 5              # Bit 5: CN7 - Tool clamp solenoid
+OUTPUT_SOLENOID_VALVE_2 = 6        # Bit 6: CN7 - Solenoid valve 2
+OUTPUT_SOLENOID_VALVE_3 = 7        # Bit 7: CN7 - Solenoid valve 3
+
+# Byte1 - System Control Outputs
+OUTPUT_TOOL_CHANGER_UNLOCK = 8     # Bit 0: CN7 - Tool changer cover unlock
+OUTPUT_GUARD_LOCK = 9              # Bit 1: CN9/CN10 - Guard lock control
+OUTPUT_HOME_ENABLE = 10            # Bit 2: See automation modes / Home enable
+OUTPUT_TEST_MODE_INHIBIT = 11      # Bit 3: Test mode inhibit control
+OUTPUT_SAFETY_LINK_BRIDGE = 12     # Bit 4: CN3 Safety Bus - Safety Link Bridge (see Note 3)
+OUTPUT_INVERTED_13 = 13            # Bit 5: CN7 - Inverted output (HIGH when bit=0)
+OUTPUT_COVERS_LOCK_UNLOCK = 14     # Bit 6: Reserved / Covers lock/unlock (see Note 5)
+OUTPUT_SYSTEM_LOCK = 15            # Bit 7: System lock / Power ON/OFF (see Note 6)
+
+# Note 3: CRITICAL SAFETY CONSTRAINT (from manual page 19)
+# OUTPUT_SPINDLE_ON (Bit 2) and OUTPUT_SAFETY_LINK_BRIDGE (Bit 12) cannot be used simultaneously.
+# If one of them is turned on (set to 1), the other one should NOT be activated.
+# To activate either output, the other one MUST be turned off (set to 0) first.
+# The firmware will THROW AN ERROR if both are set to 1 simultaneously.
+#
+# Note 4: See "Sample application – Spindle control Option 1" and "Option 2" for details
+# on J16/J20/J10 jumper configurations controlling spindle behavior.
+#
+# Note 5: J10-2 and J19 must be installed (short) to use OUTPUT_COVERS_LOCK_UNLOCK.
+#
+# Note 6: J21 must be installed (short) to enable software power control.
+
+
+# =============================================================================
+# Analog I/O Mappings (Page 19 of SK-2310g2 Manual)
+# =============================================================================
+
+# Analog Output (DAC)
+ANALOG_OUT_SPINDLE_SPEED = 0   # CN6.11: 0-10V spindle speed command
+
+# Analog Inputs (ADC)
+ANALOG_IN_SPINDLE_LOAD = 0     # CN6.10: 0-10V spindle load feedback
+ANALOG_IN_ADC2 = 1             # CN17.3: 0-5V general purpose
+ANALOG_IN_ADC3 = 2             # CN17.2: 0-5V general purpose
+
+
+class SK2310g2(IOController):
+    """
+    SK-2310g2 I/O Controller
+
+    Generic LDCN I/O controller device used in this application as a
+    supervisory controller with safety and spindle control functions.
+
+    Hardware Capabilities:
+    - Dual mechanical relay power control
+    - Spindle control with spindle enable mechanical relay (CN6)
+    - Dual line emergency stop monitoring
+    - Dual work zone "covers" contacts (guarded area monitoring)
+    - Dual safe zone sensor interface
+    - 3 analog inputs (0-5V or 0-10V)
+    - 1 analog output (CN6.11 is 0-10V spindle speed control)
+    - Digital I/O (16 inputs, 16 outputs)
+
+    Hardware Wiring (This Machine):
+    ===================================
+
+    SPINDLE CONTROL (CN6 → LS2315 CN7 pin-for-pin):
+    - CN6.2:  Spindle Stopped (from LS2315 CN7.2/8)
+    - CN6.3:  Spindle Fault (from LS2315 CN7.3)
+    - CN6.4:  Spindle At Speed (from LS2315 CN7.4)
+    - CN6.5:  Spindle ON enable (to LS2315 CN7.5)
+    - CN6.6:  Spindle Direction/Reverse (to LS2315 CN7.6)
+    - CN6.7:  Spindle DC-braking/PWM (to LS2315 CN7.7)
+    - CN6.10: Spindle LOAD analog feedback 0-10V (from LS2315 CN7.10)
+    - CN6.11: Spindle SPEED command 0-10V (to LS2315 CN7.11)
+
+    LS2315 also connects to Safety Bus via CN4/CN5 but is NOT an LDCN device.
+    See LS-2315-High-Performance-Spindle-Drive.pdf for full pinout details.
+
+    DOOR SAFETY SWITCH (CN9 → Schmersal AZM170-02ZK-2321):
+    - CN9.1-2:  Cover1 A contacts (dual-channel safety monitoring)
+    - CN9.5-6:  Cover1 B contacts (dual-channel safety monitoring)
+    - CN9.3-4:  Cover1 Unlock solenoid (+/-) - releases lock in Schmersal switch
+
+    The Schmersal AZM170-02ZK-2321 is a safety door switch with:
+      • Dual redundant safety contacts (A and B channels)
+      • Integrated electromagnetic lock solenoid
+      • Lock release via CN9.3-4 when unlock conditions are met:
+        - Spindle stopped AND Power is OFF, OR
+        - Spindle stopped AND machine in Safety Zone, OR
+        - Test Mode with Acknowledge (J20 setting dependent)
+
+    Jumper J16 2-3 short ensures Spindle ON is disabled when guards are open.
+    Jumper J20 open requires spindle stopped before guard unlock in Test Mode.
+    See pages 11-12 of SK-2310g2 manual for complete jumper configurations.
+
+    TOOL CHANGER & PNEUMATIC CONTROL (CN7):
+    - CN7.1 (Input 5):  Air Pressure OK sensor
+    - CN7.3 (Input 6):  Tool Length Measurement Switch
+    - CN7.5 (Input 7):  Tool Changer Cover Closed
+    - CN7.7 (Output 5): Tool Clamp Solenoid
+    - CN7.9 (Output 6): Solenoid Valve 2
+    - CN7.11 (Output 7): Solenoid Valve 3
+    - CN7.13 (Output 8): Tool Changer Unlock
+
+    Additional Attributes:
+        diagnostic_code: Last diagnostic code (LED display, see page 20)
+        power_state: Power button state
+        estop_state: Emergency stop state
+        digital_inputs: 16-bit digital input state
+        digital_outputs: 16-bit digital output state
+
+    Safety Notes:
+    =============
+    ⚠️  OUTPUT_SPINDLE_ON (Bit 2) and OUTPUT_SAFETY_LINK_BRIDGE (Bit 12)
+        CANNOT be active simultaneously (Note 3, page 19). Software will
+        validate this constraint and raise LDCNError if violated.
+
+    ⚠️  Current configuration uses Spindle Control Option 1:
+        J16 2-3 short, J20 open, J10.3 open
+        This provides maximum safety - spindle disabled when covers open.
+    """
 
     def __init__(self, network: LDCNNetwork, address: int):
         """
@@ -57,213 +362,487 @@ class IOController(LDCNDevice, ABC):
         Args:
             network: Parent LDCNNetwork object
             address: Device address (1-127)
+
+        🔴 UNVERIFIED - Not yet tested on hardware
         """
         super().__init__(network, address)
+        self.device_type = "SK-2310g2"
 
-        # Track output state (devices don't report this back)
-        self._output_byte0: int = 0x00
-        self._output_byte1: int = 0x00
+        # Status subsystem (replaces self.status_mask)
+        self._status = SK2310g2Status(self)
+
+        # Cached status values
+        self.diagnostic_code: Optional[int] = None
+        self.status_byte: Optional[int] = None
+        self.power_state: Optional[bool] = None
+        self.estop_state: Optional[bool] = None
+        self.digital_inputs: Optional[int] = None
 
     # -------------------------------------------------------------------------
-    # Abstract Methods - Device-specific behavior
+    # Configuration
     # -------------------------------------------------------------------------
 
-    @abstractmethod
-    def get_pwm_channels(self) -> List[int]:
+    def define_status(self, status_mask: int) -> None:
         """
-        Return list of available PWM channel numbers.
+        Configure which status items are returned in NOP responses.
+
+        Sends DEFINE_STATUS command to configure persistent status reporting.
+        Delegates to status subsystem for state tracking.
+
+        Args:
+            status_mask: Bitmask of status items to include (see SK2310g2Status.status_items)
+
+        Example:
+            device.define_status(0x01)  # Only digital inputs
+            device.define_status(0xFF)  # All status items
+        """
+        self._status.configure(status_mask)
+
+    def configure(self) -> None:
+        """
+        Configure I/O controller for full status reporting.
+
+        Sends DEFINE_STATUS with 0xFF (all 8 status items).
+        See SK2310g2Status.status_items for item definitions.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Request all status items: digital_inputs, analog_in_0-2, counter_timer,
+        # device_id, sync_inputs, sync_counter (bits 0-7, i.e., 0xFF)
+        self._status.configure(0xFF)
+        time.sleep(1.0)
+
+    def hard_reset(self) -> None:
+        """
+        Send HARD_RESET command to device.
+
+        Resets device to power-on defaults:
+        - Clears DEFINE_STATUS configuration (returns to 0x00)
+        - Resets all device state
+
+        Updates status subsystem's mask to match device default (0x00).
+        """
+        from pyldcn.protocol import CMD_HARD_RESET
+
+        # Send HARD_RESET command
+        self.send_command(CMD_HARD_RESET, [])
+
+        # Reset status subsystem's mask to match device default
+        self._status.status_mask = 0x00
+
+    # -------------------------------------------------------------------------
+    # Status Reading
+    # -------------------------------------------------------------------------
+
+    def read_status(self) -> Dict:
+        """
+        Read complete I/O controller status.
+
+        Returns complete status including SK-2310g2 specific digital inputs
+        and system state (Byte0/Byte1 from supervisory controller documentation).
 
         Returns:
-            List of PWM channel numbers supported by this device
+            {
+                'status': status_byte,
+                'device_id': int,
+                'version': int,
+                'byte0': int,              # SK-2310g2 digital inputs
+                'byte1': int,              # SK-2310g2 internal status
+                'analog_in_0/1/2': int,    # Analog input channels
+                'diagnostic': int,         # Extracted from byte1 bits [7:3]
+                'power_state': bool,
+                # Decoded Byte0 fields:
+                'input1': bool,
+                'input2': bool,
+                'spindle_stopped': bool,
+                'spindle_fault': bool,
+                'input3': bool,
+                'input4': bool,
+                'input5': bool,
+                'input6': bool,
+                # Decoded Byte1 fields:
+                'safe_state': bool,
+                'manual_override': bool,
+                'servo_fault': bool,
+            }
         """
-        pass
+        # Request all status items (0xFF = bits 0-7)
+        status = self._status.read(0xFF)
 
-    @abstractmethod
-    def _validate_outputs(self, byte0: int, byte1: int) -> None:
+        if not status:
+            return {}
+
+        # Update instance variables
+        self.diagnostic_code = status.get('diagnostic', 0)
+        self.status_byte = status.get('status', 0)
+        self.power_state = status.get('power_state', False)
+
+        return status
+
+    def read_diagnostic(self) -> int:
         """
-        Validate output bytes before sending to device.
-
-        Device-specific validation (e.g., safety constraints).
-
-        Args:
-            byte0: Output byte 0 (bits 0-7)
-            byte1: Output byte 1 (bits 8-15)
-
-        Raises:
-            ValueError: If output combination is invalid
-            LDCNError: If safety constraint is violated
-        """
-        pass
-
-    # -------------------------------------------------------------------------
-    # Digital Output Control
-    # -------------------------------------------------------------------------
-
-    def set_outputs(self, byte0: int = 0x00, byte1: int = 0x00) -> None:
-        """
-        Set all digital outputs immediately.
-
-        Args:
-            byte0: Output byte 0 (bits 0-7)
-            byte1: Output byte 1 (bits 8-15)
-
-        Raises:
-            ValueError: If validation fails
-        """
-        # Validate device-specific constraints
-        self._validate_outputs(byte0, byte1)
-
-        # Send command
-        self.send_command(CMD_SET_OUTPUTS, bytes([byte0, byte1]))
-
-        # Persist state (device doesn't report output state)
-        self._output_byte0 = byte0
-        self._output_byte1 = byte1
-
-    def get_output_state(self) -> tuple[int, int]:
-        """
-        Return cached output state.
+        Read diagnostic code (LED display value).
 
         Returns:
-            Tuple of (byte0, byte1)
-        """
-        return (self._output_byte0, self._output_byte1)
+            Diagnostic code (0x00-0xFF)
 
-    def set_output_bit(self, bit: int, state: bool) -> None:
+        See page 20 of manual for diagnostic code table.
+        Use decode_diagnostic() to get human-readable description.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        Set a single output bit while preserving others.
+        status = self.read_status()
+        return status.get('diagnostic', 0)
+
+    def decode_diagnostic(self, diag_code: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Decode diagnostic code to human-readable system state.
+
+        Uses the diagnostic table from page 20 of the SK-2310g2 manual.
 
         Args:
-            bit: Output bit number (0-15)
-            state: True to set bit, False to clear bit
+            diag_code: Diagnostic code to decode (if None, reads current)
 
-        Raises:
-            ValueError: If bit out of range or validation fails
+        Returns:
+            Dictionary with:
+            - 'code': Diagnostic code (0x00-0xFF)
+            - 'description': Human-readable description
+            - 'power_enable': True if Power Enable is ON (TODO: Determine if this is a state - flashing power LED?)
+            - 'power_relays': True if Power A & B relays are ON
+            - 'motor_power_on': True if motor power is actually ON
+            - 'byte1_bits': Dict of Byte1 status bits (bits 7,6,5,4,3)
+            - 'led_states': List of LED numbers that should be lit
+            - 'details': Additional state details
+
+        🔴 UNVERIFIED - Not yet tested on hardware
         """
-        if not 0 <= bit <= 15:
-            raise ValueError(f"Bit {bit} out of range. Must be 0-15")
+        if diag_code is None:
+            diag_code = self.read_diagnostic()
 
-        # Calculate new output state
-        if bit < 8:
-            new_byte0 = self._set_bit(self._output_byte0, bit, state)
-            new_byte1 = self._output_byte1
-        else:
-            new_byte0 = self._output_byte0
-            new_byte1 = self._set_bit(self._output_byte1, bit - 8, state)
+        # Extract Byte1 bits from diagnostic code (bits 7,6,5,4,3)
+        bit7 = (diag_code >> 7) & 0x01  # Power Enable
+        bit6 = (diag_code >> 6) & 0x01
+        bit5 = (diag_code >> 5) & 0x01
+        bit4 = (diag_code >> 4) & 0x01
+        bit3 = (diag_code >> 3) & 0x01
 
-        # Set outputs (includes validation)
-        self.set_outputs(new_byte0, new_byte1)
+        # Diagnostic code lookup table from page 20
+        DIAGNOSTIC_TABLE = {
+            0x01: {
+                'desc': 'Initializing',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3,4],
+                'details': 'System initialization in progress'
+            },
+            0x02: {
+                'desc': 'Control voltage shorted',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3,5],
+                'details': 'Control voltage short circuit detected'
+            },
+            0x03: {
+                'desc': 'Output shorted',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,3],
+                'details': 'Output short circuit detected'
+            },
+            0x04: {
+                'desc': 'Control voltage low (<18V)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,4,5],
+                'details': 'Control voltage below 18V'
+            },
+            0x05: {
+                'desc': 'Safe / Manual switch malfunction (both contacts ON)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,4],
+                'details': 'Both Safe or Manual Mode switch contacts are ON'
+            },
+            0x06: {
+                'desc': 'Power-up Safe error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2,5],
+                'details': 'Machine Safe error detected at power-up'
+            },
+            0x07: {
+                'desc': 'Power-up Manual Override Mode error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,2],
+                'details': 'Manual Override Mode switch error detected at power-up'
+            },
+            0x08: {
+                'desc': 'System Locked',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,4,5],
+                'details': 'System locked via software command'
+            },
+            0x09: {
+                'desc': 'Watchdog Timeout',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,4],
+                'details': 'Watchdog timer expired'
+            },
+            0x0A: {
+                'desc': 'Safety Link Error',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3,5],
+                'details': 'Safety Link daisy-chain broken. Check each device status'
+            },
+            0x0B: {
+                'desc': 'Guard Open Stop (Spindle not stopped)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,3],
+                'details': 'Guard open while spindle was moving'
+            },
+            0x0C: {
+                'desc': 'Guard Open Stop (machine not safe)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,4,5],
+                'details': 'Guard open and machine not safe'
+            },
+            0x0D: {
+                'desc': 'Guard Open Stop (Manual mode without Acknowledge)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,4],
+                'details': 'Guard open in Manual mode without Acknowledge pressed'
+            },
+            0x0E: {
+                'desc': 'Guard contact Fault',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1,5],
+                'details': 'One or more guard contacts malfunctioning'
+            },
+            0x0F: {
+                'desc': 'Limit Switch Stop',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [1],
+                'details': 'Limit switch activated'
+            },
+            0x10: {
+                'desc': 'Emergency Stop',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,4,5],
+                'details': 'Emergency stop button pressed'
+            },
+            0x11: {
+                'desc': 'Emergency Stop contact malfunction or Monitor Loop open',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,4],
+                'details': 'E-stop contact failure or relay monitor loop open'
+            },
+            0x12: {
+                'desc': 'Power ON button busy (>6sec) or Monitor Loop open',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,3,5],
+                'details': 'Power button held >6sec or safety relay fault'
+            },
+            0x13: {
+                'desc': 'Motor Power Supply under-voltage',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [2,3],
+                'details': 'Motor power supply (UM) voltage too low'
+            },
+            0x14: {
+                'desc': 'Guards open (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,4,5],
+                'details': 'Both guards open, Power LED flashing'
+            },
+            0x15: {
+                'desc': 'Guard 1 closed, Guard 2 open (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,4],
+                'details': 'Guard 1 closed, Guard 2 open, Power LED flashing'
+            },
+            0x16: {
+                'desc': 'Guard 1 open, Guard 2 closed (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2,5],
+                'details': 'Guard 1 open, Guard 2 closed, Power LED flashing'
+            },
+            0x17: {
+                'desc': 'Both Guards closed (ready to power)',
+                'power_enable': False,
+                'power_ab': False,
+                'leds': [2],
+                'details': 'Both guards closed, Power LED flashing'
+            },
+            0x18: {
+                'desc': 'Both guards open, Manual mode enabled',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,4,5],
+                'details': 'Manual mode active with guards open'
+            },
+            0x19: {
+                'desc': 'Guard 1 closed, Guard 2 open, Manual mode enabled',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,4],
+                'details': 'Manual mode: Guard 1 closed, Guard 2 open'
+            },
+            0x1A: {
+                'desc': 'Guard 1 open, Guard 2 closed, Manual mode enabled',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3,5],
+                'details': 'Manual mode: Guard 1 open, Guard 2 closed'
+        },
+            0x1B: {
+                'desc': 'Both guards closed, Manual Mode',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [3],
+                'details': 'Manual mode active with both guards closed'
+            },
+            0x1C: {
+                'desc': 'Machine safe, spindle stopped, guards open',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [4,5],
+                'details': 'Machine safe, spindle stopped, guards open'
+            },
+            0x1D: {
+                'desc': 'Machine safe, spindle stopped, Guard 1 closed, Guard 2 open',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [4],
+                'details': 'Machine safe with Guard 1 closed, Guard 2 open'
+            },
+            0x1E: {
+                'desc': 'Machine safe, spindle stopped, Guard 1 open, Guard 2 closed',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [5],
+                'details': 'Machine safe with Guard 1 open, Guard 2 closed'
+            },
+            0x1F: {
+                'desc': 'Normal operation - Guards closed',
+                'power_enable': True,
+                'power_ab': True,
+                'leds': [],
+                'details': 'All systems ready, guards closed, powered'
+            },
+            0x00: {
+                'desc': 'Power OFF delay in progress',
+                'power_enable': False,
+                'power_ab': True,
+                'leds': [1,2,3,4,5],
+                'details': 'Power OFF command delay (per J2 setting)'
+            },
+        }
+
+        # Lookup diagnostic info
+        diag_info = DIAGNOSTIC_TABLE.get(diag_code, {
+            'desc': f'Unknown diagnostic code 0x{diag_code:02X}',
+            'power_enable': bit7 == 1,
+            'power_ab': (bit7 == 1 and bit6 == 0) or diag_code == 0x00,
+            'leds': [],
+            'details': 'See manual page 20 for this code'
+        })
+
+        # Motor power is ON when BOTH Power Enable AND Power A&B relays are ON
+        motor_power_on = diag_info['power_enable'] and diag_info['power_ab']
+
+        return {
+            'code': diag_code,
+            'code_hex': f'0x{diag_code:02X}',
+            'code_binary': f'{diag_code:08b}',
+            'description': diag_info['desc'],
+            'details': diag_info['details'],
+            'power_enable': diag_info['power_enable'],
+            'power_relays_on': diag_info['power_ab'],
+            'motor_power_on': motor_power_on,
+            'byte1_bits': {
+                'bit7_power_enable': bool(bit7),
+                'bit6': bool(bit6),
+                'bit5': bool(bit5),
+                'bit4': bool(bit4),
+                'bit3': bool(bit3),
+            },
+            'led_states': diag_info['leds'],
+        }
+
+    def get_system_state(self) -> Dict[str, Any]:
+        """
+        Get comprehensive system state combining diagnostic and I/O status.
+
+        Returns:
+            Dictionary with complete system state:
+            - 'diagnostic': Decoded diagnostic information
+            - 'motor_power_on': True if motor power relays are energized
+            - 'spindle_status': Spindle state (off/fault/at_speed)
+            - 'safety_status': Safety system state
+            - 'io_status': Digital I/O states
+            - 'guard_status': Door/guard states
+            - 'system_ready': True if system is operational
+
+        This provides a complete snapshot of machine state.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Read diagnostic
+        diagnostic = self.decode_diagnostic()
+
+        # Read digital inputs
+        io_states = self.read_input_states()
+
+        # Read spindle status
+        spindle = self.read_spindle_status()
+
+        # Determine overall system readiness
+        system_ready = (
+            diagnostic['motor_power_on'] and
+            not io_states['servo_fault'] and
+            not spindle['fault']
+        )
+
+        return {
+            'diagnostic': diagnostic,
+            'motor_power_on': diagnostic['motor_power_on'],
+            'spindle_status': {
+                'off': spindle['off'],
+                'fault': spindle['fault'],
+                'at_speed': spindle['at_speed'],
+                'load_voltage': spindle.get('load_voltage'),
+            },
+            'safety_status': {
+                'at_home': io_states['at_home'],
+                'test_mode': io_states['test_mode'],
+                'servo_fault': io_states['servo_fault'],
+            },
+            'io_status': {
+                'air_pressure_ok': io_states['air_pressure_ok'],
+                'tool_length_switch': io_states['tool_length_switch'],
+                'tool_changer_closed': io_states['tool_changer_closed'],
+            },
+            'system_ready': system_ready,
+        }
 
     # -------------------------------------------------------------------------
-    # PWM Output Control
-    # -------------------------------------------------------------------------
-
-    def set_pwm(self, channel: int, duty_cycle: int) -> None:
-        """
-        Set PWM duty cycle for a channel.
-
-        Args:
-            channel: PWM channel number
-            duty_cycle: 0-255 (0% to 100%)
-
-        Raises:
-            ValueError: If invalid channel or duty cycle
-        """
-        if channel not in self.get_pwm_channels():
-            raise ValueError(
-                f"Invalid PWM channel {channel}. "
-                f"Supported channels: {self.get_pwm_channels()}"
-            )
-
-        if not 0 <= duty_cycle <= 255:
-            raise ValueError(f"Duty cycle {duty_cycle} out of range. Must be 0-255")
-
-        self.send_command(CMD_SET_PWM_IO, bytes([channel, duty_cycle]))
-
-    # -------------------------------------------------------------------------
-    # Synchronized Output Operations
-    # -------------------------------------------------------------------------
-
-    def sync_output(self, time_ms: float) -> None:
-        """
-        Synchronize output changes across network.
-
-        All devices that have received SET_SYNCH_OUTPUT commands will
-        apply their staged outputs at this synchronized time.
-
-        Args:
-            time_ms: Synchronization time in milliseconds
-        """
-        # Convert milliseconds to 5MHz clock ticks
-        time_5mhz = int((time_ms / 1000.0) * 5_000_000)
-        time_bytes = time_5mhz.to_bytes(4, byteorder='little')
-        self.send_command(CMD_SYNCH_OUTPUT, time_bytes)
-
-    def set_sync_output(self, byte0: int, byte1: int, time_ms: float) -> None:
-        """
-        Set outputs to be applied at synchronized time.
-
-        Stages output changes to be applied when sync_output() is called.
-
-        Args:
-            byte0: Output byte 0 (bits 0-7)
-            byte1: Output byte 1 (bits 8-15)
-            time_ms: Synchronization time in milliseconds
-
-        Raises:
-            ValueError: If validation fails
-        """
-        # Validate device-specific constraints
-        self._validate_outputs(byte0, byte1)
-
-        # Convert time to 5MHz clock ticks
-        time_5mhz = int((time_ms / 1000.0) * 5_000_000)
-        time_bytes = time_5mhz.to_bytes(4, byteorder='little')
-
-        # Send staged output command
-        data = bytes([byte0, byte1]) + time_bytes
-        self.send_command(CMD_SET_SYNCH_OUTPUT, data)
-
-        # Update cached state (will be applied at sync time)
-        self._output_byte0 = byte0
-        self._output_byte1 = byte1
-
-    # -------------------------------------------------------------------------
-    # Counter/Timer Operations
-    # -------------------------------------------------------------------------
-
-    def set_timer_mode(self, mode: int) -> None:
-        """
-        Set counter/timer mode.
-
-        Args:
-            mode: Timer mode value (device-specific)
-
-        Raises:
-            ValueError: If mode out of range
-        """
-        if not 0 <= mode <= 255:
-            raise ValueError(f"Timer mode {mode} out of range. Must be 0-255")
-
-        self.send_command(CMD_SET_TIMER_MODE, bytes([mode]))
-
-    def sync_input(self, time_ms: float) -> None:
-        """
-        Capture input state and counter at synchronized time.
-
-        Atomically captures digital inputs and counter/timer value.
-        Use status read with sync_inputs/sync_counter bits to retrieve.
-
-        Args:
-            time_ms: Synchronization time in milliseconds
-        """
-        # Convert time to 5MHz clock ticks
-        time_5mhz = int((time_ms / 1000.0) * 5_000_000)
-        time_bytes = time_5mhz.to_bytes(4, byteorder='little')
-        self.send_command(CMD_SYNCH_INPUT, time_bytes)
-
-    # -------------------------------------------------------------------------
-    # Bit Manipulation Utilities
+    # Bit Manipulation Helpers
     # -------------------------------------------------------------------------
 
     @staticmethod
@@ -273,7 +852,7 @@ class IOController(LDCNDevice, ABC):
 
         Args:
             value: Integer value
-            bit: Bit position (0-7 for byte operations)
+            bit: Bit position (0-15)
 
         Returns:
             True if bit is set, False otherwise
@@ -287,7 +866,7 @@ class IOController(LDCNDevice, ABC):
 
         Args:
             value: Current integer value
-            bit: Bit position (0-7 for byte operations)
+            bit: Bit position (0-15)
             state: True to set bit, False to clear bit
 
         Returns:
@@ -297,3 +876,852 @@ class IOController(LDCNDevice, ABC):
             return value | (1 << bit)
         else:
             return value & ~(1 << bit)
+
+    # -------------------------------------------------------------------------
+    # Digital I/O Control
+    # -------------------------------------------------------------------------
+
+    def _validate_spindle_safety_constraint(self, outputs: int) -> None:
+        """
+        Validate Note 3 safety constraint from page 19 of manual.
+
+        Spindle ON (Bit 2) and Safety Link Bridge (Bit 12) cannot be
+        active simultaneously. This is a hardware safety requirement.
+
+        Args:
+            outputs: Proposed 16-bit output value
+
+        Raises:
+            LDCNError: If both bits are set to 1 simultaneously
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        from pyldcn.network import LDCNError
+
+        spindle_on = self._get_bit(outputs, OUTPUT_SPINDLE_ON)
+        safety_bridge = self._get_bit(outputs, OUTPUT_SAFETY_LINK_BRIDGE)
+
+        if spindle_on and safety_bridge:
+            raise LDCNError(
+                "Safety constraint violated: OUTPUT_SPINDLE_ON (Bit 2) and "
+                "OUTPUT_SAFETY_LINK_BRIDGE (Bit 12) cannot be active simultaneously. "
+                "See Note 3 on page 19 of SK-2310g2 manual. "
+                f"Current outputs: 0x{outputs:04X}"
+            )
+
+    def set_outputs(self, outputs: int, validate_safety: bool = True) -> None:
+        """
+        Set all 16 digital outputs immediately.
+
+        Args:
+            outputs: 16-bit output state (bit 0 = Output 0, ..., bit 15 = Output 15)
+            validate_safety: If True, validate Note 3 constraint (default: True)
+
+        Output mapping (SK-2310g2) from page 19:
+        - Byte 0 (bits 0-7): Application outputs
+          - Bit 0: Program running lamp
+          - Bit 1: Program stopped lamp
+          - Bit 2: Spindle ON (⚠️ Note 3 constraint)
+          - Bit 3: Spindle direction (0=CW, 1=CCW)
+          - Bit 4: Spindle DC-braking/PWM
+          - Bit 5: Tool clamp
+          - Bit 6: Solenoid valve 2
+          - Bit 7: Solenoid valve 3
+
+        - Byte 1 (bits 8-15): System control outputs
+          - Bit 8: Tool changer unlock
+          - Bit 9: Guard lock
+          - Bit 10: Home enable
+          - Bit 11: Test mode inhibit
+          - Bit 12: Safety Link Bridge (⚠️ Note 3 constraint)
+          - Bit 13: Inverted output 13
+          - Bit 14: Reserved / Covers lock/unlock
+          - Bit 15: System lock / Power ON/OFF
+
+        Example:
+            # Enable spindle forward
+            device.set_outputs(0x0004)  # Bit 2 = Spindle ON
+
+            # Enable spindle reverse
+            device.set_outputs(0x000C)  # Bit 2 = ON, Bit 3 = reverse
+
+        Raises:
+            LDCNError: If safety constraint is violated
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if validate_safety:
+            self._validate_spindle_safety_constraint(outputs)
+
+        byte0 = outputs & 0xFF
+        byte1 = (outputs >> 8) & 0xFF
+        self.send_command(CMD_SET_OUTPUTS, [byte0, byte1])
+
+        # Update shadow state (outputs are write-only, no hardware read support)
+        self._shadow_outputs['byte0'] = byte0
+        self._shadow_outputs['byte1'] = byte1
+
+    def set_output_bit(self, bit: int, state: bool) -> None:
+        """
+        Set a single output bit while preserving other outputs.
+
+        Args:
+            bit: Output bit number (0-15)
+            state: True to set bit, False to clear bit
+
+        Raises:
+            LDCNError: If safety constraint would be violated
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Read current shadow state
+        shadow = self.read_digital_outputs()
+        current_outputs = shadow['byte0'] | (shadow['byte1'] << 8)
+
+        new_outputs = self._set_bit(current_outputs, bit, state)
+        self.set_outputs(new_outputs)
+
+    def read_power_state(self) -> bool:
+        """
+        Read power button state from status bit 3.
+
+        Returns:
+            True if power ON, False if power OFF
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        status = self.read_status()
+        return status.get('power_state', False)
+
+    # -------------------------------------------------------------------------
+    # Power and Safety Monitoring
+    # -------------------------------------------------------------------------
+
+    def power_on(self, timeout: Optional[float] = None, verbose: bool = True) -> bool:
+        """
+        Turn on motor power using software control or physical button.
+
+        Attempts software power-on by toggling bit 15 (System Lock/Power ON/OFF).
+        If software control fails, prompts user to press physical power button.
+
+        Sequence:
+        1. Check if already powered on
+        2. Attempt software power-on (toggle bit 15 for 100ms)
+        3. Check if power state changed to ON (diagnostic 0x13 or 0x18-0x1F)
+        4. If not, prompt user to press physical button
+        5. Wait for power ON with timeout
+
+        Args:
+            timeout: Maximum wait time for power-on (seconds, None = infinite)
+            verbose: If True, print status updates
+
+        Returns:
+            True if power successfully turned on, False if timeout
+
+        Note:
+            Software control requires J21 shorted (pins 1-2).
+            With J21 open (default), only physical button works.
+        """
+        # Check if already powered on
+        if self.read_power_state():
+            if verbose:
+                print("✓ Power already ON")
+            return True
+
+        if verbose:
+            print("Attempting software power-on (bit 15 toggle)...")
+
+        # Attempt software power-on: toggle bit 15
+        try:
+            # Get current shadow state
+            shadow = self.read_digital_outputs()
+            current_outputs = shadow['byte0'] | (shadow['byte1'] << 8)
+
+            # Set bit 15 HIGH
+            outputs_high = current_outputs | (1 << OUTPUT_SYSTEM_LOCK)
+            self.set_outputs(outputs_high, validate_safety=False)
+            time.sleep(0.1)  # Hold for 100ms
+
+            # Set bit 15 LOW
+            outputs_low = current_outputs & ~(1 << OUTPUT_SYSTEM_LOCK)
+            self.set_outputs(outputs_low, validate_safety=False)
+            time.sleep(0.2)  # Wait for state change
+
+            # Check if power turned on
+            if self.read_power_state():
+                if verbose:
+                    print("✓ Software power-on successful!")
+                return True
+
+            if verbose:
+                print("  Software control failed (J21 may be open)")
+
+        except Exception as e:
+            if verbose:
+                print(f"  Software control failed: {e}")
+
+        # Fall back to physical button
+        self.request_power_on()
+        return self.wait_for_power_button(timeout=timeout, poll_rate=0.1, verbose=verbose)
+
+    def request_power_on(self, message: str = "Please press the POWER button to continue...") -> None:
+        """
+        Display operator notification requesting power button press.
+
+        This is a helper method to provide clear feedback to the operator
+        before calling wait_for_power_button().
+
+        Args:
+            message: Custom message to display (default: standard request)
+
+        Note: With J21 open (default), power can ONLY be enabled via physical button.
+              To enable software control, short J21 pins 1-2 on the SK2310g2.
+        """
+        print(f"\n{'='*60}")
+        print(f"POWER REQUIRED")
+        print(f"{'='*60}")
+        print(f"{message}")
+        print(f"Waiting for power state change...")
+        print(f"{'='*60}\n")
+
+    def wait_for_power_button(self, timeout: Optional[float] = None, poll_rate: float = 0.1, verbose: bool = False) -> bool:
+        """
+        Wait for power button press detection.
+
+        Continuously monitors power state until transition from OFF to ON.
+
+        Args:
+            timeout: Maximum wait time (None = infinite)
+            poll_rate: Status polling rate (seconds)
+            verbose: If True, print status updates while waiting
+
+        Returns:
+            True if power button pressed, False if timeout
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        start_time = time.time()
+        last_status_time = 0.0
+
+        while True:
+            power_state = self.read_power_state()
+
+            if power_state:
+                if verbose:
+                    print("\n✓ Power ON detected!")
+                return True
+
+            # Print periodic status if verbose
+            if verbose:
+                current_time = time.time()
+                if current_time - last_status_time >= 2.0:  # Every 2 seconds
+                    elapsed = current_time - start_time
+                    print(f"  Waiting... ({elapsed:.1f}s elapsed)")
+                    last_status_time = current_time
+
+            if timeout is not None:
+                elapsed = time.time() - start_time
+                if elapsed >= timeout:
+                    if verbose:
+                        print(f"\n✗ Timeout after {elapsed:.1f}s")
+                    return False
+
+            time.sleep(poll_rate)
+
+    def read_estop_state(self) -> bool:
+        """
+        Read emergency stop state (dual line monitoring).
+
+        Returns:
+            True if E-stop is OK, False if E-stop is active
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  Implementation TBD - depends on I/O channel mapping
+        """
+        # TBD: Read appropriate digital inputs
+        raise NotImplementedError("E-stop monitoring not yet implemented - I/O mapping TBD")
+
+    def read_guard_state(self) -> bool:
+        """
+        Read work zone guard state (guarded area contacts).
+
+        Returns:
+            True if guards closed (safe), False if any guard open
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  Implementation TBD - depends on I/O channel mapping
+        """
+        # TBD: Read appropriate digital inputs
+        raise NotImplementedError("Guard monitoring not yet implemented - I/O mapping TBD")
+
+    def read_safe_zone_state(self) -> bool:
+        """
+        Read safe zone sensor state (dual sensor interface).
+
+        Returns:
+            True if safe zone clear, False if zone occupied
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  Implementation TBD - depends on I/O channel mapping
+        """
+        # TBD: Read appropriate digital inputs
+        raise NotImplementedError("Safe zone monitoring not yet implemented - I/O mapping TBD")
+
+    # -------------------------------------------------------------------------
+    # Digital Input Reading
+    # -------------------------------------------------------------------------
+
+    def read_digital_inputs(self) -> int:
+        """
+        Read all 16 digital input states.
+
+        Returns:
+            16-bit digital input value
+
+        Input mapping (SK-2310g2) from page 19:
+        - Byte 0 (bits 0-7): Application inputs
+          - Bit 0: Program run
+          - Bit 1: Program stop
+          - Bit 2: Spindle OFF (computed)
+          - Bit 3: Spindle fault
+          - Bit 4: Spindle at speed
+          - Bit 5: Air pressure OK
+          - Bit 6: Tool length measurement switch
+          - Bit 7: Tool changer closed
+
+        - Byte 1 (bits 8-15): System status
+          - Bit 8: At home/safe zone
+          - Bit 9: Test mode active
+          - Bit 10: Servo fault
+          - Bits 11-15: Status LEDs
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        status = self.read_status()
+        return status.get('digital_inputs', 0)
+
+    def get_input_bit(self, bit: int) -> bool:
+        """
+        Read a single digital input bit.
+
+        Args:
+            bit: Input bit number (0-15)
+
+        Returns:
+            True if input is HIGH, False if LOW
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        inputs = self.read_digital_inputs()
+        return self._get_bit(inputs, bit)
+
+    def read_input_states(self) -> Dict[str, bool]:
+        """
+        Read all digital inputs and return as named dictionary.
+
+        Returns:
+            Dictionary mapping input names to boolean states
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        inputs = self.read_digital_inputs()
+
+        return {
+            # Application inputs (Byte0)
+            'program_run': self._get_bit(inputs, INPUT_PROGRAM_RUN),
+            'program_stop': self._get_bit(inputs, INPUT_PROGRAM_STOP),
+            'spindle_off': self._get_bit(inputs, INPUT_SPINDLE_OFF),
+            'spindle_fault': self._get_bit(inputs, INPUT_SPINDLE_FAULT),
+            'spindle_at_speed': self._get_bit(inputs, INPUT_SPINDLE_AT_SPEED),
+            'air_pressure_ok': self._get_bit(inputs, INPUT_AIR_PRESSURE),
+            'tool_length_switch': self._get_bit(inputs, INPUT_TOOL_LENGTH_SWITCH),
+            'tool_changer_closed': self._get_bit(inputs, INPUT_TOOL_CHANGER_CLOSED),
+
+            # System status (Byte1)
+            'at_home': self._get_bit(inputs, INPUT_AT_HOME),
+            'test_mode': self._get_bit(inputs, INPUT_TEST_MODE),
+            'servo_fault': self._get_bit(inputs, INPUT_SERVO_FAULT),
+        }
+
+    # -------------------------------------------------------------------------
+    # Analog I/O
+    # -------------------------------------------------------------------------
+
+    def read_analog_inputs(self) -> Dict[int, float]:
+        """
+        Read all analog input values (3 channels).
+
+        Returns:
+            Dictionary of {channel: voltage} pairs
+
+        Channels:
+        - 0: CN6.10 - Spindle load feedback (0-10V)
+        - 1: CN17.3 - ADC2 general purpose (0-5V)
+        - 2: CN17.2 - ADC3 general purpose (0-5V)
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  Status response format needs to be determined from hardware testing
+        """
+        status = self.read_status()
+        # TBD: Extract analog values from status response
+        # This depends on the actual response format which needs hardware verification
+        return {
+            0: 0.0,  # Spindle load
+            1: 0.0,  # ADC2
+            2: 0.0,  # ADC3
+        }
+
+    def set_analog_output(self, channel: int, voltage: float) -> None:
+        """
+        Set analog output voltage.
+
+        Args:
+            channel: Output channel (0 = CN6.11 spindle speed)
+            voltage: Output voltage (0.0 - 10.0V)
+
+        Raises:
+            ValueError: If voltage out of range or invalid channel
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  Command format needs to be determined from hardware testing
+        """
+        if channel != 0:
+            raise ValueError(f"Invalid analog output channel: {channel}. Only channel 0 (spindle speed) is supported.")
+
+        if not 0.0 <= voltage <= 10.0:
+            raise ValueError(f"Voltage {voltage}V out of range. Must be 0.0-10.0V")
+
+        # TBD: Implement actual analog output command
+        # This may use CMD_SET_PWM_IO or a different command
+        # Need to verify with hardware
+        raise NotImplementedError("Analog output command format TBD - needs hardware verification")
+
+    # -------------------------------------------------------------------------
+    # Spindle Control (Connected LS2315 via CN6 → CN7)
+    # -------------------------------------------------------------------------
+
+    def set_spindle_speed_voltage(self, voltage: float) -> None:
+        """
+        Set spindle speed via 0-10V analog output to LS2315.
+
+        The LS2315 interprets the voltage as speed command:
+        - 0V = stopped
+        - 10V = maximum RPM (50K/60K/100K depending on DIP switch)
+
+        Args:
+            voltage: Speed command voltage (0.0 - 10.0V)
+
+        Raises:
+            ValueError: If voltage out of range
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_analog_output(ANALOG_OUT_SPINDLE_SPEED, voltage)
+
+    def set_spindle_speed_percent(self, speed_percent: float) -> None:
+        """
+        Set spindle speed as percentage of maximum.
+
+        Args:
+            speed_percent: Speed as percentage (0.0 - 100.0)
+
+        Raises:
+            ValueError: If speed_percent out of range
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if not 0.0 <= speed_percent <= 100.0:
+            raise ValueError(f"Speed {speed_percent}% out of range. Must be 0.0-100.0%")
+
+        voltage = (speed_percent / 100.0) * 10.0
+        self.set_spindle_speed_voltage(voltage)
+
+    def enable_spindle(self, direction: str = 'forward') -> None:
+        """
+        Enable spindle via OUTPUT_SPINDLE_ON and set direction.
+
+        This sets:
+        - OUTPUT_SPINDLE_ON (Bit 2) = 1  (enables LS2315)
+        - OUTPUT_SPINDLE_DIRECTION (Bit 3) = 0 for CW, 1 for CCW
+
+        Hardware behavior (from manual page 7, CN6 description):
+        - CN6.5 (Spindle ON) goes HIGH → LS2315 CN7.5 SpindleENABLE
+        - CN6.6 (Direction) controls → LS2315 CN7.6 SpindleREVERSE
+
+        Jumper Configuration (Option 1 - this machine):
+        - J16 2-3 short: Spindle ON disabled when guards are open
+        - J20 open: Spindle must be stopped before guard unlock in Manual mode
+        - J10.3 open: Spindle operation NOT enabled in Manual mode
+
+        Args:
+            direction: 'forward' (CW) or 'reverse' (CCW)
+
+        Raises:
+            ValueError: If invalid direction
+            LDCNError: If safety constraint violated (Note 3)
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        if direction not in ('forward', 'reverse'):
+            raise ValueError(f"Invalid direction: {direction}. Must be 'forward' or 'reverse'")
+
+        # Read current shadow state
+        shadow = self.read_digital_outputs()
+        current_outputs = shadow['byte0'] | (shadow['byte1'] << 8)
+
+        # Set spindle enable and direction bits
+        new_outputs = self._set_bit(current_outputs, OUTPUT_SPINDLE_ON, True)
+        new_outputs = self._set_bit(new_outputs, OUTPUT_SPINDLE_DIRECTION, direction == 'reverse')
+
+        # This will validate Note 3 constraint automatically
+        self.set_outputs(new_outputs)
+
+    def disable_spindle(self) -> None:
+        """
+        Disable spindle by clearing OUTPUT_SPINDLE_ON.
+
+        This clears:
+        - OUTPUT_SPINDLE_ON (Bit 2) = 0  (disables LS2315)
+
+        The LS2315 will decelerate according to its internal ramp settings.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        # Read current shadow state
+        shadow = self.read_digital_outputs()
+        current_outputs = shadow['byte0'] | (shadow['byte1'] << 8)
+
+        new_outputs = self._set_bit(current_outputs, OUTPUT_SPINDLE_ON, False)
+        self.set_outputs(new_outputs)
+
+    def read_spindle_status(self) -> Dict[str, Any]:
+        """
+        Read spindle status from digital inputs.
+
+        Returns dictionary with:
+        - 'off': Spindle OFF (computed from Spindle ON output and Stopped input)
+        - 'fault': Spindle fault active
+        - 'at_speed': Spindle at commanded speed
+        - 'load': Spindle load (0-10V analog feedback, if available)
+
+        Note 1 from manual page 19:
+        Spindle OFF = 1 when:
+          - Spindle ON output (Outputs/Byte0/Bit2) = 0 AND
+          - Spindle Stopped input (CN6 pin2) = HIGH
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        inputs = self.read_digital_inputs()
+
+        status = {
+            'off': self._get_bit(inputs, INPUT_SPINDLE_OFF),
+            'fault': self._get_bit(inputs, INPUT_SPINDLE_FAULT),
+            'at_speed': self._get_bit(inputs, INPUT_SPINDLE_AT_SPEED),
+        }
+
+        # Add analog load feedback if available
+        try:
+            analog = self.read_analog_inputs()
+            status['load_voltage'] = analog.get(ANALOG_IN_SPINDLE_LOAD, 0.0)
+        except Exception:
+            status['load_voltage'] = None
+
+        return status
+
+    # -------------------------------------------------------------------------
+    # Guard Lock Control (Schmersal AZM170-02ZK-2321 Door Switch)
+    # -------------------------------------------------------------------------
+
+    def lock_guard(self) -> None:
+        """
+        Engage guard lock.
+
+        Sets OUTPUT_GUARD_LOCK (Bit 9) = 1 to lock the Schmersal safety
+        switch. This prevents the door from being opened.
+
+        The Schmersal AZM170-02ZK-2321 integrated lock is controlled via
+        CN9.3-4 (Guard1 Unlock solenoid +/-).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_GUARD_LOCK, True)
+
+    def unlock_guard(self) -> None:
+        """
+        Release guard lock.
+
+        Sets OUTPUT_GUARD_LOCK (Bit 9) = 0 to unlock the Schmersal safety
+        switch, allowing the door to open if unlock conditions are met:
+
+        Unlock conditions (from manual page 7, CN9 description):
+        - Spindle stopped AND Power is OFF, OR
+        - Spindle stopped AND machine in Safety Zone, OR
+        - Manual mode with Acknowledge (J20 setting dependent)
+
+        Current jumper config (Option 1):
+        - J20 open: Spindle must be stopped for unlock in Manual mode
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_GUARD_LOCK, False)
+
+    def read_guard_lock_state(self) -> Dict[str, bool]:
+        """
+        Read guard/door safety switch state.
+
+        Returns:
+            Dictionary with:
+            - 'closed': True if both A and B contacts indicate door closed
+            - 'locked': True if guard lock output is active
+
+        The Schmersal AZM170-02ZK-2321 provides dual redundant contacts
+        (A and B channels) connected to CN9.1-2 and CN9.5-6.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        ⚠️  This method needs guard contact input bit mapping - TBD
+        """
+        # TBD: Need to determine which input bits correspond to guard contacts
+        # Manual shows CN9.1-2 (Guard1 A) and CN9.5-6 (Guard1 B)
+        # but doesn't specify the input bit mapping in Inputs/Byte0 or Byte1
+
+        # Read guard lock state from shadow outputs
+        locked = self.get_output_bit(OUTPUT_GUARD_LOCK)
+
+        return {
+            'closed': False,  # TBD - need input bit mapping
+            'locked': locked,
+        }
+
+    # -------------------------------------------------------------------------
+    # Tool Changer & Pneumatic Control
+    # -------------------------------------------------------------------------
+
+    def read_air_pressure_ok(self) -> bool:
+        """
+        Read air pressure OK status from INPUT_AIR_PRESSURE (Bit 5).
+
+        Connected to CN7.1 (Input 5) - indicates sufficient air pressure
+        for pneumatic tool changer operations.
+
+        Returns:
+            True if air pressure is sufficient, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_AIR_PRESSURE)
+
+    def read_tool_length_switch(self) -> bool:
+        """
+        Read tool length measurement switch state.
+
+        Connected to CN7.3 (Input 6) - indicates tool length probe contact.
+
+        Returns:
+            True if switch is activated, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_TOOL_LENGTH_SWITCH)
+
+    def read_tool_changer_closed(self) -> bool:
+        """
+        Read tool changer cover closed state.
+
+        Connected to CN7.5 (Input 7).
+
+        Returns:
+            True if tool changer cover is closed, False otherwise
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        return self.get_input_bit(INPUT_TOOL_CHANGER_CLOSED)
+
+    def set_tool_clamp(self, state: bool) -> None:
+        """
+        Control tool clamp solenoid.
+
+        Args:
+            state: True to clamp tool, False to release
+
+        Connected to CN7.7 (Output 5).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CLAMP, state)
+
+    def set_solenoid_valve_2(self, state: bool) -> None:
+        """
+        Control solenoid valve 2.
+
+        Args:
+            state: True to energize, False to de-energize
+
+        Connected to CN7.9 (Output 6).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_SOLENOID_VALVE_2, state)
+
+    def set_solenoid_valve_3(self, state: bool) -> None:
+        """
+        Control solenoid valve 3.
+
+        Args:
+            state: True to energize, False to de-energize
+
+        Connected to CN7.11 (Output 7).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_SOLENOID_VALVE_3, state)
+
+    def unlock_tool_changer(self) -> None:
+        """
+        Unlock tool changer cover.
+
+        Sets OUTPUT_TOOL_CHANGER_UNLOCK (Bit 8) = 1.
+        Connected to CN7.13 (Output 8).
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CHANGER_UNLOCK, True)
+
+    def lock_tool_changer(self) -> None:
+        """
+        Lock tool changer cover.
+
+        Sets OUTPUT_TOOL_CHANGER_UNLOCK (Bit 8) = 0.
+
+        🔴 UNVERIFIED - Not yet tested on hardware
+        """
+        self.set_output_bit(OUTPUT_TOOL_CHANGER_UNLOCK, False)
+
+    # =========================================================================
+    # Output Shadow State with Special Function Inference
+    # =========================================================================
+
+    def read_digital_outputs(self) -> Dict[str, int]:
+        """
+        Read digital output states with special function inference.
+
+        Overrides IOController.read_digital_outputs() to merge shadow state
+        with inferred special function outputs that are controlled by hardware.
+
+        Special function outputs inferred from diagnostic codes and system state:
+        - Output 9 (Guard Lock): Inferred from diagnostic codes, safe state
+        - Output 12 (Safety Link Bridge): Inferred from spindle state (safety)
+        - Output 15 (Power ON): Inferred from diagnostic codes
+
+        Returns:
+            Dictionary with 'byte0' and 'byte1' containing merged shadow + inferred states
+
+        Note:
+            Shadow = last written values. Inferred = hardware-controlled values.
+            Jumper configuration affects inference accuracy.
+        """
+        # TODO: Implement special function inference
+        # For now, return base shadow state
+        return super().read_digital_outputs()
+
+    def _infer_guard_lock_state(self) -> bool:
+        """
+        Infer guard lock output state from diagnostic codes (stub).
+
+        Returns:
+            Inferred guard lock state (True=locked, False=unlocked)
+
+        Raises:
+            NotImplementedError: Special function inference not yet implemented
+        """
+        raise NotImplementedError("Guard lock inference not yet implemented")
+
+    def _infer_power_on_state(self) -> bool:
+        """
+        Infer power ON output state from diagnostic codes (stub).
+
+        Returns:
+            Inferred power ON state (True=power enabled, False=power OFF)
+
+        Raises:
+            NotImplementedError: Special function inference not yet implemented
+        """
+        raise NotImplementedError("Power ON inference not yet implemented")
+
+    def _infer_safety_link_bridge_state(self) -> bool:
+        """
+        Infer safety link bridge output state from spindle state (stub).
+
+        Safety constraint: Always 0 when spindle is enabled.
+
+        Returns:
+            Inferred safety link bridge state (True=bridged, False=normal)
+
+        Raises:
+            NotImplementedError: Special function inference not yet implemented
+        """
+        raise NotImplementedError("Safety link bridge inference not yet implemented")
+
+
+# =============================================================================
+# LS-773 Network I/O Node (Future Implementation)
+# =============================================================================
+
+class LS773(IOController):
+    """
+    LS-773 Network I/O Node
+
+    Generic LDCN I/O node with versatile capabilities:
+
+    Hardware Capabilities:
+    - 10 digital inputs
+    - 7 digital outputs (6 standard + 1 amplifier enable)
+    - PWM generation at 20 KHz (outputs 1 & 2)
+    - 32-bit counter/timer with prescaler
+    - 3 analog inputs (8-bit, configurable 0-5V or 0-10V range)
+    - Synchronized I/O capture and application
+
+    Typical Applications:
+    - General purpose I/O expansion
+    - Frequency measurement and timing
+    - Motor speed control via PWM
+    - Sensor interface (analog and digital)
+
+    🔴 NOT YET IMPLEMENTED - Placeholder for future development
+
+    When implementing, refer to LS-773 datasheet for:
+    - Command codes specific to LS-773
+    - Status byte format
+    - PWM configuration
+    - Counter/timer modes
+    - Analog I/O configuration
+
+    Author: NickyDoes
+    License: GPL v2 or later
+    """
+
+    def __init__(self, network: LDCNNetwork, address: int):
+        """
+        Initialize LS-773 I/O node.
+
+        Args:
+            network: Parent LDCNNetwork object
+            address: Device address (1-127)
+        """
+        super().__init__(network, address)
+        self.device_type = "LS-773"
+
+    def read_status(self) -> Dict[str, Any]:
+        """
+        Read status from LS-773.
+
+        🔴 NOT YET IMPLEMENTED
+
+        Raises:
+            NotImplementedError: LS773 implementation pending
+        """
+        raise NotImplementedError(
+            "LS773 not yet implemented. Refer to LS-773 datasheet "
+            "for status byte format and implement status parsing."
+        )
+
+

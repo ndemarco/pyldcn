@@ -1,0 +1,423 @@
+## General Introduction
+
+This document is based on two LDCN-compliant I/O devices, the LS-773 and the SK-2310g2. The '773 is a general purpose I/O device, whereas the '2310 is a supervisory controller with I/O characteristics, plus general I/O features. The LDCN protocol and commands are substantially similar between the two, with the LS-773 being more generic, and the SK-2310g2 being tailored for a specific purpose.
+
+## Specific Model Introduction
+
+### LS-773 Hardware Features
+
+- 10 general purpose digital inputs (with configurable pull-up/pull-down)
+- 6 open collector outputs (1A max each)
+- 1 solid-state relay output (0.5A max, OUTPUT 0/POWER)
+- 3 analog inputs (8-bit, 0-5V/0-10V/0-20V/0-30V selectable)
+- 32-bit counter/timer with prescaler (5.0 MHz clock)
+- 20 KHz PWM mode for OUTPUT 1 and OUTPUT 2
+- Device ID: 2, Version: 50
+
+#### LS-773 Input Bit Layout
+
+Byte 0:
+
+| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|-----|---|---|---|---|---|---|---|---|
+| Input | IN7 | IN6 | IN5 | IN4 | IN3 | IN2 | IN1 | IN0 |
+
+Byte 1:
+
+| Bit | 7 | 6 | 5 | 4 | 3 | 2 | 1 | 0 |
+|-----|---|---|---|---|---|---|---|---|
+| Input | - | - | - | - | - | - | IN9 | IN8 |
+| Flag | - | - | - | - | - | OUT_SH | - | - |
+
+#### OUT_SH Flag (Byte 1, bit 1)
+
+- OUT_SH = 1: One or more outputs are shorted to POWER(+)
+- OUT_SH = 0: Normal operation
+
+### SK-2310g2 Hardware Features
+
+The SK-2310G2 is a specialized I/O controller designed for machine supervision, with dedicated hardware for supervisory functions alongside a set of general-purpose I/O features.
+
+### I/O Hardware Differences
+
+| Feature | LS-773 | SK-2310g2 |
+|---------|--------|-----------|
+| **Digital Inputs** | 10 inputs | 7 physical + 9 internal status |
+| **Digital Outputs** | 7 outputs | 8 physical + 8 internal control |
+| **Analog Inputs** | 3 inputs (0-5/10/20/30V) | 3 inputs (ADC-1: 0-10V, ADC-2/3: 0-5V) |
+| **Analog Outputs** | None | 1 output (0-10V DAC for spindle control) |
+| **Counter/Timer** | 32-bit (5.0 MHz) | Unknown (verify with device) |
+| **PWM Outputs** | OUTPUT 1, OUTPUT 2 (20 KHz) | OUTPUT 4 (20 KHz) |
+
+### Analog I/O Summary
+
+**SK-2310g2 Analog Inputs**:
+
+- **ADC-1** (CN6 pin 10): 0-10V (typically spindle F/V feedback)
+- **ADC-2** (CN17 pin 3): 0-5V (general purpose, potentiometer-ready)
+- **ADC-3** (CN17 pin 2): 0-5V (general purpose, potentiometer-ready)
+
+**SK-2310g2 Analog Output**:
+
+- **DAC** (CN6 pin 11): 0-10V (spindle speed control)
+- Control method: Device-specific firmware command (consult SK-2310g2 documentation)
+
+---
+
+## Common Features
+
+### Polled, not interrupt driven
+
+Like all LDCN devices, I/O devices are polled, not interrupt-driven or real-time. The counter/timer is designed for synchronized input capture - Hardware-latched position/time snapshots using the `Sync Input` command.
+
+### Output state
+
+No command or method exists to read the state of outputs. The host must store the output state. This state image must be updated when faults or errors may change the device's state inadvertently.
+
+
+## Command Reference
+
+
+
+### Command Summary Table
+
+| Command | Code | Data Bytes | Description |
+|---------|------|------------|-------------|
+| [Define Status](#define-status-command) | 0x2 | 1 | Defines which data should be sent in every status packet |
+| [Read Status](#read-status-command) | 0x3 | 1 | Causes particular status data to be returned just once |
+| [Set PWM](#set-pwm) | 0x4 | 2 | Set PWM duty cycle for OUTPUT 1 and OUTPUT 2 |
+| [Sync Output](#sync-output) | 0x5 | 0 | Apply previously staged output values |
+| [Set Outputs](#set-outputs) | 0x6 | 2 | Immediately set all digital output states |
+| [Set Sync Output](#set-sync-output) | 0x7 | 4 | Stage output states and PWM values for later sync |
+| [Set Timer Mode](#set-timer-mode) | 0x8 | 1 | Configure 32-bit counter/timer operation mode |
+| [Sync Input](#sync-input-command) | 0xC | 0 | Atomically capture input states and counter value |
+
+For LDCN network commands (Set Address, NOP, etc.), see [ldcn_protocol.md](ldcn_protocol.md).
+
+### Define Status Command
+
+**Command:** `0x02` (CMD_DEFINE_STATUS)
+**Data bytes:** 1 byte (from **status items bitmap**)
+**Default:** `0x00` (no items)
+**Returns:** Yes - Status packet with defined status items
+
+Causes subsequent `Nop` commands to return the defined status items.
+
+`Hard Reset` or power cycle will return to `0x00`
+
+See [Efficient Status Configuration](#efficient-status-configuration) for usage examples.
+
+### Read Status Command
+
+**Command:** `0x03` (CMD_READ_STATUS)
+**Data bytes:** 1 byte (from **status items bitmap**)
+**Returns:** Yes - Status packet with requested status items (one time only)
+
+This is a non-permanent version of the Define Status command. The status packet returned in response to this command will incorporate the data bytes specified, but subsequent status packets will include only the data bytes previously specified with the Define Status command.
+
+See [Reading Analog Inputs](#reading-analog-inputs) for usage examples.
+
+### Set PWM
+
+**Command:** `0x04` (CMD_SET_PWM)
+**Data bytes:** 2 bytes
+**Returns:** Yes - Standard status packet
+
+For PWM capable outputs, sets the PWM duty cycle.
+
+**Data**:
+
+- Byte 0: PWM 1 output value (255-0)
+- Byte 1: PWM 2 output value (255-0)
+
+**PWM Value Mapping**:
+
+- 255 = 0% PWM (output OFF)
+- 128 = 50% PWM
+- 0 = 100% PWM (output fully ON)
+
+**Example**:
+
+```python
+# Set OUTPUT 1 to 50% PWM, OUTPUT 2 to 75% PWM
+pwm1 = 128  # 50%
+pwm2 = 64   # 75%
+send_command(addr, 0x04, [pwm1, pwm2])
+```
+
+**Notes**:
+
+- OUTPUT 1 and OUTPUT 2 must first be enabled for PWM mode by setting their output bits to `1` using `Set Outputs` command
+- PWM frequency is fixed at 20 KHz
+- To use PWM outputs as digital outputs, use `Set Outputs` command or set PWM to `0` or `255`.
+
+See [PWM Output Configuration](#examples) for complete setup examples.
+
+### Sync Output
+
+**Command:** `0x05` (CMD_SYNC_OUTPUT)<br>
+**Data bytes:** 0 bytes <br>
+**Returns:** Yes - Standard status packet
+
+Synchronously applies output values previously stored with [Set Sync Output](#set-sync-output) command.
+
+**Use Case**: Allows simultaneous state change on multiple outputs across multiple nodes.
+
+First [Set Sync Output](#set-sync-output) to stage the values, then `Sync Output` to apply.
+
+### Set Outputs
+
+**Command:** `0x06` (CMD_SET_OUTPUTS)<br>
+**Data bytes:** 2 bytes <br>
+**Returns:** Yes - Standard status packet
+
+Immediately sets the states of all digital output bits.
+
+**Data**:
+
+- Byte 0: Output bits (bit 0-6 = OUTPUT 0-6, bit 7 unused)
+- Byte 1: Reserved (set to 0x00)
+
+**LS-773 Output Bit Mapping**:
+
+| Bit | Output | Description |
+|-----|--------|-------------|
+| 0   | OUTPUT 0/POWER | Solid-state relay, 0.5A |
+| 1   | OUTPUT 1/PWM | Open collector, 1A, PWM capable |
+| 2   | OUTPUT 2/PWM | Open collector, 1A, PWM capable |
+| 3   | OUTPUT 3 | Open collector, 1A |
+| 4   | OUTPUT 4 | Open collector, 1A |
+| 5   | OUTPUT 5 | Open collector, 1A |
+| 6   | OUTPUT 6 | Open collector, 1A |
+| 7   | (unused) | Ignored |
+
+**Example**:
+
+```python
+# Turn on OUTPUT 0, OUTPUT 2, and OUTPUT 5
+outputs = 0b00100101  # bits 0, 2, 5 set
+send_command(addr, 0x06, [outputs, 0x00])
+```
+
+**Notes**:
+
+- To set PWM and digital values simultaneoustly, see `sync output` command.
+- If a PWM-capable output is set to 1, it operates in PWM mode, with duty cycle set by `Set PWM`
+- If a PWM-capable output is set to 0, it is immediately turned off, regardless of 'Set PWM' value
+- All outputs are open collector, with diode protection for inductive loads
+- Each output is short circuit protected. Shorting an output to POWER(+) turns off all outputs until next Set Outputs command.
+
+### Set Sync Output
+
+**Command:** `0x07` (CMD_SET_SYNC_OUTPUT) <br>
+**Data bytes:** 4 bytes <br>
+**Returns:** Yes - Standard status packet
+
+Stores output states and PWM values for later synchronous application using [Sync Output](#sync-output)
+
+**Data**:
+
+- Byte 0: Output bits (bit 0-6 = OUTPUT 0-6, bit 7 unused)
+- Byte 1: Reserved (set to 0x00)
+- Byte 2: PWM 1 output value (255-0)
+- Byte 3: PWM 2 output value (255-0)
+
+**Example**:
+
+```python
+# Stage outputs: OUTPUT 0 and OUTPUT 1 on, OUTPUT 1 at 75% PWM
+outputs = 0b00000011
+pwm1 = 64   # 75%
+pwm2 = 255  # off
+send_command(addr, 0x07, [outputs, 0x00, pwm1, pwm2])
+
+# Later, simultaneously apply the staged values
+send_command(addr, 0x05, [])  # Sync Output
+```
+
+### Set Timer Mode
+
+**Command:** `0x08` (CMD_SET_TIMER_MODE)<br>
+**Data bytes:** 1 byte<br>
+**Returns:** Yes - Standard status packet
+
+Configures the 32-bit counter/timer operation mode.
+
+**Data**:
+
+- Byte 0: Timer mode configuration byte
+
+**Configuration Byte Bits**:
+
+| Bit | Function |
+|-----|----------|
+| 0   | 0 = Disabled, 1 = Enabled |
+| 1   | 0 = Timer mode (5.0 MHz), 1 = Counter mode (DIGITAL IN 9/COUNT) |
+| 4-5 | Prescaler: 00=1:1, 01=2:1, 10=4:1, 11=8:1 |
+| 2,3,6,7 | Not used |
+
+**Example**:
+
+```python
+# Enable counter mode with 4:1 prescaler
+config = 0b00100011  # bit 0=1 (enable), bit 1=1 (counter), bits 4-5=10 (4:1)
+send_command(addr, 0x08, [config])
+
+# Enable timer mode (5.0 MHz clock), no prescaler
+config = 0b00000001  # bit 0=1 (enable), bit 1=0 (timer), bits 4-5=00 (1:1)
+send_command(addr, 0x08, [config])
+
+# Reset counter (disable then re-enable)
+send_command(addr, 0x08, [0x00])  # Disable
+send_command(addr, 0x08, [0x03])  # Re-enable in counter mode
+```
+
+**Notes**:
+
+- Counter value is read via Define Status or Read Status commands (bit 4)
+- Counter wraps at 2^32 - 1 with no status indication or interrupt
+- See [Counter/Timer](#countertimer) for overflow behavior and use cases
+
+### Sync Input Command
+
+**Command:** `0x0C` (CMD_SYNC_INPUT)<br>
+**Data bytes:** 0 bytes<br>
+**Returns:** Yes - Standard status packet
+
+Captures current input states and counter/timer value atomically.
+
+**Use Case**:
+
+- Atomic, simultaneous snapshot of all digital inputs and timer/counter value
+- Read captured values using [Read Status](#read-status-command) with values reported on [status items](#2-status-items) bits 6 and 7
+
+**Workflow**:
+
+```python
+# 1. Send Sync Input command
+send_command(addr, 0x0C, [])
+
+# 2. Read captured values using Read Status bit 6 (inputs) and bit 7 (counter)
+status_bits = 0b11000000  # bits 6 and 7
+response = send_command(addr, 0x03, [status_bits])
+
+# Response contains:
+# - Status byte
+# - Captured input byte 0
+# - Captured input byte 1
+# - Captured counter value (4 bytes, LSB first)
+# - Checksum
+```
+
+**Note:** There is no trigger or interrupt to capture all values on a counter/timer or  input transition. Capture can only be initiated via a LDCN command and is subject to transmission and command processing delays.
+
+---
+
+## Implementation Notes
+
+### Efficient Status Configuration
+
+For fast I/O polling, limit responses using [Define Status](#define-status-command). For example, to receive inputs only, use status mask bit 0:
+
+```python
+# Initialize once
+send_command(CMD_DEFINE_STATUS, [0x01])
+
+# Poll status repeatedly
+while True:
+    response = send_command(CMD_NOP)
+    # Response is 4 bytes: [status, input_byte0, input_byte1, checksum]
+    status_byte = response[0]
+    input_byte0 = response[1]
+    input_byte1 = response[2]
+    checksum = response[3]
+
+    # Combine into 16-bit input word
+    inputs = (input_byte1 << 8) | input_byte0
+
+    # Verify checksum
+    if status_byte & 0x02:
+        print("Warning: Checksum error detected")
+```
+
+### Reading Analog Inputs
+
+Include analog bits when needed:
+
+```python
+# Configure: inputs + all analog
+send_command(CMD_DEFINE_STATUS, [0x0F])
+
+# Read status
+response = send_command(CMD_NOP)
+# Response is 7 bytes: [status, in0, in1, ain0, ain1, ain2, checksum]
+status_byte = response[0]     # Status byte
+input_byte0 = response[1]     # Digital input byte 0
+input_byte1 = response[2]     # Digital input byte 1
+ain0 = response[3]            # Analog input 0 (0-255)
+ain1 = response[4]            # Analog input 1 (0-255)
+ain2 = response[5]            # Analog input 2 (0-255)
+checksum = response[6]        # Checksum
+```
+
+## Examples
+
+**Basic initialization**:
+
+```python
+def initialize_io_node(addr):
+    # Step 1: Define status reporting (inputs, analog, counter)
+    # See: Define Status command
+    status_bits = 0x01 | 0x0E | 0x10  # inputs, all analog, counter
+    send_command(addr, 0x02, [status_bits])
+
+    # Step 2: Configure counter/timer if needed
+    # See: Set Timer Mode command
+    timer_config = 0b00000011  # bit 0=1 (enable), bit 1=1 (counter)
+    send_command(addr, 0x08, [timer_config])
+
+    # Step 3: Initialize outputs to known state
+    # See: Set Outputs command
+    send_command(addr, 0x06, [0x00, 0x00])  # All outputs off
+
+    # Step 4: Read and verify status
+    response = send_command(addr, 0x0E, [])  # NOP to read status
+    return parse_io_status(response)
+```
+
+---
+
+**PWM Output**:
+
+- Inverted scale: 255=OFF, 0=FULLY ON
+- Frequency: 20 KHz (fixed)
+- Resolution: 8-bit (0-255)
+- Only specific outputs support PWM
+
+```python
+# Step 1: Enable PWM outputs (set output bits to 1)
+# See: Set Outputs command
+outputs = 0b00000110  # bits 1 and 2 for OUTPUT 1 and OUTPUT 2
+send_command(addr, 0x06, [outputs, 0x00])
+
+# Step 2: Set PWM duty cycles
+# See: Set PWM command
+pwm1 = 128  # 50% duty cycle
+pwm2 = 64   # 75% duty cycle
+send_command(addr, 0x04, [pwm1, pwm2])
+
+# To disable PWM: set output bits to 0
+send_command(addr, 0x06, [0x00, 0x00])
+```
+
+---
+
+## References
+
+- Logosol LS-773 Network I/O Node Datasheet (Doc# 712773001, Rev. B)
+  - LS-773 Device ID: 2, Version: 50
+- Logosol CNC-SK-2310g2 Supervisor I/O Controller Manual (Doc# 710231005, Rev. D)
+  - Specialized supervisory controller for CNC machines
+  - Application-specific I/O mappings
+  - Includes analog output for spindle control
+- [ldcn_protocol.md](ldcn_protocol.md) - Generic LDCN network protocol documentation
