@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/nick/projects/picoshark/**)",
+      "Bash(sudo apt-get:*)",
+      "Bash(git clone:*)",
+      "Bash(export PICO_SDK_PATH=/opt/pico-sdk)",
+      "Read(//opt/pico-sdk/**)"
+    ],
+    "additionalDirectories": [
+      "/home/nick/projects/picoshark/src",
+      "/home/nick/projects/picoshark/docs"
+    ]
+  }
+}
